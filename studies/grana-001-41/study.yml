@@ -18,7 +18,7 @@ samples_dir: samples
 base:
   onset: 0
   duration: 60   # tetto: la durata vera la fissa sweep.transition (10 x 6s)
-  sample: 001-41_5-5_5.wav
+  sample: 001-41_5-5_5_norm.flac   # il .wav crudo ha peak -26 dBFS: inascoltabile
   time_mode: normalized
   distribution_mode: uniform
   fill_factor: 4
