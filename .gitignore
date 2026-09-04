@@ -1,6 +1,10 @@
 # Output rigenerabile della pipeline
 /generated/
 
+# L'engine scrive qui i log di caricamento anche con --log-dir: cli.py:507,511
+# inchiodano './logs' e onorano il flag solo per il renderer (cli.py:531).
+/logs/
+
 # Audio del corpus: versioniamo solo il manifest, non i file
 /samples/**
 !/samples/README.md
