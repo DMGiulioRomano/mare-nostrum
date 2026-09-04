@@ -47,6 +47,7 @@ help:
 	@echo "  make all-study STUDY=...    pipeline completa (sweep→stack→render)"
 	@echo "  make brano                  renderizza il brano (mare-nostrum.yml -> generated/brano/)"
 	@echo "                              flag: FORMAT=wav|flac VISUALIZE=1 SV=1 JOBS=n RENDERER=numpy|csound"
+	@echo "  make samples               ricrea i symlink di samples/ (override: REFS=...)"
 	@echo "  make clean / clean-all      pulizia output / output+venv"
 	@echo "  make kill-sonic             chiude tutte le istanze di Sonic Visualiser (senza salvare)"
 
@@ -59,3 +60,21 @@ _require-study:
 	@if [ -z "$(STUDY)" ]; then \
 		echo "Errore: specifica STUDY=<nome cartella in studies/>"; exit 1; \
 	fi
+
+# --- Corpus audio ---
+# I file in samples/ sono symlink al corpus di PythonGranularEngine (non
+# versionati, .gitignore). `make samples` li ricrea tutti; i link rotti
+# (sorgente sparito da REFS) vengono tolti.
+REFS ?= ../PythonGranularEngine/refs
+# ln viene eseguito da dentro samples/, quindi un REFS relativo va risalito.
+REFS_REL = $(if $(filter /%,$(REFS)),$(REFS),../$(REFS))
+
+.PHONY: samples
+samples:
+	@[ -d "$(REFS)" ] || { echo "Errore: '$(REFS)' non esiste (override: make samples REFS=...)"; exit 1; }
+	@find samples -type l ! -exec test -e {} \; -delete
+	@n=0; for f in $(REFS)/*.wav $(REFS)/*.flac $(REFS)/*.aif $(REFS)/*.aiff; do \
+		[ -e "$$f" ] || continue; \
+		ln -sfn "$(REFS_REL)/$$(basename $$f)" "samples/$$(basename $$f)"; \
+		n=$$((n+1)); \
+	done; echo "samples/: $$n symlink -> $(REFS)"

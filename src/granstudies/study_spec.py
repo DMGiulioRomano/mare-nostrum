@@ -254,10 +254,9 @@ def _validate(spec: StudySpec, ctx: ErrCtx, *, orders_explicit: bool = False) ->
         # I bounds del registry sono in *secondi*. Se lo stream dichiara una
         # ``grain.duration_unit`` diversa da ``seconds`` (stream.py:415), i
         # valori dell'asse ``grain.duration`` sono in quell'unita' e vanno
-        # convertiti prima del confronto. Dichiarare un'unita' fine (campioni,
-        # millisecondi) e' anche il segnale che si lavora sotto il
-        # millisecondo, quindi ``output_sr`` porta il minimo al floor dinamico
-        # invece del fallback statico di 1 ms.
+        # convertiti prima del confronto. Il floor dinamico (``output_sr``) e'
+        # sempre attivo: e' quello che usa l'engine in render, il fallback
+        # statico di 1 ms rifiuterebbe valori che l'engine accetta.
         grain_unit = (
             spec.base.get("grain", {}).get("duration_unit")
             if ax.path == "grain.duration"
@@ -266,7 +265,7 @@ def _validate(spec: StudySpec, ctx: ErrCtx, *, orders_explicit: bool = False) ->
         if grain_unit == "seconds":
             grain_unit = None
         sr = bounds_mod.default_output_sr()
-        b = bounds_mod.bounds_for(ax.path, output_sr=sr if grain_unit else None)
+        b = bounds_mod.bounds_for(ax.path, output_sr=sr)
         if b is not None:
             lo, hi = b
             factor = bounds_mod.grain_duration_factor(grain_unit, sr)
