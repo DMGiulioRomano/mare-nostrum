@@ -203,10 +203,11 @@ def test_document_emerging_values_clamped_to_engine_bounds():
     pts = doc["streams"][0]["grain"]["duration"]["points"]
     assert all(v == 4 / 48000 for _, v in pts)
 
-    # output_sr=None ripristina il fallback statico di 1ms (issue #17).
-    doc_static = generate_stack_document(_specs(data), output_sr=None)
-    pts_static = doc_static["streams"][0]["grain"]["duration"]["points"]
-    assert all(v == 0.001 for _, v in pts_static)
+    # output_sr=None significa "il default dell'engine", non il fallback
+    # statico di 1ms: il floor resta quello dinamico.
+    doc_none = generate_stack_document(_specs(data), output_sr=None)
+    pts_none = doc_none["streams"][0]["grain"]["duration"]["points"]
+    assert all(v == 4 / 48000 for _, v in pts_none)
 
 
 def test_document_clamp_rispetta_duration_unit_milliseconds():

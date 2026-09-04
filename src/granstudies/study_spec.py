@@ -249,14 +249,10 @@ def _validate(spec: StudySpec, ctx: ErrCtx, *, orders_explicit: bool = False) ->
                 )
         # Sforo bloccante: i bounds engine sono un safety clamp, un valore
         # fuori range va fermato al parse invece di essere silenziosamente
-        # clampato in render.
-        #
-        # I bounds del registry sono in *secondi*. Se lo stream dichiara una
-        # ``grain.duration_unit`` diversa da ``seconds`` (stream.py:415), i
-        # valori dell'asse ``grain.duration`` sono in quell'unita' e vanno
-        # convertiti prima del confronto. Il floor dinamico (``output_sr``) e'
-        # sempre attivo: e' quello che usa l'engine in render, il fallback
-        # statico di 1 ms rifiuterebbe valori che l'engine accetta.
+        # clampato in render. Il confronto lo fa ``bounds.violation`` (unico
+        # punto): qui si passa solo l'unita' dichiarata dallo stream, perche' i
+        # bounds sono in secondi ma i valori dell'asse ``grain.duration``
+        # possono essere in campioni o millisecondi (stream.py:415).
         grain_unit = (
             spec.base.get("grain", {}).get("duration_unit")
             if ax.path == "grain.duration"
@@ -264,23 +260,18 @@ def _validate(spec: StudySpec, ctx: ErrCtx, *, orders_explicit: bool = False) ->
         )
         if grain_unit == "seconds":
             grain_unit = None
-        sr = bounds_mod.default_output_sr()
-        b = bounds_mod.bounds_for(ax.path, output_sr=sr)
-        if b is not None:
-            lo, hi = b
-            factor = bounds_mod.grain_duration_factor(grain_unit, sr)
-            for v in list(ax.values) + [ax.baseline]:
-                v_sec = v * factor
-                if (lo is not None and v_sec < lo) or (hi is not None and v_sec > hi):
-                    unit = _UNIT_LABELS.get(grain_unit, "s")
-                    raise ctx.err(
-                        f"Asse '{ax.name}' valore {v} {unit} fuori bounds {b} "
-                        f"(s) per il path '{ax.path}'.",
-                        key=("axes", ax.name),
-                        axis=ax.name,
-                        hint=f"i valori (e il baseline), convertiti in secondi, "
-                        f"devono stare in {b}.",
-                    )
+        for v in list(ax.values) + [ax.baseline]:
+            b = bounds_mod.violation(ax.path, v, unit=grain_unit)
+            if b is not None:
+                unit = _UNIT_LABELS.get(grain_unit, "s")
+                raise ctx.err(
+                    f"Asse '{ax.name}' valore {v} {unit} fuori bounds {b} "
+                    f"(s) per il path '{ax.path}'.",
+                    key=("axes", ax.name),
+                    axis=ax.name,
+                    hint=f"i valori (e il baseline), convertiti in secondi, "
+                    f"devono stare in {b}.",
+                )
 
 
 def _resolve_baseline(

@@ -1,37 +1,44 @@
 """Bounds dei parametri per clamping e normalizzazione delle distanze.
 
-I bounds dei parametri registrati derivano dall'engine
-(``parameter_definitions.GRANULAR_PARAMETERS``) — single source of truth, niente
-duplicazione. I parametri unit-driven (pitch) non sono nel registry e sono
-aggiunti qui a mano, come documentato in ``parameter_definitions.py``.
+Tutti i bounds vengono dall'engine — single source of truth, niente tabelle
+copiate: il registry ``parameter_definitions.GRANULAR_PARAMETERS`` per i
+parametri registrati (mappa path->chiave derivata da ``ALL_SCHEMAS``),
+``PitchUnit.value_bounds`` per i path ``pitch.<unita'>``, che unit-driven non
+sono nel registry.
 
 Le chiavi sono i path YAML *dotted* (es. ``grain.duration``), come usati nello
 ``study.yml`` e nelle definizioni di stato.
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Dict, Optional, Tuple
 
-# path YAML dotted -> chiave nel registry dell'engine
-_PATH_TO_ENGINE_KEY: Dict[str, str] = {
-    "density": "density",
-    "distribution": "distribution",
-    "fill_factor": "fill_factor",
-    "grain.duration": "grain_duration",
-    "pan": "pan",
-    "volume": "volume",
-    "pointer.speed_ratio": "pointer_speed_ratio",
+# Path noti al registry dell'engine ma assenti da ``ALL_SCHEMAS`` (non hanno
+# una voce di schema YAML): unica tabella rimasta a mano. Tutto il resto viene
+# da ``engine_bridge.parameter_schema_paths``.
+_EXTRA_PATHS: Dict[str, str] = {
     "pointer.deviation": "pointer_deviation",
-    "scatter": "scatter",
     "num_voices": "num_voices",
+    "scatter": "scatter",
 }
 
-# path non presenti nel registry (bounds unit-driven o derivati): valori manuali
-# coerenti coi commenti in parameter_definitions.py (EDO ±3 ottave).
-_MANUAL_BOUNDS: Dict[str, Tuple[float, float]] = {
-    "pitch.semitones": (-36.0, 36.0),
-    "pitch.cents": (-3600.0, 3600.0),
-}
+_PITCH_PREFIX = "pitch."
+
+
+@lru_cache(maxsize=1)
+def _path_map() -> Dict[str, str]:
+    """path YAML dotted -> chiave nel registry, derivata dagli schema engine."""
+    from .engine_bridge import parameter_bounds, parameter_schema_paths
+
+    registry = parameter_bounds()
+    # ``pointer.start`` sta negli schema ma non nel registry: nessun bound da
+    # confrontare, quindi resta fuori dai path noti.
+    return {
+        **{p: k for p, k in parameter_schema_paths().items() if k in registry},
+        **_EXTRA_PATHS,
+    }
+
 
 # Minimo di grain.duration in campioni imposto da questo studio (l'engine
 # scende a 1 campione). Vedi ``bounds_for``.
@@ -70,8 +77,12 @@ def grain_duration_factor(
 
 
 def known_paths() -> frozenset:
-    """Tutti i path dotted noti (registry engine + manuali), senza import engine."""
-    return frozenset(_PATH_TO_ENGINE_KEY) | frozenset(_MANUAL_BOUNDS)
+    """Tutti i path dotted noti: registry engine + le unita' di ``pitch.*``."""
+    from .engine_bridge import pitch_units
+
+    return frozenset(_path_map()) | frozenset(
+        _PITCH_PREFIX + u for u in pitch_units()
+    )
 
 
 def bounds_for(
@@ -80,24 +91,40 @@ def bounds_for(
 ) -> Optional[Tuple[Optional[float], Optional[float]]]:
     """(min, max) per un path, o ``None`` se sconosciuto.
 
-    ``max`` puo' essere ``None`` (bound dinamico nell'engine, es. loop_*).
-    ``output_sr``, se fornito, attiva i bound dinamici dell'engine: il minimo
-    di ``grain.duration`` diventa 1 campione (``1/output_sr``) invece del
-    fallback statico di 1ms (issue #17).
+    I bounds vengono dall'engine: il registry dei parametri per i path di
+    ``ALL_SCHEMAS``, ``PitchUnit.value_bounds`` per i path ``pitch.<unita'>``
+    (l'ultimo segmento e' il nome dell'unita', come nel blocco ``pitch:`` dello
+    YAML).
+
+    ``max`` puo' essere ``None`` (bound dinamico nell'engine): i ``loop_*``
+    dipendono dalla durata del sample, che qui non si conosce, quindi di quelli
+    si valida solo il minimo.
+
+    ``output_sr`` di default e' quello di render dell'engine, cosi' il minimo di
+    ``grain.duration`` e' sempre il pavimento dinamico (1 campione, alzato a
+    ``MIN_GRAIN_SAMPLES`` da questo repo) e mai il fallback statico di 1 ms:
+    ometterlo non deve cambiare il verdetto (issue #17).
     """
-    if path in _MANUAL_BOUNDS:
-        return _MANUAL_BOUNDS[path]
-    key = _PATH_TO_ENGINE_KEY.get(path)
+    if path.startswith(_PITCH_PREFIX):
+        from .engine_bridge import pitch_bounds
+
+        try:
+            pb = pitch_bounds(path[len(_PITCH_PREFIX):])
+        except Exception:
+            return None
+        return (pb.min_val, pb.max_val)
+    key = _path_map().get(path)
     if key is None:
         return None
     from .engine_bridge import parameter_bounds
 
-    pb = parameter_bounds(output_sr=output_sr)[key]
+    sr = output_sr or default_output_sr()
+    pb = parameter_bounds(output_sr=sr)[key]
     lo = pb.min_val
-    if path == "grain.duration" and output_sr:
+    if path == "grain.duration":
         # Floor dello studio: l'engine ammette 1 campione, ma sotto i 4 campioni
         # il grano non ha inviluppo udibile. Vincolo di questo repo, non engine.
-        lo = max(lo, MIN_GRAIN_SAMPLES / output_sr)
+        lo = max(lo, MIN_GRAIN_SAMPLES / sr)
     return (lo, pb.max_val)
 
 
@@ -106,6 +133,55 @@ def default_output_sr() -> int:
     from .engine_bridge import default_output_sr as _sr
 
     return _sr()
+
+
+def _bounds_in_unit(
+    path: str,
+    *,
+    unit: Optional[str] = None,
+    output_sr: Optional[int] = None,
+) -> Optional[Tuple[Optional[float], Optional[float]]]:
+    """Bounds del path riportati nell'unita' del valore da confrontare.
+
+    ``unit`` ha senso solo per ``grain.duration`` (l'unico parametro con
+    un'unita' dichiarabile nello YAML, ``stream.py:415``): sugli altri path
+    viene ignorato.
+    """
+    sr = output_sr or default_output_sr()
+    b = bounds_for(path, output_sr=sr)
+    if b is None:
+        return None
+    lo, hi = b
+    factor = grain_duration_factor(
+        unit if path == "grain.duration" else None, sr
+    )
+    if factor != 1.0:
+        lo = None if lo is None else lo / factor
+        hi = None if hi is None else hi / factor
+    return lo, hi
+
+
+def violation(
+    path: str,
+    value: float,
+    *,
+    unit: Optional[str] = None,
+    output_sr: Optional[int] = None,
+) -> Optional[Tuple[Optional[float], Optional[float]]]:
+    """I bounds *in secondi* se ``value`` li sfora, altrimenti ``None``.
+
+    Unico punto in cui si decide se un valore e' ammesso: il confronto avviene
+    nell'unita' di ``value`` (vedi ``_bounds_in_unit``), il ritorno e' in
+    secondi perche' e' il dominio in cui i bounds sono dichiarati e in cui ha
+    senso mostrarli in un errore.
+    """
+    b = _bounds_in_unit(path, unit=unit, output_sr=output_sr)
+    if b is None:
+        return None
+    lo, hi = b
+    if (lo is not None and value < lo) or (hi is not None and value > hi):
+        return bounds_for(path, output_sr=output_sr)
+    return None
 
 
 def clamp(
@@ -117,23 +193,14 @@ def clamp(
 ) -> float:
     """Riporta ``value`` entro i bounds del path (no-op se path sconosciuto).
 
-    ``output_sr``, se fornito, attiva il floor dinamico di ``grain.duration``
-    (vedi ``bounds_for``) invece del fallback statico di 1ms.
-
     ``unit``: unita' in cui e' espresso ``value``, quando il path e'
     ``grain.duration`` e lo stream dichiara un ``grain.duration_unit``
-    (stream.py:415). I bounds del registry sono in secondi, quindi vengono
-    riportati nell'unita' di ``value`` prima del confronto; il ritorno resta
-    nell'unita' di partenza.
+    (stream.py:415). Il ritorno resta nell'unita' di partenza.
     """
-    b = bounds_for(path, output_sr=output_sr)
+    b = _bounds_in_unit(path, unit=unit, output_sr=output_sr)
     if b is None:
         return value
     lo, hi = b
-    factor = grain_duration_factor(unit, output_sr)
-    if factor != 1.0:
-        lo = None if lo is None else lo / factor
-        hi = None if hi is None else hi / factor
     if lo is not None and value < lo:
         return lo
     if hi is not None and value > hi:
