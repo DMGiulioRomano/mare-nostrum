@@ -17,8 +17,8 @@ samples_dir: samples
 # resta al default 1).
 base:
   onset: 0
-  duration: 200  # tetto: la durata vera la fissa sweep.transition (10 x 20s)
-  sample: 001-41_5-5_5.wav   # il .wav crudo ha peak -26 dBFS: inascoltabile
+  duration: 1000  # tetto: la durata vera la fissa sweep.transition (50 x 20s)
+  sample: 001-41_5-5_5.wav   # crudo, peak -26 dBFS: compensato da volume: 6
   time_mode: normalized
   distribution_mode: uniform
   fill_factor: 4
@@ -31,17 +31,19 @@ base:
     speed_ratio: 0.1
     loop_unit: normalized
     offset_range: 0.01
+    loop_end: 0.2
   pitch:
-    ratio: 0.2
     range: 0.05
   pan: 0
   pan_range: 360
-  volume: -3
+  volume: 6
 
 sweep:
   mode: envelope
   transition: 20   # tutti gli assi step -> durata = N * transition: 20s per gradino
-  orders: [1]      # un asse solo: nessun ordering, si muove solo grain.duration
+  # pitch lento, grain.duration veloce: per ogni pitch scorrono tutte le grane.
+  orderings:
+    - [pitch.ratio, grain.duration]
 
 axes:
   interpolation: step
@@ -49,3 +51,8 @@ axes:
     # Raddoppi da 1 ms (minimo dei bounds) a mezzo secondo: 10 plateau,
     # dal microgranulare alla lettura quasi-continua del sample.
     values: [0.001, 0.002, 0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512]
+  pitch.ratio:
+    baseline: 0.2
+    # 0.2 -> 1.0 in passi geometrici (ratio 5^(1/4) ~ 1.495): il pitch ratio
+    # e' esponenziale, passi uguali all'orecchio = passi uguali in rapporto.
+    values: [0.2, 0.299, 0.447, 0.669, 1.0]
