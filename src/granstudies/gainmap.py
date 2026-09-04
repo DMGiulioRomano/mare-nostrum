@@ -149,10 +149,9 @@ def _window_samples(stream: Mapping[str, Any], sr: int) -> Optional[int]:
 def _start_sample(stream: Mapping[str, Any], sr: int, n_frames: int) -> Optional[int]:
     """Punto di lettura in campioni.
 
-    ``pointer.loop_unit`` non eredita da ``time_mode`` (engine #222): governano
-    assi diversi — ``time_mode`` il tempo degli envelope, ``loop_unit`` la
-    posizione nel sample. Assente, il default e' ``seconds``: secondi assoluti;
-    solo ``normalized`` legge lo start come frazione della durata del sample.
+    ``pointer.loop_unit`` non eredita da ``time_mode``: assente vale
+    ``seconds``, come nell'engine da v9 (issue #222). Solo ``normalized``
+    legge lo start come frazione della durata del sample.
     """
     pointer = stream.get("pointer")
     if not isinstance(pointer, Mapping):
