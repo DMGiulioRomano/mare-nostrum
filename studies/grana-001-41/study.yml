@@ -1,0 +1,51 @@
+# gl-ls
+# Studio della grana su 001-41_5-5_5.wav — il sample piu' ricorrente nel brano.
+#
+# Un solo asse: grain.duration. Tutto il resto e' fermo e preso da `stream2`
+# di mare-nostrum.yml, cosi' che quello che si sente cambiare sia solo la
+# durata del grano su quel materiale.
+#
+#   make all-study STUDY=grana-001-41
+
+study_id: grana-001-41
+title: "Grana — 001-41_5-5_5"
+seed: 1441
+samples_dir: samples
+
+# Da mare-nostrum.yml, stream2. Escluso `grain.duration` (e' l'asse) e
+# `grain.read_direction` (envelope scritto sul brano: qui falserebbe l'ascolto,
+# resta al default 1).
+base:
+  onset: 0
+  duration: 60   # tetto: la durata vera la fissa sweep.transition (10 x 6s)
+  sample: 001-41_5-5_5.wav
+  time_mode: normalized
+  distribution_mode: uniform
+  fill_factor: 4
+  distribution: 1
+  grain:
+    duration_range: 0.001
+    envelope: hanning
+  pointer:
+    start: 0
+    speed_ratio: 0.1
+    loop_unit: normalized
+    offset_range: 0.01
+  pitch:
+    ratio: 0.2
+    range: 0.05
+  pan: 0
+  pan_range: 360
+  volume: -3
+
+sweep:
+  mode: envelope
+  transition: 6    # tutti gli assi step -> durata = N * transition: 6s per gradino
+  orders: [1]      # un asse solo: nessun ordering, si muove solo grain.duration
+
+axes:
+  interpolation: step
+  grain.duration:
+    # Raddoppi da 1 ms (minimo dei bounds) a mezzo secondo: 10 plateau,
+    # dal microgranulare alla lettura quasi-continua del sample.
+    values: [0.001, 0.002, 0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512]
