@@ -17,7 +17,7 @@ samples_dir: samples
 # resta al default 1).
 base:
   onset: 0
-  duration: 60   # tetto: la durata vera la fissa sweep.transition (10 x 6s)
+  duration: 200  # tetto: la durata vera la fissa sweep.transition (10 x 20s)
   sample: 001-41_5-5_5_norm.flac   # il .wav crudo ha peak -26 dBFS: inascoltabile
   time_mode: normalized
   distribution_mode: uniform
@@ -40,7 +40,7 @@ base:
 
 sweep:
   mode: envelope
-  transition: 6    # tutti gli assi step -> durata = N * transition: 6s per gradino
+  transition: 20   # tutti gli assi step -> durata = N * transition: 20s per gradino
   orders: [1]      # un asse solo: nessun ordering, si muove solo grain.duration
 
 axes:
