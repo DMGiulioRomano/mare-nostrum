@@ -48,9 +48,13 @@ sweep:
 axes:
   interpolation: step
   grain.duration:
-    # Raddoppi da 1 ms (minimo dei bounds) a mezzo secondo: 10 plateau,
-    # dal microgranulare alla lettura quasi-continua del sample.
-    values: [0.0001,  0.0002, 0.0004, 0.0008, 0.001, 0.002, 0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512]
+    # Da 1 campione (floor dinamico, 1/48000 s) a mezzo secondo. Passo ×2
+    # (ottava) fuori dalla banda 500-5000 Hz; dentro quella banda passo piu'
+    # fitto (fino a ~x1.13) perche' li' la discriminazione di altezza
+    # dell'orecchio e' piu' fine e un salto di ottava si sente come un buco.
+    values: [0.00002, 0.00004, 0.00008, 0.00016,
+             0.00025, 0.00035, 0.0004, 0.00045, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.0014, 0.002,
+             0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512]
   pitch.ratio:
     baseline: 0.2
     # 0.2 -> 1.0 in passi geometrici (ratio 5^(1/4) ~ 1.495): il pitch ratio
