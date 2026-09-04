@@ -352,12 +352,31 @@ def test_grain_duration_in_millisecondi(buffer_dir):
     assert debole["volume"] - forte["volume"] == pytest.approx(20.0, abs=0.5)
 
 
-def test_pointer_start_normalized(buffer_dir):
-    """Senza ``loop_unit`` lo start ricade su ``time_mode``, come nell'engine:
-    normalized = frazione della durata del sample."""
-    forte = stream(0.1, pointer={"start": 0.1})       # 0.1 * 1 s
-    debole = stream(0.6, pointer={"start": 0.6})
-    gainmap.compensate([forte, debole], samples_dir=buffer_dir, alpha=1.0)
+@pytest.fixture
+def buffer_dir_2s(tmp_path):
+    """Come ``buffer_dir`` ma lungo 2 s: distingue secondi da frazione."""
+    x = np.concatenate([np.full(SR, 0.8), np.full(SR, 0.08)])
+    sf.write(tmp_path / "t.wav", x, SR)
+    return str(tmp_path)
+
+
+def test_pointer_start_default_e_in_secondi(buffer_dir_2s):
+    """Senza ``loop_unit`` lo start e' in secondi assoluti e NON eredita da
+    ``time_mode`` (engine #222). Su un sample di 2 s, 0.1 e 0.6 cadono
+    entrambi nella prima meta' forte: nessuna differenza da compensare.
+    Con l'ereditarieta' di prima, 0.6 sarebbe finito a 1.2 s, 20 dB sotto."""
+    forte = stream(0.1, pointer={"start": 0.1})
+    altro = stream(0.6, pointer={"start": 0.6})
+    gainmap.compensate([forte, altro], samples_dir=buffer_dir_2s, alpha=1.0)
+    assert altro["volume"] - forte["volume"] == pytest.approx(0.0, abs=0.5)
+
+
+def test_pointer_start_normalized_esplicito(buffer_dir_2s):
+    """``loop_unit: normalized`` scala sulla durata del sample: 0.6 * 2 s = 1.2 s,
+    nella meta' debole."""
+    forte = stream(0.1, pointer={"start": 0.1, "loop_unit": "normalized"})
+    debole = stream(0.6, pointer={"start": 0.6, "loop_unit": "normalized"})
+    gainmap.compensate([forte, debole], samples_dir=buffer_dir_2s, alpha=1.0)
     assert debole["volume"] - forte["volume"] == pytest.approx(20.0, abs=0.5)
 
 
