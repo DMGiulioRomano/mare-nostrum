@@ -178,6 +178,49 @@ def parameter_bounds(output_sr: Optional[int] = None) -> dict:
     return api.parameter_bounds(output_sr=output_sr)
 
 
+def pitch_bounds(unit: str):
+    """``ParameterBounds`` dell'unita' di pitch, dall'engine.
+
+    ``unit`` e' il nome dell'unita' come appare nel blocco ``pitch:`` dello
+    YAML (``semitones``, ``cents``, ``ratio``, ...). Le unita' sconosciute
+    sollevano l'errore dell'engine: qui non si duplica la lista dei preset.
+    """
+    _ensure_engine_on_path()
+    from pge.parameters.pitch_unit import make_pitch_unit
+
+    return make_pitch_unit(unit).value_bounds()
+
+
+def pitch_units() -> frozenset:
+    """Nomi delle unita' di pitch note all'engine (preset di ``pitch_unit``)."""
+    _ensure_engine_on_path()
+    from pge.parameters.pitch_unit import PITCH_UNIT_PRESETS
+
+    return frozenset(PITCH_UNIT_PRESETS)
+
+
+def parameter_schema_paths() -> dict:
+    """Mappa ``path YAML dotted -> chiave del registry`` da ``ALL_SCHEMAS``.
+
+    Il path dotted e' quello usato nello ``study.yml``: gli schema ``stream`` e
+    ``density`` portano gia' il path completo (``grain.duration``, ``density``),
+    quello ``pointer`` e' relativo alla sezione (``start`` ->
+    ``pointer.start``). I path segnaposto (``_dummy_fixed_zero_``,
+    ``_internal_calc_``) non sono chiavi YAML e restano fuori.
+    """
+    _ensure_engine_on_path()
+    from pge.parameters.parameter_schema import ALL_SCHEMAS
+
+    out: dict = {}
+    for section, schema in ALL_SCHEMAS.items():
+        for spec in schema:
+            if spec.yaml_path.startswith("_"):
+                continue
+            prefix = f"{section}." if section == "pointer" else ""
+            out[f"{prefix}{spec.yaml_path}"] = spec.name
+    return out
+
+
 def default_output_sr() -> int:
     """Sample rate di render di default (costante engine, single source)."""
     _ensure_engine_on_path()

@@ -1009,3 +1009,16 @@ def test_grain_duration_seconds_sotto_il_millisecondo_ammessa():
 def test_grain_duration_sotto_il_floor_dinamico_rifiutata():
     with pytest.raises(ValueError, match="fuori bounds"):
         parse_study_spec(_grain_dict([1e-6]))
+
+
+def test_pitch_ratio_fuori_bounds_rifiutato():
+    # pitch.ratio non era mappato: qualunque valore passava. I bounds sono
+    # quelli di RatioUnit nell'engine (0.001, 8.0).
+    d = {
+        "study_id": "s",
+        "base": {"density": 20},
+        "axes": {"pitch.ratio": {"baseline": 1.0, "values": [20]}},
+        "sweep": {"orders": [0]},
+    }
+    with pytest.raises(ValueError, match="fuori bounds"):
+        parse_study_spec(d)

@@ -10,12 +10,25 @@ def test_bounds_from_engine_registry():
 
 
 def test_bounds_nested_path():
+    # Senza output_sr esplicito vale comunque il floor dinamico dell'engine
+    # (MIN_GRAIN_SAMPLES campioni), non il fallback statico di 1 ms.
     lo, hi = bounds.bounds_for("grain.duration")
-    assert lo == 0.001 and hi == 10.0
+    assert lo == bounds.MIN_GRAIN_SAMPLES / bounds.default_output_sr()
+    assert hi == 10.0
 
 
-def test_bounds_manual_pitch():
+def test_bounds_pitch_dall_engine():
     assert bounds.bounds_for("pitch.semitones") == (-36.0, 36.0)
+    assert bounds.bounds_for("pitch.cents") == (-3600.0, 3600.0)
+    # pitch.ratio prima non era mappato: nessun bound, nessuna validazione.
+    assert bounds.bounds_for("pitch.ratio") == (0.001, 8.0)
+    assert bounds.bounds_for("pitch.inesistente") is None
+
+
+def test_bounds_path_dagli_schema_engine():
+    # Path che la vecchia tabella a mano non copriva.
+    assert bounds.bounds_for("pointer.loop_dur") == (0.005, None)
+    assert "grain.reverse" in bounds.known_paths()
 
 
 def test_bounds_unknown_path():
