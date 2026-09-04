@@ -34,6 +34,7 @@ base:
   volume: -6
   pointer:
     speed_ratio: 0
+    loop_unit: normalized
     start: .3
   volume_range: [[0,0],[0.0317,3],[0.3167,6],[.5,0]]
 
