@@ -29,6 +29,31 @@ streams:
     pan: 0
     pan_range: 360
     volume: -3
+  - stream_id: stream2-norm
+    onset: 0
+    duration: 173.524
+    sample: 001-41_5-5_5_norm.flac
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: 4
+    distribution: 1
+    grain:
+      duration: [[0, 0.001], [0.17038, 0.0019], [0.37228, 0.001], [0.9834, 0.009]]
+      duration_range: 0.001
+      envelope: hanning
+      read_direction: [[0, 1], [0.11069, -1], [0.13491, 1], [0.16725, -1], [0.20686, 1], [0.29601, 1], [0.36129, -1], [0.37229, 1], [0.37229, -1]]
+    pointer:
+      start: 0
+      speed_ratio: 0.1
+      loop_unit: normalized
+      offset_range: 0.01
+    pitch:
+      ratio: 0.2
+      range: 0.05
+    pan: 0
+    pan_range: 360
+    volume: -3
+
   - stream_id: stream3
     onset: 0
     duration: 249.225
