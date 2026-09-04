@@ -31,21 +31,14 @@ della cartella-scala.
 
 | Cartella | Cos'è | `STUDY=` |
 |----------|-------|----------|
-| `1-10ms` | scala di riferimento, curata a mano (density + grain.duration 1-10 ms) | `1-10ms` |
-| `1-50smp` | grani corti, grain.duration in `samples` (1-50 campioni) | `1-50smp` |
-| `10-50ms` | grani corti, grain.duration 10-50 ms | `10-50ms` |
-| `50-300ms` | grani medio-lunghi, grain.duration 50-300 ms (step 5 ms) | `50-300ms` |
-| `300-1000ms` | grani lunghi, grain.duration 300-1000 ms (step 25 ms) | `300-1000ms` |
-| `stack` | stream non-cartesiani (ascolto verticale) | `stack` |
-| `stack_1-50smp` | stack: 7 punti di lettura insieme, grain.duration 1-50 campioni; `versions` su density e grana | `stack_1-50smp` |
-| `stack_1-10ms` | come `stack_1-50smp`, scala 1-10 ms (`duration_unit: milliseconds`) | `stack_1-10ms` |
-| `stack_10-50ms` | come `stack_1-50smp`, scala 10-50 ms (ms) | `stack_10-50ms` |
-| `stack_50-300ms` | come `stack_1-50smp`, scala 50-300 ms (ms) | `stack_50-300ms` |
-| `stack_100-300ms` | come `stack_1-50smp` ma grana lunga: grain.duration 100-300 ms (secondi, niente `duration_unit`) | `stack_100-300ms` |
-| `stack_300-1000ms` | come `stack_1-50smp`, scala 300-1000 ms (ms) | `stack_300-1000ms` |
 | `brano01` | brano musicale (ex `study_stack_test_5`) | `brano01` |
 | `brano01_v2` | versione a 10 min di brano01 (ex `study_stack_test_5_10min`) | `brano01_v2` |
 | `ascolto` | diario di ascolto dello studio — non è uno `STUDY` | — |
+
+Le cartelle-scala (`1-10ms`, `1-50smp`, `10-50ms`, `50-300ms`, `300-1000ms`,
+`stack*`) usate per esplorare i parametri sono state rimosse: il lavoro è ora
+concentrato su `brano01`/`brano01_v2`. Restano citate nei log di
+`studies/ascolto/` come riferimento storico.
 
 **Naming.** Il nome della cartella è il **range di grain.duration** e basta
 (`1-10ms`, `1-50smp`): il prefisso `grain_` era ridondante — è sempre
