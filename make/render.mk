@@ -31,6 +31,10 @@ BRANO_OUT ?= $(BRANO_DIR)/$(BRANO)$(BRANO_EXT)
 # (cli.py:582), quindi SV=1 rende in mix.
 BRANO_MODE = $(if $(SV),--export-sv,--per-stream --cache --cache-dir $(BRANO_DIR)/cache)
 
+# Tutti i core: l'`auto` dell'engine ne lascia uno libero (core-1, cli.py:112).
+# getconf e' POSIX, funziona su macOS e Linux; se manca si ricade su 'auto'.
+BRANO_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo auto)
+
 .PHONY: brano
 brano: $(MARKER)
 	@mkdir -p $(BRANO_DIR)/logs
@@ -39,6 +43,6 @@ brano: $(MARKER)
 		--samples-dir samples \
 		--log-dir $(BRANO_DIR)/logs \
 		$(BRANO_MODE) \
+		--jobs $(if $(JOBS),$(JOBS),$(BRANO_JOBS)) \
 		$(if $(FORMAT),--format $(FORMAT),) \
-		$(if $(VISUALIZE),--visualize,) \
-		$(if $(JOBS),--jobs $(JOBS),)
+		$(if $(VISUALIZE),--visualize,)
