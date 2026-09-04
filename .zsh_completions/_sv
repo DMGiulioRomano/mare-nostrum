@@ -1,0 +1,2 @@
+function sonic { for f in "$@"; do open -n -a "Sonic Visualiser" "$f"; done }
+alias sonic-all='open -a "Sonic Visualiser"'

@@ -1,0 +1,33 @@
+_make_with_study() {
+  local cur=${words[-1]}
+
+  # STUDY=<TAB> → sottocartelle di studies/
+  if [[ $cur == STUDY=* ]] && [[ -d studies ]]; then
+    compadd -P 'STUDY=' -- studies/*(/:t)
+    return
+  fi
+
+  # Se c'è già un target nella riga, proponi le variabili ?= del Makefile
+  local w has_target=0
+  for w in ${words[2,-2]}; do
+    [[ $w != *=* ]] && has_target=1 && break
+  done
+
+  if (( has_target )); then
+    local -a vars
+    vars=(${(f)"$(grep -h '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*?=' Makefile make/*.mk 2>/dev/null \
+      | sed 's/[[:space:]]*?=.*//' \
+      | sed 's/^[[:space:]]*//' \
+      | sort -u)"})
+    compadd -S '=' -- $vars
+    return
+  fi
+
+  # Nessun target ancora: proponi i target .PHONY
+  local -a targets
+  targets=(${(f)"$(grep -h '^\.PHONY:' Makefile make/*.mk 2>/dev/null \
+    | sed 's/^\.PHONY:[[:space:]]*//' \
+    | tr ' ' '\n' \
+    | sort -u)"})
+  compadd -- $targets
+}

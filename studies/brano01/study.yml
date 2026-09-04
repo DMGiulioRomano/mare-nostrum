@@ -1,0 +1,70 @@
+# gl-ls
+# TEST STACK 5 — generatori annidati negli envelope di soglia.
+#
+# Documenta i punti d'innesto dell'annidamento (docs/plans/done/nested-generators.md):
+#   - Y banda con `base` annidato (pavimento generato) + `range` scalare
+#     (banda che trasla a larghezza costante, bordi correlati gratis)
+#   - Y banda con `range` annidato a `type: step` (plateau di banda:
+#     la varianza respira a scalini)
+#   - X-walk con `base` annidato (frequenza di generazione stocastica)
+#     e terzo livello di ricorsione dentro `range`
+#   - Y ramp con `step: Env` (accelerando dei valori)
+#
+# Il seed dei nodi senza `seed` proprio deriva dal padre (gerarchico):
+# rigenerare due volte produce lo stesso stack.yml.
+#
+#   make stack STUDY=brano01
+
+study_id: brano01
+title: "Brano 01"
+seed: 5
+samples_dir: samples
+
+base:
+  onset: 0
+  duration: 190   # durata dello stream, ereditata da chi non ne dichiara una
+  sample: corpus.wav
+  time_mode: normalized
+  grain:
+    envelope: hanning
+  volume: -6
+  pointer:
+    speed_ratio: 0
+    start: .3
+  volume_range: [[0,0],[.1,3],[1,6]]
+
+axes:
+  # Nota merge: gli assi qui NON dichiarano `n` (il deep-merge lo
+  # conserverebbe anche nello stream rspline, dove n appartiene alla X);
+  # ogni stream con X-linear lo aggiunge nel proprio override.
+  interpolation: cubic 
+  density:
+    baseline: 20
+    base: 100                      # pavimento generato: vaga tra 4 e 12 su 6 quote
+    range: [[.1,0],[.4,.2]]
+  grain.duration:
+    baseline: .005
+    range: [[0,0],[.4,0.001],[1,0.01]]
+    base: [[.4,.001],[1,0.01]]
+
+stack:
+  seed: 45
+  density:
+    base: [[0,.05],[.4,.15]]
+    range: [[.1,0],[.4,.05]]
+  grain.duration:
+    range: [[.1,0],[.4,.05]]
+    base: [[0,.025],[.4,.08]]
+
+streams:
+  fermo:
+    axes:
+      density: {range: 0}
+      grain.duration: {range: 0}
+
+  dens_1: {base: {pan: -50}}
+  dens_1_1: {base: {pan: 64}, axes: {density: {base: [[0,100],[.5,100.5]], range: [[.1,0],[.4,.2],[1,1]]}}}
+  dens_2: {base: {pan: 30}, axes: {density: {base: 200, range: [[.1,0],[.4,2]]}}}
+  dens_2_1: {base: {pan: 30}, axes: {density: {base: 200, range: [[.1,0],[.4,2]]}}}
+
+

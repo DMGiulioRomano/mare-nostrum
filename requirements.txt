@@ -1,0 +1,9 @@
+# Dipendenze runtime (coincidono con quelle dell'engine: numpy/soundfile/mpl/yaml).
+numpy
+soundfile
+matplotlib
+PyYAML
+
+# Sviluppo / test
+pytest
+pytest-cov

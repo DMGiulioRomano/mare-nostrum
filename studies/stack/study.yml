@@ -1,0 +1,88 @@
+# gl-ls
+# Studio 01 (stack) — densità e grana, curve NON cartesiane.
+#
+# Migrato da study01_grain_density: qui vivono gli stream che disattivano
+# esplicitamente il sweep envelope (sweep: {orders: [], orderings: []}) e
+# muovono density/grain.duration appaiati per indice o via bande cubic,
+# invece del prodotto cartesiano dei due assi. Vivono solo nel documento
+# stack (ascolto verticale), mai come sweep envelope.
+
+study_id: study01_grain_density_stack
+title: "Studio 01 (stack) — densità e grana, curve non cartesiane"
+seed: 1988
+samples_dir: samples
+
+base:
+  onset: 0
+  # Durata dello stream. Qui e' inerte — questo studio gira in `mode:
+  # envelope` e la durata la calcolano plateau/transition — ma e' il numero
+  # pensato per i file discrete, se un giorno tornassero.
+  duration: 6
+  sample: silenzi.wav
+  time_mode: normalized
+  grain:
+    envelope: hanning
+  volume: -6
+  pointer:
+    speed_ratio: 0
+    start: .3
+
+axes:
+  interpolation: step
+  density:
+    baseline: 20
+    values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 200]
+  grain.duration:
+    values: [.001, .00125, .0015, .00175, .002, .00225, .0025, .00275, .003, .00325, .0035, .00375, .004, .00425, .0045, .00475, .005, .00525, .0055, .00575, .006, .00625, .0065, .00675, .007, .00725, .0075, .00775, .008, .00825, .0085, .00875, .009, .00925, .0095, .00975, .01, .015, .0175, .02, .025, .03, .04, .05, .075]
+
+sweep:
+  mode: envelope
+  plateau: 5
+  transition: 2.5
+  orderings:
+    - [density, grain.duration]
+    - [grain.duration, density]
+
+streams:
+  # Density e grain.duration si muovono INSIEME (ex combine: parallel,
+  # migrato a stack): stessa strategy-X (linear) e stesso n (20 valori via
+  # ramp), i breakpoint cadono agli stessi tempi, valori appaiati per indice.
+  lettura_avanzata_parallel:
+    base:
+      pointer:
+        start: 0.1
+    axes:
+      interpolation: step
+      density:
+        ramp: {start: 5, stop: 100, step: 5}          # 20 valori: 5,10,...,100
+      grain.duration:
+        ramp: {start: .001, stop: .0105, step: .0005} # 20 valori: .001,.0015,...,.0105
+    sweep:
+      orders: []
+      orderings: []
+
+  # Due bande che si muovono insieme, morbide (cubic). Stesso n (50) e stessa
+  # X linear -> stessi tempi, valori appaiati. Confronto con lettura_avanzata
+  # a parità di pointer.start.
+  lettura_avanzata_c:
+    base:
+      pointer:
+        start: 0.3
+    axes:
+      density:
+        interpolation: cubic
+        n: 50
+        base: [[0, 10], [.6, 2], [1, .1]]
+        range: [[0, 10], [.6, 3], [1, 2.9]]
+        seed: 1988
+      # Banda piatta: tenuta a .003 fino al 60% della sequenza, poi si apre
+      # (base sale a .002, range si allarga a .09). Seeded = riproducibile.
+      grain.duration:
+        interpolation: cubic
+        n: 50
+        base: [[0, .001], [.6, .002], [1, .01]]
+        range: [[0, .001], [.6, .003], [1, .09]]
+        seed: 1988
+    sweep:
+      orders: []
+      orderings: []

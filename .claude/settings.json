@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=studies/ascolto/promemoria.md; [ -f \"$f\" ] && jq -Rs '{hookSpecificOutput:{hookEventName:\"SessionStart\",additionalContext:(\"Promemoria granulation-studies (\" + $f + \"):\\n\\n\" + .)}}' --arg f \"$f\" \"$f\" || echo '{}'"
+          }
+        ]
+      }
+    ]
+  }
+}

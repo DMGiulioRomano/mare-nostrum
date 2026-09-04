@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "granstudies"
+version = "0.1.0"
+description = "Framework di ricerca compositiva sopra PythonGranularEngine"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "soundfile",
+    "matplotlib",
+    "PyYAML",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+
+[project.scripts]
+granstudies = "granstudies.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,164 @@
+# gl-ls
+# Studio 01 — densità, grana, pitch, distribuzione.
+#
+# Quattro assi sotto osservazione. In modalità `envelope` lo sweep produce un
+# file per combinazione di assi, attraversando tutte le permutazioni dei valori
+# con plateau e transizioni sincronizzate (ascolto in sequenza continua).
+
+study_id: study01_grain_density
+title: "Studio 01 — densità e grana"
+seed: 1988
+# Cartella del corpus (relativa alla root del repo). Default: samples/
+samples_dir: samples
+
+# Stream base: SOLO i parametri che NON sono assi (campi obbligatori di stream e
+# valori espliciti diversi dal default engine). I parametri-asse risolvono il
+# loro valore a riposo da `axes.*.baseline` o dal default engine (single source
+# of truth) — non vanno duplicati qui.
+base:
+  onset: 0
+  # Durata (secondi) di uno stream, default per chi non ne dichiara una: il
+  # processo stack normalizza su questa i tempi dei suoi envelope (issue #42).
+  duration: 30
+  sample: corpus.wav
+  time_mode: normalized
+  grain:
+    envelope: hanning
+  volume: -6
+  pointer:
+    speed_ratio: 0
+    start: .3
+# Gli assi: path YAML e valori di test. `baseline` (valore a riposo quando l'asse
+# non è mosso) è opzionale: se omesso si risolve dal default engine via `path`.
+# axes conosce solo Y (valori + interpolation); il timing vive in `sweep:`.
+axes:
+  interpolation: step
+  density:
+    path: density
+    baseline: 20           # obbligatorio: density non ha default engine
+    values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 200]
+  grain_duration:
+    path: grain.duration
+    values: [.001, .00125, .0015, .00175, .002, .00225, .0025, .00275, .003, .00325, .0035, .00375, .004, .00425, .0045, .00475, .005, .00525, .0055, .00575, .006, .00625, .0065, .00675, .007, .00725, .0075, .00775, .008, .00825, .0085, .00875, .009, .00925, .0095, .00975, .01, .015, .0175, .02, .025, .03, .04, .05, .075]
+  #distribution:
+  #  path: distribution
+  #  values: [0.0, 0.5, 1.0]       # baseline omesso → default engine 0.0
+
+sweep:
+  # envelope | discrete | both. 1=OAT, 2=coppie, 3=terzine, 4=fattoriale completo.
+  mode: envelope
+  # `plateau`/`transition` (secondi) governano il timing degli envelope.
+  plateau: 5
+  transition: 2.5
+  #orders: [1, 2, 3]
+  # Permutazioni esplicite (funziona per e2, e3, qualsiasi ordine): ciascuna
+  # sceglie quale asse è "lento" (outer loop) e quale "veloce" (inner loop).
+  # Il primo nome è l'asse che cambia meno; l'ultimo cambia più spesso.
+  # Esempio per e2 con 2 assi:
+  orderings:
+    - [density, grain_duration]      # density lento, grain_duration veloce
+    - [grain_duration, density]      # grain_duration lento, density veloce
+  # Esempio per e3 con 3 assi:
+  #orderings:
+  #  - [density, grain_duration, distribution]      # distribution veloce
+  #  - [distribution, density, grain_duration]      # grain_duration veloce
+  #  - [grain_duration, distribution, density]      # density veloce
+
+# Processo stack (attivo per presenza del blocco): colla verticale. Tutti gli
+# stream qui sotto vengono collassati in UN documento multi-stream
+# (generated/<study>/yaml/stack/stack.yml); per escluderne uno dall'ascolto lo
+# si muta col suo `base.volume`. Le chiavi (tranne `seed`, seed-X globale) sono
+# nomi d'asse -> strategy-X; un asse assente usa `linear` (tempi equispaziati,
+# n dai valori Y). Ogni asse diventa un envelope indipendente sulla durata
+# condivisa: niente prodotto cartesiano.
+stack: {}
+
+# Varianti di ascolto: ogni stream è un override parziale del documento sopra.
+# I campi omessi restano dalla base. Le liste rimpiazzano (non si concatenano).
+streams:
+  # Stream di riferimento: nessun override, identica alla base.
+  base: {}
+
+  # Grana più grossa: sposta i valori di grain_duration verso durate maggiori.
+  # Utile per sentire la texture quando i grani diventano percettibili come eventi.
+  grana_lunga:
+    axes:
+      grain_duration:
+        values: [0.1, 0.15, 0.2, 0.3, 0.5]
+
+  # Lettura avanzata nel sample: cambia il punto di partenza del pointer.
+  # Permette di confrontare la stessa esplorazione parametrica su un materiale diverso.
+  lettura_avanzata:
+    base:
+      pointer:
+        start: 0.1
+    axes:
+      interpolation: step
+  lettura_avanzata_b:
+    base:
+      pointer:
+        start: 0.2
+    axes:
+      interpolation: step
+
+  # Copia di lettura_avanzata ma NON cartesiana: density e grain_duration si
+  # muovono INSIEME. Migrata da sweep (ex combine: parallel) a stack: con la
+  # stessa strategy-X (linear) e lo stesso n (20 valori via ramp) i breakpoint
+  # cadono agli stessi tempi, valori appaiati per indice. Fuori dallo sweep
+  # (orders/orderings vuoti): vive solo nel documento stack.
+  lettura_avanzata_parallel:
+    base:
+      pointer:
+        start: 0.1
+    axes:
+      interpolation: step
+      density:
+        ramp: {start: 5, stop: 100, step: 5}          # 20 valori: 5,10,...,100
+      grain_duration:
+        ramp: {start: .001, stop: .0105, step: .0005} # 20 valori: .001,.0015,...,.0105
+    sweep:
+      orders: []
+      orderings: []
+  # Due bande che si muovono insieme, morbide (cubic). Migrata da sweep
+  # (ex combine: parallel) a stack: stesso n (50) e stessa X linear -> stessi
+  # tempi, valori appaiati. Confronto con lettura_avanzata / _b a parità di
+  # pointer.start. Fuori dallo sweep: vive solo nel documento stack.
+  lettura_avanzata_c:
+    base:
+      pointer:
+        start: 0.3
+    axes:
+      density:
+        interpolation: cubic
+        n: 50
+        base: [[0, 10], [.6, 2], [1, .1]]
+        range: [[0, 10], [.6, 3], [1, 2.9]]
+        seed: 1988
+      # Banda piatta: tenuta a .003 fino al 60% della sequenza, poi si apre
+      # (base sale a .002, range si allarga a .09). Seeded = riproducibile.
+      grain_duration:
+        interpolation: cubic
+        n: 50
+        base: [[0, .001], [.6, .002], [1, .01]]
+        range: [[0, .001], [.6, .003], [1, .09]]
+        seed: 1988
+    sweep:
+      orders: []
+      orderings: []
+
+  lettura_avanzata_2:
+    base:
+      pointer:
+        speed_ratio: .06
+        start: 0.6
+
+  # Alta densità con transizioni lente: esplora solo densità molto elevate,
+  # con plateau lunghi per dare tempo all'ascolto di stabilizzarsi.
+  alta_densita:
+    axes:
+      density:
+        values: [100, 150, 200, 300]
+    sweep:
+      orders: [1, 2]
+      plateau: 5
+      transition: 8

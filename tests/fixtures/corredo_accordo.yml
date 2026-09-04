@@ -1,0 +1,70 @@
+# Fixture end-to-end della fetta 2/7 del corredo (issue #49).
+#
+# L'accordo: quattro voci con periodi 2s, 3s, 4s, 7s — una polimetria in
+# rapporti scelti a orecchio, non calcolati. Ogni voce legge il proprio
+# rapporto dal corredo con `ratio[i]`, e un punto di lettura diverso del
+# sample con `values` in `over`.
+#
+# E' il caso che le manopole non coprivano: la serie e' irregolare e decisa
+# dall'autore, quindi non si scrive con una formula su `i`; e vive nel `let:`
+# di gruppo, quindi puo' essere letta anche da un altro asse.
+
+study_id: corredo_accordo
+title: "Corredo — l'accordo"
+seed: 1988
+samples_dir: samples
+
+let:
+  d: 1                                # fondamentale: periodo 1 s = 60 bpm
+
+base:
+  onset: 0
+  duration: 30
+  sample: corpus.wav
+  time_mode: normalized
+  grain:
+    envelope: hanning
+  volume: -6
+  pointer:
+    speed_ratio: 0
+
+axes:
+  interpolation: step
+  density:
+    path: density
+    baseline: 20
+    n: 2
+    base: 20
+    range: 0
+  grain_duration:
+    path: grain.duration
+    n: 2
+    base: 0.05
+    range: 0
+
+streams:
+  accordo:
+    let:
+      ratio: {list: [2, 3, 4, 7]}     # il corredo
+    spread:
+      n: 4
+      let:
+        r: {expr: "ratio[i]"}         # il rapporto di QUESTA voce
+      over:
+        base.pointer.start: {values: [0.1, 0.3, 0.5, 0.7]}
+    # Gli assi dell'entry: le manopole di voce (`r`) e di gruppo (`ratio`) si
+    # iniettano qui, non negli `axes:` globali.
+    axes:
+      density:
+        base: {expr: "d * r"}             # periodi 2s, 3s, 4s, 7s
+        range: 0
+      grain_duration:
+        base: {expr: "d * ratio[0] / 40"}  # la fondamentale del corredo
+        range: 0
+
+sweep:
+  mode: envelope
+  plateau: 5
+  transition: 2.5
+  orderings:
+    - [density, grain_duration]

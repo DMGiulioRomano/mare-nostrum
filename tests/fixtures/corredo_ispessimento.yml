@@ -1,0 +1,52 @@
+# Fixture end-to-end della fetta 3/7 (issue #50): l'ispessimento.
+#
+# `cycle: true` fa del corredo un **pattern**: dodici voci su quattro
+# rapporti, tre voci per rapporto, ognuna che legge un punto diverso del
+# buffer. Stesso periodo, contenuto e fase diversi — l'accordo si ispessisce
+# senza cambiare le altezze. E' il caso che il nome `cugini` descrive.
+
+study_id: corredo_ispessimento
+title: "Corredo — l'ispessimento"
+seed: 1988
+samples_dir: samples
+
+base:
+  onset: 0
+  duration: 30
+  sample: corpus.wav
+  time_mode: normalized
+  grain:
+    envelope: hanning
+  volume: -6
+  pointer:
+    speed_ratio: 0
+
+axes:
+  interpolation: step
+  density:
+    path: density
+    baseline: 20
+    n: 2
+    base: 20
+    range: 0
+
+sweep:
+  mode: envelope
+  plateau: 5
+  transition: 2.5
+
+streams:
+  cugini:
+    let:
+      d: 1
+      ratio: {list: [2, 3, 4, 7], cycle: true}
+    spread:
+      n: 12
+      let:
+        r: {expr: "ratio[i]"}        # 2,3,4,7, 2,3,4,7, 2,3,4,7
+      over:
+        base.pointer.start: {ramp: {start: 0.05, step: 0.075}}
+    axes:
+      density:
+        base: {expr: "d * r"}
+        range: 0

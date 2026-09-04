@@ -1,0 +1,61 @@
+# Fixture end-to-end della fetta 3/7 (issue #50): l'isoritmo.
+#
+# Due corredi ciclici di lunghezze coprime scorrono uno contro l'altro: la
+# SEQUENZA delle coppie (rapporto, durata) ha periodo lcm(4, 3) = 12. Le
+# singole coppie si ripetono prima — (2, 1) torna gia' alla voce 4 — perche'
+# `durate` contiene due volte il valore 1: quello che cicla con periodo lcm e'
+# la relazione di fase fra color e talea, ed e' anche la descrizione
+# musicalmente corretta. Cade fuori da due `cycle: true`, senza sintassi
+# dedicata.
+#
+# `over` legge `durate[i]` direttamente: le manopole di `spread.let` sono
+# fratelli di `over`, iniettate negli stream generati solo dopo: quando `over`
+# viene valutato non esistono ancora. Il corredo di gruppo si', perche' le
+# manopole di gruppo entrano nelle espressioni dell'entry prima dell'espansione.
+
+study_id: corredo_isoritmo
+title: "Corredo — l'isoritmo"
+seed: 1988
+samples_dir: samples
+
+base:
+  onset: 0
+  duration: 30
+  sample: corpus.wav
+  time_mode: normalized
+  grain:
+    envelope: hanning
+  volume: -6
+  pointer:
+    speed_ratio: 0
+
+axes:
+  interpolation: step
+  density:
+    path: density
+    baseline: 20
+    n: 2
+    base: 20
+    range: 0
+
+sweep:
+  mode: envelope
+  plateau: 5
+  transition: 2.5
+
+streams:
+  isoritmo:
+    let:
+      d: 1
+      ratio:  {list: [2, 3, 4, 7], cycle: true}   # color, len 4
+      durate: {list: [1, 1, 2],    cycle: true}   # talea, len 3
+    spread:
+      n: 12
+      let:
+        r: {expr: "ratio[i]"}
+      over:
+        duration: {expr: "durate[i] * 8"}
+    axes:
+      density:
+        base: {expr: "d * r"}
+        range: 0

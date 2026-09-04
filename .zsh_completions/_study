@@ -1,0 +1,42 @@
+function study {
+  local s="$1" stream="$2"
+  [[ -z "$s" ]] && { echo "uso: study <STUDY> [STREAM]" >&2; return 1 }
+  # STREAM filtra solo dentro sweep/envelope/<stream>*: sugli studi senza
+  # blocco `sweep:` (stack/versions/percorso) non ha alcun effetto sulla
+  # generazione dei .sv, che restano documenti multi-stream unici — passarlo
+  # produce silenziosamente "0 sessioni totali" (vedi ascolto 2026-07-21).
+  if [[ -n "$stream" ]] && ! grep -q '^sweep:' studies/"$s"/study.yml 2>/dev/null; then
+    echo "study: '$s' non ha un blocco 'sweep:', STREAM='$stream' verra' ignorato (0 sessioni .sv)." >&2
+    return 1
+  fi
+  make all-study STUDY="$s" $([[ -n "$stream" ]] && echo STREAM="$stream") \
+    && make sv STUDY="$s" $([[ -n "$stream" ]] && echo STREAM="$stream") || return 1
+  # stack/versions/percorso: un .sv per stem del documento multi-stream.
+  # sweep: nessun documento multi-stream, un .sv per variante envelope.
+  # Con STREAM, limita l'apertura alla sola sottocartella di quello stream.
+  local f
+  setopt localoptions extendedglob
+  if [[ -n "$stream" ]]; then
+    # $stream puo' essere un cugino pieno (zona_ombra_d05_3) o il nome dello
+    # spread (zona_ombra_d05): il glob apre tutte le cartelle-cugino 1..N.
+    for f in generated/"$s"/sv/sweep/envelope/"$stream"*/*.sv(N); do
+      sonic "$f"
+    done
+  else
+    for f in generated/"$s"/sv/{stack,versions,percorso}/"$s"_*~*_stems.sv(N) \
+             generated/"$s"/sv/sweep/**/*.sv(N); do
+      sonic "$f"
+    done
+  fi
+}
+
+_study() {
+  case $CURRENT in
+    2) [[ -d studies ]] && compadd -- studies/*(/:t) ;;
+    3)
+      local s="${words[2]}"
+      [[ -n "$s" && -d studies/"$s" ]] && compadd -- $(awk '/^streams:/{f=1;next} f && /^  [a-zA-Z0-9_]+:/{gsub(/:.*/,"",$1); print $1}' studies/"$s"/study.yml 2>/dev/null)
+      ;;
+  esac
+}
+compdef _study study

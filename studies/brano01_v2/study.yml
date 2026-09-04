@@ -1,0 +1,91 @@
+# Brano 01 — versione due (10 minuti): stesso materiale di brano01 con
+# duration portata da 190s a 600s. Tutti i breakpoint X degli envelope sono
+# stati riscalati di un fattore 190/600 = 0.31667 per preservare il tempo
+# assoluto a cui cade ogni evento (stessa logica di brano01, solo "stirata"
+# su una durata più lunga: quello che accadeva a x=1 su 190s ora accade a
+# x=0.3167 su 600s).
+#
+# Documenta i punti d'innesto dell'annidamento (docs/plans/done/nested-generators.md):
+#   - Y banda con `base` annidato (pavimento generato) + `range` scalare
+#     (banda che trasla a larghezza costante, bordi correlati gratis)
+#   - Y banda con `range` annidato a `type: step` (plateau di banda:
+#     la varianza respira a scalini)
+#   - X-walk con `base` annidato (frequenza di generazione stocastica)
+#     e terzo livello di ricorsione dentro `range`
+#   - Y ramp con `step: Env` (accelerando dei valori)
+#
+# Il seed dei nodi senza `seed` proprio deriva dal padre (gerarchico):
+# rigenerare due volte produce lo stesso stack.yml.
+#
+#   make stack STUDY=brano01_v2
+
+study_id: brano01_v2
+title: "Brano 01 — versione due (10 min)"
+seed: 5
+samples_dir: samples
+
+base:
+  onset: 0
+  duration: 600   # durata dello stream, ereditata da chi non ne dichiara una
+  sample: silenzi.wav
+  time_mode: normalized
+  grain:
+    envelope: hanning
+  volume: -6
+  pointer:
+    speed_ratio: 0
+    start: .3
+  volume_range: [[0,0],[0.0317,3],[0.3167,6],[.5,0]]
+
+axes:
+  # Nota merge: gli assi qui NON dichiarano `n` (il deep-merge lo
+  # conserverebbe anche nello stream rspline, dove n appartiene alla X);
+  # ogni stream con X-linear lo aggiunge nel proprio override.
+  interpolation: cubic
+  density:
+    baseline: 20
+    base: 50                      # pavimento generato: vaga tra 4 e 12 su 6 quote
+    range: [[0.0317,0],[0.1267,.2],[.3,5],[0.4,.2],[.5,0],[.6,0.1],[.8,.4],[1,1]]
+  grain.duration:
+    baseline: .005
+    base: [[0.1267,.001],[0.3167,0.01],[.33,0.01],[.8,0.00005],[1,0.0001]]
+    range: [[0,0],[0.1267,0.001],[0.3167,0.01],[.8,0.0001],[.8,0.001]]
+
+stack:
+  seed: 45
+  density:
+    base: [[0,.05],[0.1267,.15],[0.32,.5],[.5,.03],[.8,.1]]
+    range: [[0.0317,0],[0.1267,.05],[.32,.15],[.5,.03],[1,.05]]
+  grain.duration:
+    base: [[0,.025],[0.1267,.08],[.4,0.08],[.5,0.5],[.8,0.07]]
+    range: [[0.0317,0],[0.1267,.05],[.4,0.05],[.5,.1],[.8,.15]]
+
+streams:
+  fermo:
+    axes:
+      density: {range: 0}
+      grain.duration: {range: 0}
+
+  dens_1: {base: {pan: -50}}
+  dens_1_1: {base: {pan: 64}, axes: {density: {base: [[0,50],[0.1583,50.5]], range: [[0.0317,0],[0.1267,.2],[0.3167,1],[0.4,.2],[.6,0.1],[.8,.4],[1,1]]}}}
+  dens_2: {base: {pan: 30}, axes: {density: {base: 100, range: [[0.0317,0],[0.1267,2],[0.4,.2],[.6,0.1],[.8,.4],[1,1]]}}}
+  dens_2_1: {base: {pan: 30}, axes: {density: {base: 150, range: [[0.0317,0],[0.1267,2],[0.4,.2],[.6,0.1],[.8,.4],[1,1]]}}}
+
+  # expr test — spread su axes.density.base: stessa sagoma [[0,0],[0.1583,0.5]]
+  # per ogni generato, con v*(i+1) sommato all'inviluppo (v=10 -> +10,+20,+30,+40).
+  # `k` non e' implementato nello scope dello spread: solo `i` (indice 0-based) e `n`.
+  dens:
+    spread:
+      n: 4
+      over:
+        axes.density.base:
+          expr: "env + v * (i + 1)"
+          let:
+            env: [[0,0],[0.1583,0.5]]
+            v: 50
+        base.pan:
+          expr: "i * a"
+          let:
+            a: -20
+
+    

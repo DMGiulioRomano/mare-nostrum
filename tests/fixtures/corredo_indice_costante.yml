@@ -1,0 +1,53 @@
+# Fixture end-to-end della fetta 1/7 del corredo (issue #48).
+#
+# Un corredo di documento letto da due assi con un **indice costante**: la
+# fondamentale `ratio[0]` fissa il riferimento una volta sola, e `ratio[3]` la
+# quarta scelta. Senza corredo servirebbe un `d0: 2` accanto alla lista, che
+# diverge in silenzio appena si ritocca il primo rapporto.
+#
+# Niente `i`, niente `cycle:`, niente `len()`, niente spread: quelli sono le
+# fette successive. Qui la catena e' attraversata una volta sola —
+# dichiarazione, risoluzione delle manopole, valutazione, iniezione per nome,
+# documento engine.
+
+study_id: corredo_indice_costante
+title: "Corredo — indice costante"
+seed: 1988
+samples_dir: samples
+
+let:
+  d: 1                            # fondamentale: periodo 1 s = 60 bpm
+  ratio: {list: [2, 3, 4, 7]}     # il corredo: quattro rapporti scelti
+
+base:
+  onset: 0
+  duration: 30
+  sample: corpus.wav
+  time_mode: normalized
+  grain:
+    envelope: hanning
+  volume: -6
+  pointer:
+    speed_ratio: 0
+    start: .3
+
+axes:
+  interpolation: step
+  density:
+    path: density
+    baseline: 20
+    n: 4
+    base: {expr: "d * ratio[0] * 10"}    # 1 * 2 * 10 = 20
+    range: 0
+  grain_duration:
+    path: grain.duration
+    n: 4
+    base: {expr: "d * ratio[3] / 1000"}  # 1 * 7 / 1000 = 0.007
+    range: 0
+
+sweep:
+  mode: envelope
+  plateau: 5
+  transition: 2.5
+  orderings:
+    - [density, grain_duration]

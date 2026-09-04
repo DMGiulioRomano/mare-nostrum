@@ -1,0 +1,20 @@
+# Output rigenerabile della pipeline
+/generated/
+
+# Audio del corpus: versioniamo solo il manifest, non i file
+/samples/**
+!/samples/README.md
+!/samples/.gitkeep
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+.vscode/

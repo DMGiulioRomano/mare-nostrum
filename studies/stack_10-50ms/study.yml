@@ -1,0 +1,119 @@
+# gl-ls
+# Studio 01 (stack) — grani 10-50 ms, ascolto verticale a 6 punti di lettura.
+#
+# Copia di `stack_1-50smp` trasposta sulla scala 10-50 ms: la durata del grano
+# non e' piu' in campioni ma in millisecondi (`duration_unit: milliseconds`,
+# PythonGranularEngine). Cambiano SOLO i valori legati alla grana — `g0`, la
+# banda `grain.duration_range`, la baseline dell'asse, il volume, la rampa di
+# `versions` — mentre la forma resta identica al riferimento: sei cugini, il
+# ventaglio `s` sulla density, la camminata, il prodotto `versions`.
+#
+# Sei stream identici salvo `pointer.start` (i cugini dello spread gia' in uso
+# in 1-50smp) suonano INSIEME. L'unica differenza strutturale fra loro e' il
+# punto in cui il puntatore legge il sample; density e grana partono uguali e
+# si separano solo per lo scarto che lo spread inietta a ogni cugino.
+#
+# Il blocco `versions:` muove poi i due parametri: ogni combinazione (g0, d0)
+# replica i cugini piu' avanti nella timeline, cosi' si ascolta in sequenza
+# come cambia l'impasto verticale al variare di grana e density.
+#
+# Il documento e' scritto su TRE LIVELLI, cosi' da restare leggibile quando i
+# gruppi diventeranno piu' d'uno. Ogni livello ha la sua forma e le sue
+# manopole (il blocco `let:` di quel livello):
+#
+#   1. `let:` + `axes:` top-level     — i default comuni a tutto il documento
+#   2. `let:` + `axes:`/`stack:` dentro la entry `cugini` — la forma DI QUEL gruppo
+#   3. `spread.let` + `spread.over`   — la differenziazione fra le voci del gruppo
+#
+# Un secondo gruppo si aggiunge come entry sorella di `cugini`, con il proprio
+# `let:`/`axes:`/`stack:`: non tocca ne' il padre ne' i cugini (due gruppi con
+# lo stesso nome di manopola sono due cose indipendenti).
+
+study_id: study01_stack_10-50ms
+title: "Studio 01 (stack) — grani 10-50 ms, 6 punti di lettura"
+seed: 1988
+samples_dir: samples
+
+let:
+  g0: 10    # grana a riposo, in millisecondi — il fondo della scala
+  d0: 0     # centro della banda density a riposo
+gain_compensation:
+  alpha: 0.7
+  max_shift: 12
+
+base:
+  onset: 0
+  duration: 50   # durata di uno stream (default per chi non ne dichiara una)
+  sample: silenzi.wav
+  time_mode: normalized
+  volume: 10                 # 6 stream sommati: vedi nota sul volume in fondo
+  grain:
+    envelope: hanning
+    # Tutta la scala in millisecondi: in secondi questi numeri sarebbero
+    # .01 e .02, illeggibili da correggere a mano.
+    duration_unit: milliseconds
+    # Banda di durate attorno alla grana (±, in ms): si apre nel tempo da 0
+    # (durate all'unisono) a meta' ampiezza della scala, cosi' a ventaglio
+    # aperto le durate coprono l'intera scala 10-50 ms.
+    duration_range: [[0,0],[1,20]]
+  pointer:
+    loop_unit: absolute
+    speed_ratio: 0
+    start: .12
+
+axes:
+  density: {baseline: 10}
+  # Con `duration_unit` dichiarata il baseline non puo' venire dal default
+  # engine (che e' in secondi): va scritto qui, in millisecondi.
+  grain.duration: {baseline: 30}   # centro della scala
+
+stack: {}
+
+spread:
+  n: 6
+  over:
+    #base.pointer.start: {values: [0.12, 0.25, 0.4, 0.55, 0.93, 1.1]}
+    base.pan: {expr: "(1 - 2 * (i % 2))* (i*27)"}
+
+streams:
+  cugini:
+    let:
+      comune: {linear_env: {base: {expr: "d0"}, range: 1, n: 5, drift: {step: 0.2}}}
+      s: [[0, 0], [1, 1]]
+      #s: [[[0, 0], [25, 1], [75, .5]], 1, 2, 'step', null, true]
+      #s: [[[0, 0], [75, 1]], 1, 4, 'cubic', null, true]
+    spread:
+      let: {divarico: {expr: "i * 0.2"}}
+      over:
+        # Scarto di grana fra i cugini: in campioni era `floor(g0 + i/(10-i))`,
+        # cioe' al massimo un campione di differenza. Fuori dai campioni interi
+        # il `floor` non ha senso, quindi lo scarto diventa relativo — da 0 a
+        # +10% di g0.
+        axes.grain.duration.base: {expr: "g0 * (1 + i/(10-i) * 0.1)"}
+        stack.grain.duration.range: {expr: "i * .1"}
+    axes:
+      density:
+        base: {expr: "mix(comune, comune + divarico, s)"}
+        #range: {expr: "s * d0 * 0.1"}
+        drift: {step: 0.12}
+      grain.duration: {base: {expr: "g0"}}
+      #distribution: { base: 0, range: .15, drift: { step: {linear_env: { base: 0, n: 8, range: .2}}}}
+
+    stack:
+      density: {base: 0.5, range: 1.5, drift: {step: 0.15}}
+      grain.duration: {base: .1}
+      #distribution: { base: .1, range: .1, drift: {step: .1}}
+
+# Muove per nome le manopole del riposo dichiarate in `let:` (le ombreggia).
+# Prima variabile = esterna/lenta (grana, 10 -> 50 ms), seconda =
+# interna/veloce (density). 5 x 24 = 120 versioni concatenate, 50 s
+# ciascuna, distribuite su 5 documenti (uno per valore di `g0`).
+#
+# Volume: il tetto +24 dB di `stack_1-50smp` era tarato su grani di ~0.1 ms.
+# L'energia sommata cresce con la durata del grano, quindi qui il volume scende
+# di 10*log10(grana / grana_riferimento) rispetto a quel tetto: 10 dB.
+# E' un punto di partenza da correggere all'ascolto, non una misura.
+versions:
+  duration: 50   # passo della concatenazione: una versione ogni 50 s
+  g0: {ramp: {start: 10, stop: 50, step: 10}}
+  d0: {ramp: {start: 0, stop: 70, step: 3}}

@@ -1,0 +1,52 @@
+# Fixture e2e (issue #4): lo shape storico di study01 — quattro assi, tre
+# valori ciascuno, plateau 5 / transition 5 — congelato in un file.
+#
+# E' un file *vero*, caricato da disco come lo carica la CLI, non una spec
+# inline: e' la differenza fra questa suite e i test unit. Non punta a
+# studies/, per la stessa ragione di tests/fixtures/study01_migrated_stack.yml
+# — gli study.yml sotto studies/ sono curati a mano e cambiano liberamente,
+# e un e2e che ci si appoggia si rompe a ogni ascolto.
+#
+# I numeri che i test asseriscono discendono da qui:
+#   envelope  o1: 4 file (C(4,1)),  3 plateau ->  3*5 + 2*5 =  25 s
+#             o2: 6 file (C(4,2)),  9 plateau ->  9*5 + 8*5 =  85 s
+#             o3: 4 file (C(4,3)), 27 plateau -> 27*5 + 26*5 = 265 s
+#             o4: 1 file (C(4,4)), 81 plateau -> 81*5 + 80*5 = 805 s
+study_id: e2e_study01
+title: "e2e — quattro assi, tre valori"
+seed: 1988
+samples_dir: samples
+
+base:
+  onset: 0
+  # Durata dei file discrete (i file envelope la ricalcolano da
+  # plateau/transition). Post-#42 la durata di stream si dichiara qui.
+  duration: 6
+  sample: e2e_corpus.wav
+  time_mode: normalized
+  grain:
+    envelope: hanning
+  pointer:
+    speed_ratio: 0
+
+sweep:
+  mode: both
+  orders: [1, 2, 3, 4]
+  plateau: 5
+  transition: 5
+
+axes:
+  density:
+    baseline: 20
+    values: [5, 50, 400]
+  grain.duration:
+    baseline: 0.05
+    values: [0.01, 0.05, 0.2]
+  pitch.semitones:
+    baseline: 0
+    values: [-12, 0, 12]
+  # Senza 'baseline': lo prende dal default engine (single source of truth).
+  # E' il caso che l'e2e deve vedere — il default arriva dal submodule, non
+  # da una costante scritta qui.
+  distribution:
+    values: [0.0, 0.5, 1.0]

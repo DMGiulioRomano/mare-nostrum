@@ -1,0 +1,137 @@
+# gl-ls
+# Studio 01 (stack) — grani 1-50 samples, ascolto verticale a 6 punti di lettura.
+#
+# Sei stream identici salvo `pointer.start` (i cugini dello spread gia' in uso
+# in 1-50smp) suonano INSIEME. L'unica differenza strutturale fra loro e' il
+# punto in cui il puntatore legge il sample; density e grana partono uguali e
+# si separano solo per lo scarto che lo spread inietta a ogni cugino.
+#
+# Il blocco `versions:` muove poi i due parametri: ogni combinazione (g0, d0)
+# replica i cugini piu' avanti nella timeline, cosi' si ascolta in sequenza
+# come cambia l'impasto verticale al variare di grana e density.
+#
+# Il documento e' scritto su TRE LIVELLI, cosi' da restare leggibile quando i
+# gruppi diventeranno piu' d'uno. Ogni livello ha la sua forma e le sue
+# manopole (il blocco `let:` di quel livello):
+#
+#   1. `let:` + `axes:` top-level     — i default comuni a tutto il documento
+#   2. `let:` + `axes:`/`stack:` dentro la entry `cugini` — la forma DI QUEL gruppo
+#   3. `spread.let` + `spread.over`   — la differenziazione fra le voci del gruppo
+#
+# Un secondo gruppo si aggiunge come entry sorella di `cugini`, con il proprio
+# `let:`/`axes:`/`stack:`: non tocca ne' il padre ne' i cugini (due gruppi con
+# lo stesso nome di manopola sono due cose indipendenti).
+
+study_id: study01_stack_1-50smp
+title: "Studio 01 (stack) — grani 1-50 samples, 6 punti di lettura"
+seed: 1988
+samples_dir: samples
+
+let:
+  g0: 40      # grana a riposo, in campioni
+  d0: 0     # centro della banda density a riposo
+gain_compensation:
+  alpha: 0.7
+  max_shift: 12
+
+base:
+  onset: 0
+  sample: silenzi.wav
+  time_mode: normalized
+  volume: 24 #-12                 # 6 stream sommati: headroom
+  grain:
+    envelope: hanning
+    duration_unit: samples
+    duration_range: [[0,0],[1,50]] 
+    #duration_range: [[[0, 0], [75, 100]], 1, 4, 'cubic', null, true]
+  pointer:
+    loop_unit: absolute
+    speed_ratio: 0
+    start: .12
+
+axes:
+  density:
+    baseline: 10
+    #range: {expr: "s * d0 * 0.1"}
+    drift: {step: 0.12}
+  grain.duration: 
+    base: {expr: "g0"} #, range: {expr: "g0 *.5"}, interpolation: step} #{range: {linear_env: {n: 6, base: {expr: ".6 * g0"}, range: [0, 5]}}, interpolation: step, drift: {step: 0.32}}
+    baseline: 25
+    #distribution: { base: 0, range: .15, drift: { step: {linear_env: { base: 0, n: 8, range: .2}}}}
+
+
+stack:
+  density: {base: 0.5, range: 1.5, drift: {step: 0.15}}
+  grain.duration: {base: .1} #, range: .1, drift: {step: 0.15}}
+  #distribution: { base: .1, range: .1, drift: {step: .1}}
+
+spread: 
+  n: 6 
+  #n: [[0, 1], [1, 6]]
+  over:
+    #base.pointer.start: {values: [0.12, 0.25, 0.4, 0.55, 0.93, 1.1]}
+    base.pan: {expr: "(1 - 2 * (i % 2))* (i*27)"}
+
+streams:
+  fratelli:
+    duration: 50
+    let:
+      comune: {linear_env: {base: {expr: "d0"}, range: 1, n: 5, drift: {step: 0.2}}}
+      s: [[0, 0], [1, 1]]
+      #s: [[[0, 0], [25, 1], [75, .5]], 1, 2, 'step', null, true]
+      #s: [[[0, 0], [75, 1]], 1, 4, 'cubic', null, true]
+      x: 6       # armonica di partenza: ciclo = x/comune s, apertura 1+(n-1)/x
+    spread:
+      # divarico come RAPPORTO: density_i = comune * (x+i)/x -> le voci sono
+      # multipli interi di comune/x. Figura ritmica in basso, accordo in alto.
+      let: {divarico: {expr: "i/x"}} #{expr: "(x + i) / x"}}
+      #over:
+        #axes.grain.duration.base: {expr: "floor(g0 + i/(10-i))"}
+        #stack.grain.duration.range: {expr: "i * .1"}
+    axes:
+      density:
+        base: {expr: "mix(comune, comune + divarico, s)"}
+
+  cugini:
+    onset: 100      # dopo i fratelli; `duration` e `onset` sono chiavi di entry,
+    duration: 50    # durata di questo stream (vince su un base.duration ereditato)
+    let:
+      comune: {linear_env: {base: {expr: "d0"}, range: [[0,0],[.5,1],[1, .3]], n: 5, drift: {step: 0.2}}}
+      s: [[0, 0], [1, 1]]
+    axes:
+      density:
+        base: {expr: "mix(comune, comune + divarico, s)"}
+        #base: {expr: "comune"}
+        #seed: 4
+    spread:
+      let: {divarico: {expr: "i * 0.2"}}   # additivo: battimento, non figura
+
+  cugini_old:
+    onset: 0      # dopo i cugini; `duration` e `onset` sono chiavi di entry,
+    duration: 50    # dentro `base:` la duration verrebbe riscritta (stack.py:134)
+    base:
+      pointer: 
+        start: .4
+    let:
+      comune: {linear_env: {base: {expr: "d0"}, range: 1, n: 5, drift: {step: 0.2}}}
+      s: [[0, 0], [1, 1]]
+      x: 4 
+    axes:
+      density:
+        base: {expr: "mix(comune, comune + divarico, s)"}
+    spread:
+      let: {divarico: {expr: "i/x"}}   # additivo: battimento, non figura
+
+# Muove per nome le manopole del riposo dichiarate in `let:` (le ombreggia).
+# Prima variabile = esterna/lenta (grana), seconda = interna/veloce (density).
+# 8 x 7 = 56 versioni concatenate, 150 s ciascuna (i tre gruppi da 50 s in
+# fila), distribuite su 8 documenti (uno per valore di `g0`, 7 versioni
+# ciascuno).
+versions:
+  # Passo della concatenazione: i tre gruppi occupano 0-50, 50-100, 100-150
+  # sulla stessa timeline, quindi una versione dura 150 s. Non e' la durata di
+  # nessuno stream — quelli sono 50 s a testa, dichiarati nelle entry.
+  duration: 150
+  #g0: {ramp: {start: 10, stop: 50, step: 10}}
+  g0: [5, 100] #{ramp: {start: 5, stop: 200, step: 50}}
+  d0: {ramp: {start: 0, stop: 200, step: [3, 200]}}

@@ -1,0 +1,154 @@
+# gl-ls
+# Studio 01 (stack) — grani 100-300 ms, ascolto verticale a 6 punti di lettura.
+#
+# Copia di `stack_1-50smp` spostata di due ordini di grandezza sulla grana: la
+# durata del grano non e' piu' in campioni ma in secondi (unita' di default,
+# nessun `duration_unit`), nell'ordine dei 100-300 ms. Tutto il resto della
+# forma — i sei cugini, il ventaglio `s`, la camminata — resta identico.
+#
+# Sei stream identici salvo `pointer.start` (i cugini dello spread gia' in uso
+# in 1-50smp) suonano INSIEME. L'unica differenza strutturale fra loro e' il
+# punto in cui il puntatore legge il sample; density e grana partono uguali e
+# si separano solo per lo scarto che lo spread inietta a ogni cugino.
+#
+# Il blocco `versions:` muove poi i due parametri: ogni combinazione (g0, d0)
+# replica i cugini piu' avanti nella timeline, cosi' si ascolta in sequenza
+# come cambia l'impasto verticale al variare di grana e density.
+#
+# Il documento e' scritto su TRE LIVELLI, cosi' da restare leggibile quando i
+# gruppi diventeranno piu' d'uno. Ogni livello ha la sua forma e le sue
+# manopole (il blocco `let:` di quel livello):
+#
+#   1. `let:` + `axes:` top-level     — i default comuni a tutto il documento
+#   2. `let:` + `axes:`/`stack:` dentro la entry `cugini` — la forma DI QUEL gruppo
+#   3. `spread.let` + `spread.over`   — la differenziazione fra le voci del gruppo
+#
+# Un secondo gruppo si aggiunge come entry sorella di `cugini`, con il proprio
+# `let:`/`axes:`/`stack:`: non tocca ne' il padre ne' i cugini (due gruppi con
+# lo stesso nome di manopola sono due cose indipendenti).
+
+study_id: study01_stack_100-300ms
+title: "Studio 01 (stack) — grani 100-300 ms, 6 punti di lettura"
+seed: 1988
+samples_dir: samples
+
+# --- Livello 1: le manopole di documento ------------------------------------
+# Lo stato di RIPOSO del materiale: i due numeri dello studio vivono qui, una
+# volta sola, e le formule li leggono per nome. `versions:` in fondo li
+# ombreggia (riposo -> movimento d'analisi): `make stack` suona il riposo,
+# `make versions` la griglia, e sono lo stesso materiale.
+let:
+  g0: 0.1    # grana a riposo, in secondi (100 ms)
+  d0: 25     # centro della banda density a riposo
+  # Il ventaglio fra le voci, come frazione: 0 = unisono, 1 = scarti pieni.
+  # E' un envelope, quindi il ventaglio si apre NEL TEMPO. Tempo normalizzato
+  # sullo stream: con `versions:` ogni versione riapre il ventaglio da capo.
+
+# I cugini leggono punti diversi del buffer, che ha punti forti e punti deboli,
+# e sotto una certa distanza quelli deboli spariscono.
+#
+# `alpha` = quanta parte della distanza si chiude. A 1 il sample perde la sua
+# topografia: ogni punto di lettura suona uguale. A 0.7 resta udibile che un
+# punto e' piu' forte dell'altro senza che uno mascheri l'altro.
+#
+# `max_shift` = tetto in dB alla correzione del singolo cugino. Conta perche'
+# la compensazione porta tutti verso il piu' DEBOLE (si attenua, non si alza):
+# un punto quasi muto trascinerebbe giu' tutto il materiale forte. Il punto a
+# 0.8 s — il piu' debole, ~33 dB sotto il piu' forte — e' stato tolto dallo
+# spread; il tetto a 12 dB tiene comunque il calo entro un valore udibile.
+gain_compensation:
+  alpha: 0.7
+  max_shift: 12
+
+# Parametri fissi: tutto cio' che non e' un asse.
+base:
+  onset: 0
+  duration: 50   # durata di uno stream (default per chi non ne dichiara una)
+  sample: silenzi.wav
+  time_mode: normalized
+  #volume: 24 #-12                 # 6 stream sommati: headroom
+  grain:
+    envelope: hanning
+    #duration_range: [[0,0],[.5,.05],[1,0]]
+  pointer:
+    loop_unit: absolute
+    speed_ratio: 0
+
+axes:
+  density:
+    baseline: 10
+  grain.duration:
+    baseline: 0.15
+
+stack: {}
+
+spread:
+  over:
+    base.pointer.start: {values: [0.12, 0.25, 0.4, 0.55, 0.93, 1.1]}
+    base.pan: {expr: "(1 - 2 * (i % 2))* (i*27)"}
+
+streams:
+  cugini:
+    let:
+      comune: {linear_env: {base: {expr: "d0"}, range: 1, n: 5, drift: {step: 0.2}}}
+      s: [[0, 0], [1, 1]]
+    spread:
+      let:
+        divarico: {expr: "i * 0.8"}
+      over:
+        # La grana di partenza del cugino: scarto proporzionale alla grana di
+        # riposo, cosi' resta relativo quando `versions:` muove g0.
+        axes.grain.duration.base:
+          expr: "g0 * (1 + i/(10-i) * 0.1)"
+        # Ogni cugino ha una banda-X della grana leggermente piu' larga del
+        # precedente: le voci non cambiano grana tutte insieme.
+        stack.grain.duration.range:
+          expr: "i * .1"
+
+    # Density e grana non sono costanti dentro la versione: si muovono dentro
+    # una banda, a passo d'ubriaco. Niente `n` negli assi: qui il conteggio lo
+    # possiede la camminata-X (blocco `stack:` sotto), e i valori Y si pescano
+    # ai tempi reali che la X genera.
+    axes:
+      density:
+        # Forma comune del gruppo + offset della voce, scalato da `s`:
+        # `mix(A, B, w)` = A*(1-w) + B*w, cioe' `comune + s * divarico` scritto
+        # in modo lecito (`comune` e' un Env e `s * divarico` pure: Env + Env e'
+        # vietato, `mix` e' l'unica porta fra due Env).
+        base: {expr: "mix(comune, comune + divarico, s)"}
+        #range: {expr: "d0 * 0.6"}
+        #drift: {step: 0.12}
+      grain.duration:
+        range: {linear_env: {n: 6, base: {expr: ".3 * g0"}, range: [0, 0.05]}}
+        interpolation: step
+        drift: {step: 0.32}
+      #distribution:
+      #  base: 0
+      #  range: .5
+      #  drift:
+      #    step:
+      #      base: 0
+      #      n: 8
+      #      range: .2
+    stack:
+      density:
+        base: 0.5
+        range: 1.5
+        drift: {step: 0.15}
+      grain.duration:
+        base: .1
+        range: .1
+        drift: {step: 0.15}
+      #distribution:
+      #  base: .3
+      #  range: .1
+      #  drift: {step: .1}
+
+# Muove per nome le manopole del riposo dichiarate in `let:` (le ombreggia).
+# Prima variabile = esterna/lenta (grana, 0.1 -> 0.3 s), seconda = interna/
+# veloce (density). 9 x 7 = 63 versioni concatenate, 50 s ciascuna, distribuite
+# su 9 documenti (uno per valore di `g0`, 7 versioni ciascuno).
+versions:
+  duration: 50   # passo della concatenazione: una versione ogni 50 s
+  g0: {ramp: {start: 0.1, stop: 0.3, step: 0.025}}
+  d0: {ramp: {start: 0, stop: 20, step: 3}}

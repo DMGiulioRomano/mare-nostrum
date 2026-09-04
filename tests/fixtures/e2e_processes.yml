@@ -1,0 +1,66 @@
+# Fixture e2e (issue #4): il ramo multi-stream della pipeline — stack,
+# versions, percorso — e poi il render.
+#
+# Niente `sweep:` qui, e niente `values:` sugli assi: la camminata-X dello
+# stack e il generatore-Y dello sweep si contendono la stessa manopola (`base`
+# che possiede `n` contro `values` che enumera), quindi i due rami vivono in
+# due fixture separate. Lo sweep sta in e2e_study.yml.
+#
+# Tutto e' dimensionato per *girare davvero* attraverso l'engine in pochi
+# secondi: due voci di spread, due versioni, due istanze di percorso, stream
+# da un secondo. I numeri qui non hanno intento d'ascolto — servono a provare
+# che gli YAML prodotti dai tre processi siano documenti validi per l'engine,
+# non solo strutture plausibili.
+study_id: e2e_processes
+title: "e2e — stack, versions, percorso"
+seed: 1988
+samples_dir: samples
+
+let:
+  d0: 12          # centro della density, mosso da versions: e da percorso:
+  g0: 0.05        # centro della grana, mosso dalla seconda variabile di versions:
+
+base:
+  onset: 0
+  duration: 1
+  sample: e2e_corpus.wav
+  time_mode: normalized
+  volume: -12     # piu' voci sommate: headroom
+  grain:
+    envelope: hanning
+  pointer:
+    speed_ratio: 0
+
+# Bande Y senza 'n': e' la camminata-X di `stack:` a possedere il conteggio.
+axes:
+  density:
+    base: {expr: "d0"}
+    range: 2
+    baseline: 12
+  grain.duration:
+    base: {expr: "g0"}
+    range: 0.01
+    baseline: 0.05
+
+stack:
+  density: {base: 0.5, range: 1.5, drift: {step: 0.15}}
+  grain.duration: {base: 0.1}
+
+spread:
+  n: 2
+  over:
+    base.pointer.start: {values: [0.0, 0.2]}
+
+streams:
+  voci:
+    duration: 1
+    spread: {}
+
+versions:
+  duration: 2     # passo di concatenazione delle versioni (post-#42, D1: scalare)
+  d0: {values: [12, 24]}     # prima variabile = confine di file
+  g0: {values: [0.03, 0.06]} # le altre concatenano dentro il file, a passo 2 s
+
+percorso:
+  onset: {values: [0, 2]}
+  d0: {base: [[0, 12], [1, 24]]}   # traiettoria: campionata all'onset reale di ogni istanza

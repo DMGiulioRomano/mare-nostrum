@@ -1,0 +1,74 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    env:
+      # Backend headless per l'export PDF della partitura (score_visualizer).
+      MPLBACKEND: Agg
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout (repo principale)
+        uses: actions/checkout@v4
+        with:
+          # Non persistere il GITHUB_TOKEN come http.extraheader: quell'header
+          # avrebbe la precedenza sul PAT nell'URL e il clone del submodule
+          # userebbe comunque il token di default (403 sul repo privato engine).
+          persist-credentials: false
+
+      - name: Checkout submodule engine (repo privato PythonGranularEngine)
+        # Il GITHUB_TOKEN di default e' limitato a questo repo e non puo' clonare
+        # il submodule privato. Serve un PAT (fine-grained, contents:read su
+        # PythonGranularEngine) salvato come secret `ENGINE_PAT`. Se assente,
+        # questo passo fallisce con un messaggio esplicito invece di un errore
+        # criptico in fase di import.
+        env:
+          ENGINE_PAT: ${{ secrets.ENGINE_PAT }}
+        run: |
+          if [ -z "$ENGINE_PAT" ]; then
+            echo "::error::Secret 'ENGINE_PAT' mancante: impossibile clonare il submodule privato 'engine'."
+            echo "Crea un PAT fine-grained con contents:read su PythonGranularEngine e aggiungilo come secret ENGINE_PAT."
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${ENGINE_PAT}@github.com/".insteadOf "https://github.com/"
+          git submodule sync --recursive
+          git submodule update --init --recursive
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Dipendenze di sistema (libsndfile per soundfile)
+        run: sudo apt-get update && sudo apt-get install -y libsndfile1
+
+      - name: Installa il pacchetto + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Esegui i test (suite veloce)
+        run: python -m pytest
+
+      # Gli e2e (issue #4) partono da uno study.yml su disco, passano per la
+      # CLI e renderizzano audio vero. Girano qui perche' la CI ha accesso al
+      # submodule privato engine via ENGINE_PAT; senza, si skipperebbero.
+      - name: Esegui i test end-to-end
+        run: python -m pytest -m e2e
