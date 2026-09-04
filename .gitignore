@@ -1,5 +1,6 @@
 # Output rigenerabile della pipeline
 /generated/
+/logs/
 
 # Audio del corpus: versioniamo solo il manifest, non i file
 /samples/**

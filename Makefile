@@ -45,6 +45,8 @@ help:
 	@echo "  make render-final STUDY=... renderizza il brano finale"
 	@echo "  make sv STUDY=...            CSV envelope per Sonic Visualiser"
 	@echo "  make all-study STUDY=...    pipeline completa (sweep→stack→render)"
+	@echo "  make brano                  renderizza il brano (mare-nostrum.yml -> generated/)"
+	@echo "                              flag: FORMAT=wav|flac VISUALIZE=1 SV=1 JOBS=n RENDERER=numpy|csound"
 	@echo "  make clean / clean-all      pulizia output / output+venv"
 	@echo "  make kill-sonic             chiude tutte le istanze di Sonic Visualiser (senza salvare)"
 
