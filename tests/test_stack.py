@@ -194,20 +194,20 @@ def test_document_emerging_values_clamped_to_engine_bounds():
     data["axes"]["grain_duration"] = {
         "path": "grain.duration",
         "base": 0.00001,
-        "range": 0.00001,  # sotto sia il floor statico (1ms) sia 4 campioni @48k
+        "range": 0.00001,  # sotto il floor statico (1ms) e 1 campione @48k
     }
     data["stack"]["grain_duration"] = {"base": 2, "range": 0}
 
-    # Senza output_sr esplicito: default 48000, floor dinamico a 4 campioni.
+    # Senza output_sr esplicito: default 48000, floor dinamico a 1 campione.
     doc = generate_stack_document(_specs(data))
     pts = doc["streams"][0]["grain"]["duration"]["points"]
-    assert all(v == 4 / 48000 for _, v in pts)
+    assert all(v == 1 / 48000 for _, v in pts)
 
     # output_sr=None significa "il default dell'engine", non il fallback
     # statico di 1ms: il floor resta quello dinamico.
     doc_none = generate_stack_document(_specs(data), output_sr=None)
     pts_none = doc_none["streams"][0]["grain"]["duration"]["points"]
-    assert all(v == 4 / 48000 for _, v in pts_none)
+    assert all(v == 1 / 48000 for _, v in pts_none)
 
 
 def test_document_clamp_rispetta_duration_unit_milliseconds():
@@ -233,7 +233,7 @@ def test_document_clamp_rispetta_duration_unit_milliseconds():
 
 
 def test_document_clamp_millisecondi_sotto_il_floor():
-    """Sotto il minimo (4 campioni @48k = 1/12 ms) il clamp resta in ms."""
+    """Sotto il minimo (1 campione @48k) il clamp resta in ms."""
     from granstudies.stack import generate_stack_document
 
     data = _study_data()
@@ -249,7 +249,7 @@ def test_document_clamp_millisecondi_sotto_il_floor():
     doc = generate_stack_document(_specs(data))
     dur = doc["streams"][0]["grain"]["duration"]
     pts = dur["points"] if isinstance(dur, dict) else [[0, dur]]
-    assert all(v == pytest.approx(4 / 48000 * 1000) for _, v in pts)
+    assert all(v == pytest.approx(1 / 48000 * 1000) for _, v in pts)
 
 
 def test_baseline_obbligatorio_con_duration_unit_dichiarata():
