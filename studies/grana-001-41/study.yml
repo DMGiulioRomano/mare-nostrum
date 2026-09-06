@@ -39,15 +39,15 @@ base:
   pitch:
     range: 0.05
   pan: 0
-  pan_range: 360
+  #pan_range: 360
   volume: 6
 
 sweep:
   mode: envelope
   transition: 20   # tutti gli assi step -> durata = N * transition: 20s per gradino
-  # pitch lento, grain.duration veloce: per ogni pitch scorrono tutte le grane.
+  # grain.duration lento, pitch veloce: per ogni grana scorrono tutti i pitch.
   orderings:
-    - [pitch.ratio, grain.duration]
+    - [grain.duration, pitch.ratio]
 
 axes:
   interpolation: step
@@ -63,4 +63,4 @@ axes:
     baseline: 0.2
     # 0.2 -> 1.0 in passi geometrici (ratio 5^(1/4) ~ 1.495): il pitch ratio
     # e' esponenziale, passi uguali all'orecchio = passi uguali in rapporto.
-    values: [0.2, 0.299, 0.447, 0.669, 1.0]
+    values: [0.2, 0.299, 0.447, 0.669, 0.75, 0.9, 1.0]
