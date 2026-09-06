@@ -254,7 +254,7 @@ def test_sweep_render_sv_basenames_align(tmp_path, monkeypatch, capsys):
     import granstudies.render as render_mod
 
     def fake_render(yaml_path, output_path, samples_dir, output_sr=48000,
-                    per_stream=False, use_cache=False, cache_dir=None):
+                    per_stream=False, use_cache=False, cache_dir=None, jobs=1):
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         with open(output_path, "w") as fh:
             fh.write("x")

@@ -38,7 +38,7 @@ help:
 	@echo "  make stack STUDY=...        genera il documento multi-stream (stack, puro)"
 	@echo "  make versions STUDY=...     genera il documento delle versioni (prodotto cartesiano)"
 	@echo "  make percorso STUDY=...     genera il documento del percorso (orchestrazione temporale)"
-	@echo "  make render STUDY=...       renderizza audio (incrementale, parallelo; FORCE=1 rifa' tutto, JOBS=n worker)"
+	@echo "  make render STUDY=...       renderizza audio (incrementale, parallelo; FORCE=1 rifa' tutto, JOBS=n budget processi)"
 	@echo "  make describe STUDY=...     descrittori audio -> results.yml"
 	@echo "  make matrix STUDY=...       matrice di parentela -> kinship.json"
 	@echo "  make compose STUDY=...      genera final.yml dal percorso/grafo"

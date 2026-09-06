@@ -142,7 +142,7 @@ def test_dump_preserves_mtime_when_unchanged(tmp_path):
 
 def _fake_engine_render(calls):
     def fake(yaml_path, output_path, samples_dir, output_sr=48000,
-             per_stream=False, use_cache=False, cache_dir=None):
+             per_stream=False, use_cache=False, cache_dir=None, jobs=1):
         calls.append(yaml_path)
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         with open(output_path, "w") as fh:
@@ -545,7 +545,7 @@ def test_render_variants_per_stream_merges_version_stems(tmp_path, monkeypatch):
     (yaml_dir / "stack.yml").write_text(yaml.safe_dump(doc))
 
     def fake(yaml_path, output_path, samples_dir, output_sr=48000,
-             per_stream=False, use_cache=False, cache_dir=None):
+             per_stream=False, use_cache=False, cache_dir=None, jobs=1):
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         if not per_stream:
             with open(output_path, "w") as fh:
@@ -661,3 +661,64 @@ def test_render_stream_prefix_relative_to_mode_dir(tmp_path, monkeypatch):
     )
     audio = sorted(e["audio"] for e in manifest)
     assert all(os.sep + os.path.join("sweep", "envelope", "vox", "vox_") in a for a in audio)
+
+
+# --- ripartizione dei job tra i due livelli di parallelismo -----------------
+
+
+def test_split_jobs_single_variant_takes_whole_budget():
+    # Il caso di grana-001-41: una variante lunghissima. Il pool esterno non ha
+    # niente da parallelizzare, quindi tutto il budget va all'engine.
+    assert render_mod._split_jobs(8, 1) == (1, 8)
+
+
+def test_split_jobs_saturated_pool_keeps_engine_sequential():
+    # Varianti >= budget: il pool esterno satura la macchina da solo, l'engine
+    # resta sequenziale (comportamento storico).
+    assert render_mod._split_jobs(4, 4) == (4, 1)
+    assert render_mod._split_jobs(4, 40) == (4, 1)
+
+
+def test_split_jobs_budget_one_is_fully_sequential():
+    assert render_mod._split_jobs(1, 1) == (1, 1)
+    assert render_mod._split_jobs(1, 10) == (1, 1)
+
+
+def test_split_jobs_never_oversubscribes():
+    for budget in range(1, 13):
+        for pending in range(1, 13):
+            workers, engine_jobs = render_mod._split_jobs(budget, pending)
+            assert workers >= 1 and engine_jobs >= 1
+            assert workers <= pending
+            assert workers * engine_jobs <= budget
+
+
+def test_render_passes_engine_jobs_to_bridge(tmp_path, monkeypatch):
+    # Regressione: engine_bridge.render veniva chiamato senza `jobs`, quindi
+    # l'engine restava a jobs=1 e il chunk-parallel non si attivava mai.
+    variant_dir = str(tmp_path / "variants")
+    os.makedirs(variant_dir)
+    with open(os.path.join(variant_dir, "solo.yml"), "w", encoding="utf-8") as fh:
+        yaml.safe_dump({"streams": [{"stream_id": "s", "onset": 0}]}, fh)
+
+    seen = []
+
+    def fake(yaml_path, output_path, samples_dir, output_sr=48000,
+             per_stream=False, use_cache=False, cache_dir=None, jobs=1):
+        seen.append(jobs)
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        with open(output_path, "w") as fh:
+            fh.write("x")
+        return [output_path]
+
+    monkeypatch.setattr(render_mod.engine_bridge, "render", fake)
+    render_variants(
+        variant_dir=variant_dir,
+        audio_dir=str(tmp_path / "audio"),
+        score_dir=None,
+        samples_dir="unused",
+        jobs=8,
+    )
+    # Una sola variante pendente: il pool esterno resta a 1 worker (path
+    # in-process) e l'engine riceve l'intero budget.
+    assert seen == [8]
