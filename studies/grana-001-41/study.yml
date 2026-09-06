@@ -31,7 +31,11 @@ base:
     speed_ratio: 0.1
     loop_unit: normalized
     offset_range: 0.01
-    loop_end: 0.2
+    loop_start: 0
+    # loop_end sincronizzato allo step di sweep (20s): a speed_ratio 0.1 il
+    # pointer percorre l'intera finestra in loop_end_norm*5.5s/0.1 = 20s,
+    # un ciclo completo per ogni gradino di pitch.ratio/grain.duration.
+    loop_end: 0.363636363636
   pitch:
     range: 0.05
   pan: 0
