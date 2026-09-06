@@ -108,6 +108,7 @@ def render(
     per_stream: bool = False,
     use_cache: bool = False,
     cache_dir: Optional[str] = None,
+    jobs: int = 1,
 ) -> List[str]:
     """Renderizza un YAML in audio con il renderer NumPy (MIX di default).
 
@@ -117,6 +118,11 @@ def render(
     stream con fingerprint cambiato vengono ri-renderizzati. Ha effetto solo
     in combinazione con ``per_stream`` (e' l'unico caso con build
     incrementale per stream, vedi engine ``pge/cli.py``).
+
+    ``jobs``: worker del parallelismo INTERNO dell'engine (chunk di grani in
+    MIX, stream in STEMS). Va distinto da quello di ``render_variants``, che
+    parallelizza tra varianti: su uno studio con poche varianti lunghe e' solo
+    questo a usare la macchina.
 
     Il GC degli stem orfani resta disattivato (``run_cache_gc=False``) come
     nel bridge pre-API: questo modulo non cancella file gia' generati.
@@ -144,6 +150,7 @@ def render(
         output_sr=output_sr,
         samples_dir=samples_dir,
         cache_manifest_path=cache_manifest_path,
+        jobs=jobs,
     )
     return result.audio_paths
 

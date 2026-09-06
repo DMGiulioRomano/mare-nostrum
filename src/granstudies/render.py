@@ -323,6 +323,7 @@ def _render_one(
     per_stream: bool = False,
     use_cache: bool = False,
     cache_dir: str | None = None,
+    jobs: int = 1,
 ) -> Dict[str, Any]:
     """Renderizza una singola variante (worker per il pool di processi).
 
@@ -331,8 +332,15 @@ def _render_one(
     ``per_stream``, viene fatta ANCHE una seconda pass in STEMS mode (con
     caching incrementale se ``use_cache``): doppio lavoro sull'engine, ma
     lascia intatto il resto della pipeline.
+
+    ``jobs`` e' il parallelismo INTERNO dell'engine, che si applica a entrambe
+    le pass: in MIX spezza i grani in chunk, in STEMS distribuisce gli stream
+    (e con un solo stream ricade comunque sul chunk path).
     """
-    mix = engine_bridge.render(yaml_path, audio_path, samples_dir=samples_dir, output_sr=output_sr)
+    mix = engine_bridge.render(
+        yaml_path, audio_path, samples_dir=samples_dir, output_sr=output_sr,
+        jobs=jobs,
+    )
     if pdf_path:
         engine_bridge.score_pdf(yaml_path, pdf_path, samples_dir=samples_dir)
     result: Dict[str, Any] = {"audio": mix[0] if mix else audio_path}
@@ -340,6 +348,7 @@ def _render_one(
         stems = engine_bridge.render(
             yaml_path, audio_path, samples_dir=samples_dir, output_sr=output_sr,
             per_stream=True, use_cache=use_cache, cache_dir=cache_dir,
+            jobs=jobs,
         )
         result["stems"] = stems
         # Post-merge per nome-base (issue #24): le versioni di una stessa voce
@@ -353,6 +362,25 @@ def _render_one(
 
 def _is_up_to_date(target: str, source: str) -> bool:
     return os.path.exists(target) and os.path.getmtime(target) >= os.path.getmtime(source)
+
+
+def _split_jobs(budget: int, n_pending: int) -> tuple[int, int]:
+    """Ripartisce ``budget`` processi tra i due livelli di parallelismo.
+
+    Ci sono due pool annidabili: quello di ``render_variants`` (una variante
+    per worker) e quello interno all'engine (chunk di grani, vedi
+    ``numpy_parallel``). Con molte varianti brevi conviene tutto al primo; con
+    una variante lunga sola — il caso di uno studio a un asse, dove lo sweep
+    collassa in un unico file da decine di minuti — il primo pool e' degenere
+    e senza questa ripartizione la macchina resterebbe ferma a un core.
+
+    Il prodotto ``workers * engine_jobs`` non supera mai il budget, quindi i
+    pool annidati non sovraccaricano la macchina.
+
+    Returns: ``(workers, engine_jobs)``, entrambi >= 1.
+    """
+    workers = max(1, min(budget, n_pending))
+    return workers, max(1, budget // workers)
 
 
 def render_variants(
@@ -371,9 +399,13 @@ def render_variants(
     """Renderizza ogni YAML in ``variant_dir`` -> audio (e PDF se ``score_dir``).
 
     Incrementale: una variante il cui audio (e PDF) e' piu' recente dello YAML
-    viene saltata (``force=True`` per rirenderizzare tutto). Le varianti da
-    fare girano in parallelo su un pool di processi (``jobs``, default
-    min(8, cpu)); ogni render dell'engine e' mono-core e indipendente.
+    viene saltata (``force=True`` per rirenderizzare tutto).
+
+    ``jobs`` e' il budget TOTALE di processi (default min(8, cpu)), ripartito
+    da ``_split_jobs`` tra le varianti in parallelo e il parallelismo interno
+    dell'engine: con molte varianti vince il primo, con una variante lunga sola
+    tutto il budget finisce all'engine invece di lasciare la macchina ferma a
+    un core. ``jobs=1`` resta sequenziale su entrambi i livelli.
 
     ``per_stream``: STEMS mode, un file per stream invece del MIX unico —
     ``entry["audio"]`` diventa una lista di path. In questo caso il file di
@@ -459,17 +491,21 @@ def render_variants(
         ))
 
     if pending:
-        # ponytail: cap a 8 worker, una variante lunga puo' tenere in RAM
+        # ponytail: cap a 8 processi, una variante lunga puo' tenere in RAM
         # l'intero buffer audio; alzare con jobs= se la memoria lo consente.
-        workers = jobs or min(8, os.cpu_count() or 1, len(pending))
+        budget = jobs or min(8, os.cpu_count() or 1)
+        workers, engine_jobs = _split_jobs(budget, len(pending))
         if workers == 1:
             for entry, args in pending:
-                entry.update(_render_one(*args))
+                entry.update(_render_one(*args, engine_jobs))
         else:
             from concurrent.futures import ProcessPoolExecutor, as_completed
 
             with ProcessPoolExecutor(max_workers=workers) as pool:
-                futures = {pool.submit(_render_one, *args): entry for entry, args in pending}
+                futures = {
+                    pool.submit(_render_one, *args, engine_jobs): entry
+                    for entry, args in pending
+                }
                 for fut in as_completed(futures):
                     futures[fut].update(fut.result())
     return manifest
