@@ -11,9 +11,9 @@ def test_bounds_from_engine_registry():
 
 def test_bounds_nested_path():
     # Senza output_sr esplicito vale comunque il floor dinamico dell'engine
-    # (MIN_GRAIN_SAMPLES campioni), non il fallback statico di 1 ms.
+    # (1 campione), non il fallback statico di 1 ms.
     lo, hi = bounds.bounds_for("grain.duration")
-    assert lo == bounds.MIN_GRAIN_SAMPLES / bounds.default_output_sr()
+    assert lo == 1 / bounds.default_output_sr()
     assert hi == 10.0
 
 
@@ -44,9 +44,9 @@ def test_clamp_within_and_outside():
 
 
 def test_bounds_grain_duration_dynamic_output_sr():
-    # con output_sr il minimo e' il floor dello studio: 4 campioni (bounds.py)
+    # con output_sr il minimo e' il floor dinamico dell'engine: 1 campione
     lo, hi = bounds.bounds_for("grain.duration", output_sr=48000)
-    assert lo == bounds.MIN_GRAIN_SAMPLES / 48000
+    assert lo == 1 / 48000
     assert hi == 10.0
 
 
@@ -76,8 +76,8 @@ def test_grain_duration_factor_unita_sconosciuta():
 
 
 def test_clamp_grain_duration_in_millisecondi():
-    # bounds in secondi [4/48000, 10] -> in ms [1/12, 10000]
-    lo_ms = bounds.MIN_GRAIN_SAMPLES / 48000 * 1000
+    # bounds in secondi [1/48000, 10] -> in ms
+    lo_ms = 1 / 48000 * 1000
     assert bounds.clamp(
         "grain.duration", 50, output_sr=48000, unit="milliseconds"
     ) == 50
@@ -95,7 +95,7 @@ def test_clamp_grain_duration_in_campioni():
     ) == 50
     assert bounds.clamp(
         "grain.duration", 1, output_sr=48000, unit="samples"
-    ) == pytest.approx(bounds.MIN_GRAIN_SAMPLES)
+    ) == pytest.approx(1)
 
 
 def test_span():

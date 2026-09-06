@@ -40,10 +40,6 @@ def _path_map() -> Dict[str, str]:
     }
 
 
-# Minimo di grain.duration in campioni imposto da questo studio (l'engine
-# scende a 1 campione). Vedi ``bounds_for``.
-MIN_GRAIN_SAMPLES = 4
-
 # Unita' ammesse per ``grain.duration``/``grain.duration_range``, come
 # l'engine (``pge.core.stream.GRAIN_DURATION_UNITS``). I bounds del registry
 # sono in secondi: qui vive la conversione verso quel dominio.
@@ -101,9 +97,8 @@ def bounds_for(
     si valida solo il minimo.
 
     ``output_sr`` di default e' quello di render dell'engine, cosi' il minimo di
-    ``grain.duration`` e' sempre il pavimento dinamico (1 campione, alzato a
-    ``MIN_GRAIN_SAMPLES`` da questo repo) e mai il fallback statico di 1 ms:
-    ometterlo non deve cambiare il verdetto (issue #17).
+    ``grain.duration`` e' sempre il pavimento dinamico (1 campione) e mai il
+    fallback statico di 1 ms: ometterlo non deve cambiare il verdetto (issue #17).
     """
     if path.startswith(_PITCH_PREFIX):
         from .engine_bridge import pitch_bounds
@@ -120,12 +115,7 @@ def bounds_for(
 
     sr = output_sr or default_output_sr()
     pb = parameter_bounds(output_sr=sr)[key]
-    lo = pb.min_val
-    if path == "grain.duration":
-        # Floor dello studio: l'engine ammette 1 campione, ma sotto i 4 campioni
-        # il grano non ha inviluppo udibile. Vincolo di questo repo, non engine.
-        lo = max(lo, MIN_GRAIN_SAMPLES / sr)
-    return (lo, pb.max_val)
+    return (pb.min_val, pb.max_val)
 
 
 def default_output_sr() -> int:
