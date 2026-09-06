@@ -55,6 +55,26 @@ annidano non c'è oversubscription. Il default resta `min(8, cpu)`: un buffer
 stereo float64 da 56 minuti pesa ~2.6 GB e il chunk path ne fa transitare circa
 un altro. `JOBS=12` per usare tutto.
 
+## Quanto rende, misurato
+
+A/B sulla sola variante vera (3360s di audio, `STEM=false`, 12 core):
+
+| | wall | CPU medio |
+|---|---|---|
+| `JOBS=1` (identico al pre-modifica) | 3m47 | 99% |
+| `JOBS=12` | 2m36 | 180% |
+
+**1.45×.** Meno di quanto la disponibilità di 12 core farebbe sperare, e vale la
+pena sapere perché: per Amdahl solo ~34% del tempo sta nell'overlap-add, che è
+l'unica parte che questo cambiamento parallelizza. Il resto è irriducibile qui —
+la generazione dei grani vive nel processo padre (consuma il `random` seminato,
+e parallelizzarla romperebbe la riproducibilità), più `dc_block`, clip,
+scrittura di ~1.2 GB e il travaso dei buffer di chunk dai worker al padre via
+pickle, che su un buffer da 2.6 GB non è gratis.
+
+Il collo di bottiglia successivo non è quindi il numero di core: è il rapporto
+tra grani generati e audio scritto.
+
 ## Cosa è stato toccato
 
 - `src/granstudies/engine_bridge.py` — `render(..., jobs=1)` inoltrato a
@@ -78,6 +98,14 @@ Il submodule `engine/` **non è stato toccato**: l'API `jobs` esisteva già.
 
 ## Quel che resta sul tavolo
 
+**La variante orfana.** `generated/.../yaml/sweep/envelope/` contiene ancora
+`e2__pitch.ratio__grain.duration.yml`, residuo di un `ordering` precedente:
+`make sweep` lo segnala ("varianti orfane, rimuovile a mano") ma non lo cancella,
+e `make render FORCE=1` lo ri-renderizza lo stesso. Sono 2400s di audio, circa
+il 40% del lavoro di un render forzato, prodotti per niente. Cancellare quel
+file (e il suo audio) rende più della modifica di questo branch.
+
+**La doppia pass.**
 Con `--stem` attivo di default ogni variante passa **due volte** dall'engine:
 una per il mix, una per gli stem. `grana-001-41` ha un solo stream con
 `onset: 0`, quindi lo stem è lo stesso audio del mix — un 2× quasi puro.
