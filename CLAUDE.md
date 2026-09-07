@@ -31,13 +31,14 @@ della cartella-scala.
 
 | Cartella | Cos'è | `STUDY=` |
 |----------|-------|----------|
-| `grana-001-41` | grain.duration su `001-41_5-5_5_norm.flac`, il sample più ricorrente del brano; base presa da `stream2` di `mare-nostrum.yml` | `grana-001-41` |
+| `001-41-duration-pitch` | grain.duration x pitch.ratio su `001-41_5-5_5_norm.flac`, il sample più ricorrente del brano; base presa da `stream2` di `mare-nostrum.yml` | `001-41-duration-pitch` |
+| `001-41-duration-fill-factor` | grain.duration x fill_factor sullo stesso sample; pitch.ratio fissato a 1.0 | `001-41-duration-fill-factor` |
 | `ascolto` | diario di ascolto dello studio — non è uno `STUDY` | — |
 
 Le cartelle-scala (`1-10ms`, `1-50smp`, `10-50ms`, `50-300ms`, `300-1000ms`,
 `stack*`) e i brani (`brano01`, `brano01_v2`) sono stati rimossi: il lavoro è
-ora concentrato su `grana-001-41`. Restano citati nei log di
-`studies/ascolto/` come riferimento storico.
+ora concentrato su `001-41-duration-pitch` e `001-41-duration-fill-factor`.
+Restano citati nei log di `studies/ascolto/` come riferimento storico.
 
 **Naming.** Il nome della cartella è il **range di grain.duration** e basta
 (`1-10ms`, `1-50smp`): il prefisso `grain_` era ridondante — è sempre
