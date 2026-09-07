@@ -21,7 +21,7 @@ base:
   sample: 001-41_5-5_5.wav   # crudo, peak -26 dBFS: compensato da volume: 6
   time_mode: normalized
   distribution_mode: uniform
-  distribution: 1
+  #distribution: 1
   grain:
     #duration_range: 0.001
     envelope: hanning
@@ -48,6 +48,7 @@ sweep:
   # grain.duration lento, fill_factor veloce: per ogni grana scorrono tutte le densità.
   orderings:
     - [grain.duration, fill_factor]
+    - [fill_factor, grain.duration]
 
 axes:
   interpolation: step

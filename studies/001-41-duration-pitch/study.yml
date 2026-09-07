@@ -45,9 +45,12 @@ base:
 sweep:
   mode: envelope
   transition: 20   # tutti gli assi step -> durata = N * transition: 20s per gradino
-  # grain.duration lento, pitch veloce: per ogni grana scorrono tutti i pitch.
+  # Entrambi gli ordinamenti: prima grain.duration lento/pitch veloce, poi
+  # l'inverso (pitch lento/grain.duration veloce), cosi' si sente lo stesso
+  # spazio di parametri percorso nei due modi.
   orderings:
     - [grain.duration, pitch.ratio]
+    - [pitch.ratio, grain.duration]
 
 axes:
   interpolation: step
