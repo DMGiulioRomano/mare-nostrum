@@ -23,13 +23,13 @@ base:
   distribution_mode: uniform
   distribution: 1
   grain:
-    duration_range: 0.001
+    #duration_range: 0.001
     envelope: hanning
   pointer:
     start: 0
     speed_ratio: 0.1
     loop_unit: normalized
-    offset_range: 0.01
+    #offset_range: 0.01
     loop_start: 0
     # loop_end sincronizzato allo step di sweep (20s): a speed_ratio 0.1 il
     # pointer percorre l'intera finestra in loop_end_norm*5.5s/0.1 = 20s,
@@ -37,7 +37,7 @@ base:
     loop_end: 0.363636363636
   pitch:
     ratio: 1.0
-    range: 0.05
+    #range: 0.05
   pan: 0
   #pan_range: 360
   volume: 6
@@ -61,4 +61,4 @@ axes:
              0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512]
   fill_factor:
     # ponytail: placeholder geometrico x2, da correggere ascoltando.
-    values: [1, 2, 4, 8, 16, 32]
+    values: [0.5, 0.7, 0.85, 1, 2, 4, 8]
