@@ -111,10 +111,15 @@ hardlink fra combinazioni: sono documenti diversi per costruzione, e il caso
 | `src/granstudies/__main__.py` | Due choke point e un loop. `gen_dir()` appende il segmento-combo; `_load_data`/`_load_specs` applicano la patch. Il loop sta in `_dispatch`: ogni comando gira N volte con il contesto-combo impostato, e i `cmd_*` non si toccano. Via `take_label()`, `cmd_take_slug`, `study_diff_slug`. |
 | `make/takes.mk` | Cancellato (`take`, `takes`, `takes-clean`). `where` si sposta in `make/studies.mk`. |
 | `.zsh_completions/_study` | Via la chiamata a `make take`; `root` diventa la lista delle root, filtrata da `COMBO`; completion di `COMBO` dalle cartelle esistenti. |
-| `.gitignore` | Via `/takes/`. |
+| `.gitignore` | `/takes/` **resta**: la cartella e' ancora sul disco con i suoi gigabyte, e toglierla dall'ignore riempirebbe `git status` di audio. Il commento dice che la modalita' non esiste piu'. |
 | `docs/study-yml-reference.md` | Sezione `for_each:` accanto a `versions:`; via il paragrafo take dal layout di `generated/`. |
 | `README.md`, `CLAUDE.md` | Via la sezione «Modalità take», dentro la sezione `for_each`. |
 | `tests/` | Prodotto cartesiano e ordine lessicografico; label con valori scalari e stati nominati; errore sul non-scalare anonimo; patch che tocca `axes.*` e non solo `base.*`; `gen_dir` con e senza combo; avviso orfane. Via i test take di `test_render.py`. |
+
+In `render.py` e `sv_export.py` sparisce anche lo sgancio dell'hardlink prima
+della scrittura: serviva solo perche' una take nasceva come `cp -al` della
+precedente. Le combinazioni non condividono inode — sono documenti diversi per
+costruzione — quindi la guardia era diventata codice morto.
 
 `takes/` non viene migrato: è fuori da git, e le take esistenti restano sul
 disco finché l'utente non le cancella. Chi vuole conservarne una la riscrive
