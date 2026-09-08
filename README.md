@@ -42,11 +42,33 @@ make compose STUDY=1-10ms
 make render-final STUDY=1-10ms
 ```
 
+## Modalità take: non sovrascrivere l'audio già ascoltato
+
+Di default ogni rigenerazione sovrascrive l'audio precedente. Con `TAKE`
+attivo l'output va invece in `takes/<studio>/<data_ora>/`, un albero completo
+per take: la versione di prima resta lì da riascoltare.
+
+```bash
+export TAKE=1                       # una volta per sessione
+study 001-41-duration-pitch         # apre una take nuova e rigenera dentro
+# ascolto, modifica di study.yml
+study 001-41-duration-pitch         # nuova take; la precedente resta intatta
+
+make takes STUDY=001-41-duration-pitch        # storico: data, peso, diff dello study.yml
+make takes-clean STUDY=... KEEP=3             # tiene le 3 più recenti
+```
+
+Una take nuova nasce **solo se `study.yml` è cambiato**, e nasce come hardlink
+di quella prima: costa il tempo e il disco delle sole varianti effettivamente
+toccate dalla modifica. `TAKE=<data_ora>` torna dentro una take vecchia;
+senza `TAKE` tutto resta come prima, in `generated/`.
+
 ## Struttura
 
 - `src/granstudies/` — il pacchetto (uno stadio per modulo).
 - `studies/<id>/` — input versionati: `study.yml`, `states.yml`, `composition.yml`.
 - `generated/<id>/` — output rigenerabile (git-ignorato).
+- `takes/<id>/<data_ora>/` — storico delle rigenerazioni (git-ignorato, vedi sopra).
 - `samples/` — corpus audio (file git-ignorati, solo manifest versionato).
 - `engine/` — submodule del motore (pin su commit).
 - `tests/` — suite pytest (mirror di `src/`); `tests/e2e/` — end-to-end.
