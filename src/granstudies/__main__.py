@@ -9,6 +9,7 @@
     granstudies matrix   STUDY      costruisce kinship.json
     granstudies compose  STUDY      genera final.yml dal percorso/grafo
     granstudies render-final STUDY  renderizza il brano finale
+    granstudies where    STUDY      stampa la cartella di output corrente
 
 STUDY e' il nome della cartella sotto ``studies/`` (es. base).
 """
@@ -18,6 +19,7 @@ import argparse
 import glob
 import json
 import os
+import shutil
 import sys
 import time
 from typing import Any, Dict
@@ -35,8 +37,43 @@ def study_dir(study: str) -> str:
     return os.path.join(REPO_ROOT, "studies", study)
 
 
+def take_label() -> str | None:
+    """Label della take attiva, o ``None`` se la modalita' take e' spenta.
+
+    L'interruttore e' la env ``TAKE``, pensata per essere esportata una volta
+    per sessione di ascolto. ``1``/``true``/``yes`` vale "la take corrente",
+    cioe' il symlink ``latest`` che ``make take`` sposta; qualunque altro
+    valore e' la label di una take specifica, per tornare su una vecchia e
+    rigenerare li' dentro.
+    """
+    take = os.environ.get("TAKE", "").strip()
+    if not take:
+        return None
+    return "latest" if take.lower() in ("1", "true", "yes") else take
+
+
 def gen_dir(study: str) -> str:
-    return os.path.join(REPO_ROOT, "generated", study)
+    """Cartella di output dello studio.
+
+    Con la modalita' take attiva l'output non e' piu' ``generated/<study>/`` ma
+    ``takes/<study>/<label>/``: albero completo e autonomo, cosi' l'audio della
+    sessione precedente non viene sovrascritto. Le take nascono come hardlink
+    della precedente (``make take``), quindi costano solo cio' che cambia.
+    """
+    label = take_label()
+    if label is None:
+        return os.path.join(REPO_ROOT, "generated", study)
+    path = os.path.join(REPO_ROOT, "takes", study, label)
+    if not os.path.isdir(path):
+        raise SpecError(
+            f"modalita' take attiva (TAKE={os.environ.get('TAKE')}) ma la take "
+            f"'{label}' di '{study}' non esiste",
+            hint=f"aprine una con 'make take STUDY={study}', "
+                 f"o togli TAKE dall'ambiente per tornare a generated/",
+        )
+    # Il symlink ``latest`` viene risolto: i path che finiscono nei log, negli
+    # snapshot e nelle sessioni .sv nominano la take vera, non l'alias mobile.
+    return os.path.realpath(path)
 
 
 def samples_dir(spec_samples: str | None) -> str:
@@ -327,6 +364,9 @@ def cmd_render(
 
     spec = _load_spec(study)
     g = gen_dir(study)
+    if take_label():
+        print(f"[render] modalita' take attiva: niente sovrascrittura, "
+              f"l'output va in {os.path.relpath(g, REPO_ROOT)}")
     # Il render e' generico: discende yaml/ ricorsivamente (sweep/, stack/,
     # versions/, percorso/) e rispecchia i sotto-path sotto audio/ e score/.
     variant_dir = os.path.join(g, "yaml")
@@ -351,6 +391,11 @@ def cmd_render(
     skipped = sum(1 for e in manifest if e["skipped"])
     done = len(manifest) - skipped
     print(f"[render] {done} varianti renderizzate, {skipped} saltate (aggiornate) in {tempo} -> {g}")
+    # Snapshot dello study.yml che ha prodotto questo audio. Riscritto a ogni
+    # render (non alla creazione della take): cosi' e' sempre lo stato vero,
+    # qualunque sia l'ordine in cui si modifica e si rigenera. E' il termine di
+    # paragone del diff in ``make takes`` e del check di ``make take``.
+    shutil.copy2(os.path.join(study_dir(study), "study.yml"), os.path.join(g, "study.yml"))
     return 0
 
 
@@ -564,6 +609,17 @@ def cmd_render_final(study: str) -> int:
     return 0
 
 
+def cmd_where(study: str) -> int:
+    """Stampa la cartella di output corrente, nient'altro.
+
+    E' l'unica fonte di verita' sulla risoluzione di ``TAKE``: la funzione
+    ``study`` in ``.zsh_completions/_study`` la interroga invece di
+    ricostruirsi il path in zsh, cosi' la regola vive in un posto solo.
+    """
+    print(gen_dir(study))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="granstudies", description=__doc__)
     sub = p.add_subparsers(dest="command", required=True)
@@ -615,6 +671,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     fp = sub.add_parser("render-final", help="renderizza il brano finale")
     fp.add_argument("study")
+
+    wp = sub.add_parser("where", help="stampa la cartella di output corrente")
+    wp.add_argument("study")
 
     svp = sub.add_parser("sv", help="genera sessioni .sv per Sonic Visualiser")
     svp.add_argument("study")
@@ -674,6 +733,8 @@ def _dispatch(args) -> int:
         return cmd_compose(args.study, args.seed, args.steps, args.start)
     if args.command == "render-final":
         return cmd_render_final(args.study)
+    if args.command == "where":
+        return cmd_where(args.study)
     if args.command == "sv":
         return cmd_sv(args.study, args.layout, markers=not args.no_markers, stream=args.stream,
                       markers_scope=args.markers_scope)
