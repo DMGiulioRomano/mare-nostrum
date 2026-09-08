@@ -1667,6 +1667,91 @@ deterministico tra run, path e variabili diversi decorrelati da soli. I generati
 hanno poi ciascuno il proprio `stream_id`, quindi i seed Y/X per-stream si
 auto-decorrelano col meccanismo esistente.
 
+## Il blocco `for_each:` — l'asse esterno
+
+Gli `axes:` sono assi **interni**: scorrono nel tempo dentro lo stesso file.
+`for_each:` è l'asse **esterno**: ogni combinazione dei suoi valori è una
+**patch sullo `study.yml`** e produce un render intero a sé, in
+`generated/<study_id>/<label>/`. Non moltiplica i gradini, moltiplica i file.
+
+> Interno se il confronto sta nella **giustapposizione** (lo senti cambiare
+> mentre suona). Esterno se sta nel **riascolto** (devi risentire la stessa
+> cosa da capo per confrontare), o se la chiave definisce il file stesso —
+> `seed`, `sample`, `arco`, la durata.
+
+```yaml
+for_each:
+  base.distribution: {values: [0, 0.5, 1]}   # asse a manopola singola
+  griglia:                                    # asse a stati nominati
+    fitta: {axes.fill_factor.values: [0.5, 0.7, 0.85, 1, 2, 4, 8]}
+    rada:  {axes.fill_factor.values: [0.5, 1, 4]}
+```
+
+3 × 2 = 6 render, in `generated/<study_id>/distribution=0.5__griglia=rada/` e
+compagnia. Il blocco **assente** è la combinazione vuota —
+`generated/<study_id>/` piatto, come uno studio senza assi esterni: è il caso
+degenere, non un ramo speciale.
+
+- Ogni chiave del blocco è un **asse ortogonale**; più assi danno il **prodotto
+  cartesiano lessicografico** nell'ordine di dichiarazione (il primo asse è il
+  più esterno), come gli `orderings` dello sweep e gli assi di `versions:`.
+- **Forma 1 — manopola singola.** La chiave dell'asse *è* il path da patchare,
+  il valore un generatore di sequenza (`values`/`ramp`/banda) o una lista nuda.
+  I valori devono essere **scalari**: sono loro a nominare la cartella.
+- **Forma 2 — stati nominati.** La chiave è un nome libero, ogni entry uno
+  **stato**: un bundle di override `{path puntato: valore}`. È l'unica forma
+  ammessa per gli override non scalari — un nome di cartella che non dice cosa
+  contiene non serve a niente, quindi lo dà l'utente. Un bundle vuoto (`{}`) è
+  lecito: è lo stato che non tocca niente.
+- **I path sono su tutto il documento**, non solo su `base:`:
+  `axes.fill_factor.values`, `stack.seed`, `percorso.arco`, `streams.x.volume`.
+  Il valore viene **assegnato** al path, non fuso: `base.grain: {...}`
+  sostituisce l'intero sotto-albero. Creare una chiave nuova è lecito
+  (`base.pan_range` su un `base:` che non ce l'ha), creare una **sezione** no
+  (`bse.pan_range` è un errore, non un refuso silenzioso).
+- **Etichette.** `chiave=valore` per la Forma 1 (`base.` e `axes.`, e il nome
+  del generatore in coda, vengono tolti: `axes.fill_factor.values` →
+  `fill_factor`), `asse=stato` per la Forma 2. Due assi che danno la stessa
+  etichetta, o che toccano lo stesso path, sono errore.
+- Ogni combinazione ha il **suo albero completo** (`yaml/`, `audio/`, `sv/`,
+  `cache/`, `score/`) più uno snapshot `study.yml` — il documento **patchato**,
+  riscritto a ogni render, che dice da sé i valori di quella combinazione.
+  I `.sv` portano la label nel basename
+  (`<study_id>_<stream_id>_e1__density__distribution=0.5.sv`): Sonic Visualiser
+  identifica la sessione dal nome, e con due `.sv` omonimi la seconda non si
+  apre — proprio il confronto per cui gli assi esterni esistono.
+
+### Perché serve a tutti i processi
+
+Ci sono chiavi che non possono essere assi interni, per costruzione:
+
+| Processo | Cosa diventa esterno |
+|---|---|
+| `sweep` | il parametro di contorno: lo stesso sweep dei due assi, rifatto con `distribution` diversa, invece di un file tre volte più lungo |
+| `stack` | le camminate-X sono stocastiche: ascoltare cinque realizzazioni dello stesso impasto è cinque file, mai uno (`for_each: {stack.seed: [1, 2, 3, 4, 5]}`) |
+| `versions` | la valvola di sfogo del cartesiano interno: `grana × densita` = 16 versioni concatenate, una terza variabile porta a 48 e il file diventa inascoltabile |
+| `percorso` | la timeline *è* il file: «la stessa legge distesa su 90, 180, 360 secondi» esiste solo come asse esterno (`percorso.arco`) |
+
+### Il filtro `COMBO`
+
+`COMBO=<label>` restringe ogni comando a una combinazione sola — non
+rirenderizzare sei varianti da venti minuti per sentirne una, e non aprire sei
+sessioni di Sonic Visualiser insieme. È un filtro di sessione, non un
+interruttore di modalità: senza, si fa tutto. Una label che non esiste è un
+errore che elenca quelle dichiarate.
+
+```zsh
+make where STUDY=<id>                      # una root per combinazione
+COMBO=distribution=1 study <id>            # genera e apre solo quella
+```
+
+### Combinazioni orfane
+
+Togliere un valore da `for_each:` lascia la sua cartella con dentro l'audio
+vecchio. Come per le varianti orfane dello sweep: **avviso, nessuna
+cancellazione**. Una combinazione orfana è spesso proprio quella che si vuole
+tenere — il «prima» da riascoltare.
+
 ## Layout di `generated/`
 
 Primo livello = tipo di artefatto, secondo livello = **processo** (`sweep` /
@@ -1693,23 +1778,17 @@ generated/<study_id>/
 `generated/` è rigenerabile: dopo un aggiornamento basta rilanciare
 `make sweep` / `make stack` / `make versions` / `make percorso`.
 
-Con la **modalità take** (`export TAKE=true`) lo stesso albero, identico in ogni
-sotto-cartella, vive sotto `takes/<study_id>/<data_ora>/` invece che sotto
-`generated/<study_id>/`, più uno `study.yml` — lo snapshot dello stato che ha
-prodotto quell'audio, riscritto a ogni render. Serve a non sovrascrivere ciò
-che si è già ascoltato: vedi il README.
-
-In modalità take i `.sv` prendono il nome della take in coda al basename
-(`<study_id>_<stream_id>_e1__density__<data_ora>.sv`): l'audio no, il suo nome
-lo cerca `cmd_sv` ed è già unico dentro la sua cartella.
+Con un blocco `for_each:` lo stesso albero, identico in ogni sotto-cartella,
+scende di un livello — `generated/<study_id>/<label>/` — più uno `study.yml`,
+lo snapshot del documento patchato che ha prodotto quell'audio, riscritto a
+ogni render. Là i `.sv` prendono la label in coda al basename
+(`<study_id>_<stream_id>_e1__density__distribution=0.5.sv`): l'audio no, il suo
+nome lo cerca `cmd_sv` ed è già unico dentro la sua cartella.
 
 ## Comandi Make
 
 ```bash
-make take   STUDY=<id>                    # apre una take (no-op se study.yml e' invariato)
-make takes  STUDY=<id>                    # storico delle take: data, peso, diff
-make takes-clean STUDY=<id> KEEP=3        # tiene le KEEP piu' recenti
-make where  STUDY=<id>                    # cartella di output corrente
+make where  STUDY=<id>                    # cartelle di output correnti (una per combinazione)
 make sweep  STUDY=<id>                    # genera tutte le stream
 make sweep  STUDY=<id> STREAM=nome        # genera solo quella stream
 make stack  STUDY=<id>                    # genera il documento multi-stream (stack, puro)

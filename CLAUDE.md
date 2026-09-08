@@ -47,17 +47,16 @@ prendono il prefisso `stack_` seguito dallo stesso range: `stack_1-50smp`.
 La cartella `stack` senza suffisso resta quella storica delle curve non
 cartesiane, non legata a un range.
 
-## Modalità take
+## Assi esterni (`for_each:`)
 
-Con `export TAKE=true` in sessione, la rigenerazione non sovrascrive più l'audio
-già ascoltato: l'output va in `takes/<scala>/<data_ora>/` (albero completo,
-hardlink dell'audio della take precedente, quindi costa solo ciò che cambia).
-Il nome della take è data + chiavi cambiate rispetto alla precedente
-(`2026-09-08_1711-grain.duration+volume`), così nello storico e nei `.sv` si
-riconosce a colpo d'occhio cosa si sta confrontando.
-`study <scala>` apre la take da sé quando `study.yml` è cambiato. `make takes`
-mostra lo storico col diff dello `study.yml`. Senza `TAKE` tutto resta in
-`generated/`. Vedi `docs/plans/done/take-mode.md`.
+Il blocco `for_each:` nello `study.yml` dichiara assi le cui combinazioni sono
+patch sul documento: ognuna produce un render intero in
+`generated/<scala>/<label>/`, con dentro anche lo snapshot dello `study.yml`
+patchato. Serve quando il confronto sta nel **riascolto** e non nella
+giustapposizione — `distribution` a 0 / 0.5 / 1 sullo stesso sweep, cinque
+`stack.seed` diversi — o quando la chiave definisce il file stesso.
+`COMBO=<label>` restringe generazione e apertura a una sola combinazione.
+La modalità take non esiste più: vedi `docs/plans/done/for-each.md`.
 
 ## Diario di ascolto
 
