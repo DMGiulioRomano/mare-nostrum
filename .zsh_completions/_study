@@ -9,8 +9,21 @@ function study {
     echo "study: '$s' non ha un blocco 'sweep:', STREAM='$stream' verra' ignorato (0 sessioni .sv)." >&2
     return 1
   fi
+  # Modalita' take (export TAKE=1): apre una take nuova PRIMA di rigenerare,
+  # cosi' l'audio della sessione precedente non viene sovrascritto. `make take`
+  # e' un no-op se study.yml non e' cambiato, quindi si puo' chiamare sempre.
+  # Con TAKE=<label> si sta rigenerando dentro una take vecchia di proposito:
+  # aprirne una nuova sposterebbe `latest` sotto i piedi dell'utente.
+  if [[ "$TAKE" == (1|true|yes) ]]; then
+    make take STUDY="$s" || return 1
+  fi
   make all-study STUDY="$s" $([[ -n "$stream" ]] && echo STREAM="$stream") \
     && make sv STUDY="$s" $([[ -n "$stream" ]] && echo STREAM="$stream") || return 1
+  # La cartella di output la risolve granstudies (generated/ o takes/<label>/):
+  # la regola di TAKE non va duplicata qui. tail -1 scarta l'eventuale rumore
+  # del setup del venv.
+  local root
+  root=$(make where STUDY="$s" | tail -1) || return 1
   # stack/versions/percorso: un .sv per stem del documento multi-stream.
   # sweep: nessun documento multi-stream, un .sv per variante envelope.
   # Con STREAM, limita l'apertura alla sola sottocartella di quello stream.
@@ -19,12 +32,12 @@ function study {
   if [[ -n "$stream" ]]; then
     # $stream puo' essere un cugino pieno (zona_ombra_d05_3) o il nome dello
     # spread (zona_ombra_d05): il glob apre tutte le cartelle-cugino 1..N.
-    for f in generated/"$s"/sv/sweep/envelope/"$stream"*/*.sv(N); do
+    for f in "$root"/sv/sweep/envelope/"$stream"*/*.sv(N); do
       sonic "$f"
     done
   else
-    for f in generated/"$s"/sv/{stack,versions,percorso}/"$s"_*~*_stems.sv(N) \
-             generated/"$s"/sv/sweep/**/*.sv(N); do
+    for f in "$root"/sv/{stack,versions,percorso}/"$s"_*~*_stems.sv(N) \
+             "$root"/sv/sweep/**/*.sv(N); do
       sonic "$f"
     done
   fi
