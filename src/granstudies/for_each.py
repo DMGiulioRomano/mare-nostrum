@@ -37,10 +37,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from .errors import ErrCtx
-from .value_generators import Y_GENERATOR_KEYS, is_generator_node, resolve
+from .value_generators import _BAND_KEYS, Y_GENERATOR_KEYS, is_generator_node, resolve
 from .yaml_loc import Locations
 
 BLOCK = "for_each"
+
+# Il vocabolario piatto di un generatore di sequenza: tutto il resto, accanto a
+# un marcatore, e' una chiave che il generatore non conosce.
+_GEN_VOCAB = _BAND_KEYS | Y_GENERATOR_KEYS | {"step", "curve"}
 
 
 @dataclass(frozen=True)
@@ -116,6 +120,7 @@ def _parse_axis(axis: str, cfg: Any, ctx: ErrCtx) -> List[Combo]:
     from .sweep import _fmt
 
     key = (BLOCK, axis)
+    _reject_stato_generatore(axis, cfg, ctx, key)
     # Forma 1 — manopola singola: la chiave dell'asse *e'* il path da patchare,
     # il valore un generatore di sequenza (o una lista nuda).
     if is_generator_node(cfg) or isinstance(cfg, list):
@@ -149,14 +154,6 @@ def _parse_axis(axis: str, cfg: Any, ctx: ErrCtx) -> List[Combo]:
     out = []
     for stato, bundle in cfg.items():
         skey = (BLOCK, axis, stato)
-        if stato in Y_GENERATOR_KEYS:
-            raise ctx.err(
-                f"{BLOCK}: l'asse '{axis}' ha uno stato che si chiama '{stato}', "
-                "che e' una chiave-generatore: l'asse verrebbe letto come "
-                "manopola singola.",
-                key=skey,
-                hint="rinomina lo stato.",
-            )
         if not isinstance(bundle, dict):
             raise ctx.err(
                 f"{BLOCK}: l'asse '{axis}', stato '{stato}': uno stato e' un "
@@ -168,6 +165,30 @@ def _parse_axis(axis: str, cfg: Any, ctx: ErrCtx) -> List[Combo]:
         out.append(Combo(label=f"{_slug(axis)}={_slug(str(stato))}",
                          patch=tuple(bundle.items())))
     return out
+
+
+def _reject_stato_generatore(axis: str, cfg: Any, ctx: ErrCtx, key: tuple) -> None:
+    """Uno stato chiamato ``base``/``values``/``ramp`` legge l'asse come Forma 1.
+
+    Il discriminatore guarda la forma, non i nomi: un asse a stati nominati con
+    uno stato di nome ``base`` diventa una banda, e l'errore vero salta fuori
+    molto piu' in la', incomprensibile ("banda: 'n' obbligatorio"). Il segnale
+    e' la chiave estranea al vocabolario piatto del generatore — che e' anche
+    il refuso opposto (una chiave sbagliata dentro un generatore vero).
+    """
+    if not isinstance(cfg, dict) or not is_generator_node(cfg):
+        return
+    estranee = sorted(k for k in cfg if k not in _GEN_VOCAB)
+    if not estranee:
+        return
+    raise ctx.err(
+        f"{BLOCK}: l'asse '{axis}' e' letto come generatore (c'e' una chiave fra "
+        f"{sorted(Y_GENERATOR_KEYS)}) ma ha anche {estranee}, che il generatore "
+        "non conosce.",
+        key=key,
+        hint="se volevi un asse a stati nominati, nessuno stato puo' chiamarsi "
+             f"{sorted(Y_GENERATOR_KEYS)}: rinominalo.",
+    )
 
 
 def _reject_collisions(names: List[str], axes: List[List[Combo]], ctx: ErrCtx) -> None:
