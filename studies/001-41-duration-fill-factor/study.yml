@@ -21,7 +21,7 @@ base:
   sample: 001-41_5-5_5.wav   # crudo, peak -26 dBFS: compensato da volume: 6
   time_mode: normalized
   distribution_mode: uniform
-  #distribution: 1
+  distribution: [[0,0,"cubic"],[1,1]]
   grain:
     #duration_range: 0.001
     envelope: hanning
@@ -39,7 +39,7 @@ base:
     ratio: 1.0
     #range: 0.05
   pan: 0
-  pan_range: 360
+  #pan_range: 360
   volume: 12
 
 sweep:

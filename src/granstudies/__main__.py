@@ -10,6 +10,7 @@
     granstudies compose  STUDY      genera final.yml dal percorso/grafo
     granstudies render-final STUDY  renderizza il brano finale
     granstudies where    STUDY      stampa la cartella di output corrente
+    granstudies take-slug STUDY REF chiavi cambiate vs uno snapshot study.yml
 
 STUDY e' il nome della cartella sotto ``studies/`` (es. base).
 """
@@ -19,6 +20,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -640,6 +642,64 @@ def cmd_where(study: str) -> int:
     return 0
 
 
+_MISSING = object()
+
+
+def _flatten(node, prefix: str = "") -> Dict[str, Any]:
+    """Dict annidato -> {path.puntato: valore}. Le liste sono foglie: cambiare
+    un elemento di ``axes.X.values`` e' *una* modifica di quell'asse, non N."""
+    if not isinstance(node, dict):
+        return {prefix: node}
+    out: Dict[str, Any] = {}
+    for k, v in node.items():
+        out.update(_flatten(v, f"{prefix}.{k}" if prefix else str(k)))
+    return out
+
+
+def _short_key(path: str) -> str:
+    """``base.grain.duration`` -> ``grain.duration``; ``axes.fill_factor.values``
+    -> ``fill_factor``. Toglie il prefisso di sezione e il nome del generatore,
+    che nel nome di una take sono rumore: la chiave e' cio' che si e' mosso."""
+    for pre in ("base.", "axes."):
+        if path.startswith(pre):
+            path = path[len(pre):]
+            break
+    for gen in (".values", ".ramp", ".band"):
+        if path.endswith(gen):
+            path = path[: -len(gen)]
+            break
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", path)
+
+
+def study_diff_slug(ref_yml: str, new_yml: str, limit: int = 3) -> str:
+    """Le chiavi cambiate fra due study.yml, come pezzo di nome di cartella.
+
+    E' quello che manca a un timestamp: ``2026-09-08_1432`` non dice nulla,
+    ``2026-09-08_1432-grain.duration+volume`` si riconosce a colpo d'occhio
+    nello storico e nel nome dei .sv. Oltre ``limit`` chiavi il nome diventa
+    illeggibile: le altre si contano (``+4altre``), il dettaglio sta nel diff
+    di ``make takes``."""
+    if not os.path.isfile(ref_yml):
+        return ""
+    old = _flatten(yaml.safe_load(open(ref_yml)) or {})
+    new = _flatten(yaml.safe_load(open(new_yml)) or {})
+    changed = [k for k in new if old.get(k, _MISSING) != new[k]]
+    changed += [k for k in old if k not in new]
+    if not changed:
+        return ""
+    keys = list(dict.fromkeys(_short_key(k) for k in changed))
+    slug = "+".join(keys[:limit])
+    if len(keys) > limit:
+        slug += f"+{len(keys) - limit}altre"
+    return slug[:60].rstrip("+.")
+
+
+
+def cmd_take_slug(study: str, ref: str) -> int:
+    print(study_diff_slug(ref, os.path.join(study_dir(study), "study.yml")))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="granstudies", description=__doc__)
     sub = p.add_subparsers(dest="command", required=True)
@@ -694,6 +754,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     wp = sub.add_parser("where", help="stampa la cartella di output corrente")
     wp.add_argument("study")
+
+    tsp = sub.add_parser("take-slug", help="chiavi cambiate rispetto a uno snapshot study.yml")
+    tsp.add_argument("study")
+    tsp.add_argument("ref", help="snapshot study.yml di riferimento (la take corrente)")
 
     svp = sub.add_parser("sv", help="genera sessioni .sv per Sonic Visualiser")
     svp.add_argument("study")
@@ -755,6 +819,8 @@ def _dispatch(args) -> int:
         return cmd_render_final(args.study)
     if args.command == "where":
         return cmd_where(args.study)
+    if args.command == "take-slug":
+        return cmd_take_slug(args.study, args.ref)
     if args.command == "sv":
         return cmd_sv(args.study, args.layout, markers=not args.no_markers, stream=args.stream,
                       markers_scope=args.markers_scope)

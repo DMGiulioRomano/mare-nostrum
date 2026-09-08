@@ -52,6 +52,9 @@ cartesiane, non legata a un range.
 Con `export TAKE=true` in sessione, la rigenerazione non sovrascrive più l'audio
 già ascoltato: l'output va in `takes/<scala>/<data_ora>/` (albero completo,
 hardlink dell'audio della take precedente, quindi costa solo ciò che cambia).
+Il nome della take è data + chiavi cambiate rispetto alla precedente
+(`2026-09-08_1711-grain.duration+volume`), così nello storico e nei `.sv` si
+riconosce a colpo d'occhio cosa si sta confrontando.
 `study <scala>` apre la take da sé quando `study.yml` è cambiato. `make takes`
 mostra lo storico col diff dello `study.yml`. Senza `TAKE` tutto resta in
 `generated/`. Vedi `docs/plans/done/take-mode.md`.
