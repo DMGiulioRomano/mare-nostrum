@@ -45,11 +45,16 @@ def take_label() -> str | None:
     cioe' il symlink ``latest`` che ``make take`` sposta; qualunque altro
     valore e' la label di una take specifica, per tornare su una vecchia e
     rigenerare li' dentro.
+
+    Gli spegnimenti espliciti (``0``/``false``/``no``/``off``) valgono come
+    variabile assente: ``export TAKE=false`` e' il modo naturale di disattivare
+    la modalita' senza fare ``unset``, e prenderlo per il nome di una take
+    darebbe un errore incomprensibile.
     """
-    take = os.environ.get("TAKE", "").strip()
-    if not take:
+    take = os.environ.get("TAKE", "").strip().lower()
+    if take in ("", "0", "false", "no", "off"):
         return None
-    return "latest" if take.lower() in ("1", "true", "yes") else take
+    return "latest" if take in ("1", "true", "yes") else os.environ["TAKE"].strip()
 
 
 def gen_dir(study: str) -> str:

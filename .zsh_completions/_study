@@ -14,7 +14,7 @@ function study {
   # e' un no-op se study.yml non e' cambiato, quindi si puo' chiamare sempre.
   # Con TAKE=<label> si sta rigenerando dentro una take vecchia di proposito:
   # aprirne una nuova sposterebbe `latest` sotto i piedi dell'utente.
-  if [[ "$TAKE" == (1|true|yes) ]]; then
+  if [[ "${TAKE:l}" == (1|true|yes) ]]; then
     make take STUDY="$s" || return 1
   fi
   make all-study STUDY="$s" $([[ -n "$stream" ]] && echo STREAM="$stream") \

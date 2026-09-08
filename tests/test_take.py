@@ -52,6 +52,16 @@ def test_gen_dir_senza_take_resta_in_generated(tmp_path, monkeypatch):
     assert cli.take_label() is None
 
 
+@pytest.mark.parametrize("valore", ["", "0", "false", "no", "off", "FALSE"])
+def test_gen_dir_take_spento_esplicitamente_resta_in_generated(tmp_path, monkeypatch, valore):
+    # `export TAKE=false` e' il modo naturale di spegnere la modalita' senza
+    # unset: se finisse nel ramo "label di una take" darebbe un errore assurdo.
+    monkeypatch.setattr(cli, "REPO_ROOT", str(tmp_path))
+    monkeypatch.setenv("TAKE", valore)
+    assert cli.take_label() is None
+    assert cli.gen_dir("s1") == os.path.join(str(tmp_path), "generated", "s1")
+
+
 def test_gen_dir_risolve_latest_e_label_esplicita(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "REPO_ROOT", str(tmp_path))
     take = tmp_path / "takes" / "s1" / "2026-01-01_1200"
