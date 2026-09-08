@@ -58,7 +58,7 @@ for_each:
 
 ```bash
 study 001-41-duration-fill-factor           # genera e apre tutte le combinazioni
-COMBO=distribution=1 study 001-41-...       # solo quella
+COMBO=distribution=1 study 001-41-...       # solo la fetta a distribution 1
 make where STUDY=...                        # dove si sta scrivendo, una riga per combinazione
 ```
 
@@ -67,6 +67,13 @@ Ogni combinazione ha il suo albero completo sotto
 `study.yml` patchato che l'ha prodotta e i suoi `.sv` (la label è nel basename:
 Sonic Visualiser identifica la sessione dal nome, e con due `.sv` omonimi la
 seconda non si apre — proprio il confronto per cui gli assi esterni esistono).
+
+`COMBO` taglia una **fetta**: i vincoli sono segmenti di label separati da
+`__`, in and fra loro (`COMBO=coppia=speed-pitch__distribution=0.3`), e il
+match è per segmento intero (`distribution=0` non prende `distribution=0.3`).
+Con più assi esterni le combinazioni sono decine e generarle tutte non ha
+senso: il documento dichiara lo spazio, `COMBO` sceglie cosa materializzare
+oggi.
 
 Le chiavi sono path su tutto il documento, non solo su `base:` — quindi
 funziona anche dove un asse interno non potrebbe esistere: `stack.seed` (cinque
