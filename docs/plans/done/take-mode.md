@@ -24,10 +24,16 @@ takes/001-41-duration-pitch/
 
 Il costo apparente (4.8 GB a take su `001-41-duration-fill-factor`, più un full
 re-render) si azzera con gli **hardlink**: una take nuova nasce come `cp -al`
-della precedente — istantanea, zero disco — e il render, che è incrementale per
+di `audio/` della precedente — istantanea, zero disco — e il render, che è incrementale per
 mtime, salta le varianti immutate lasciandole hardlink condivisi e riscrive solo
 quelle toccate dalla modifica. `du` riporta 4.8 GB per take, ma il disco cresce
 solo di ciò che è cambiato davvero. **[eseguito]** `cp -al` funziona su APFS.
+
+Hardlink **solo su `audio/`** — è lì che stanno i gigabyte, ed è l'unica cosa
+che scrive l'engine. Tutto il resto (`yaml/`, `cache/`, `sv/`, lo snapshot
+`study.yml`) è testo e viene copiato davvero: quei file li riscrivono
+scritture che troncano l'inode in place, e condividerli corromperebbe la take
+precedente. Emerso durante l'implementazione, non era nel piano iniziale.
 
 `takes/` sta alla radice, **fuori da `generated/`**: `make clean` fa `rm -rf
 generated` e cancellerebbe l'archivio.
