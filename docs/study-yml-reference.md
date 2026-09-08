@@ -1699,6 +1699,10 @@ sotto-cartella, vive sotto `takes/<study_id>/<data_ora>/` invece che sotto
 prodotto quell'audio, riscritto a ogni render. Serve a non sovrascrivere ciò
 che si è già ascoltato: vedi il README.
 
+In modalità take i `.sv` prendono il nome della take in coda al basename
+(`<study_id>_<stream_id>_e1__density__<data_ora>.sv`): l'audio no, il suo nome
+lo cerca `cmd_sv` ed è già unico dentro la sua cartella.
+
 ## Comandi Make
 
 ```bash

@@ -501,6 +501,17 @@ def cmd_compose(study: str, seed: int | None, steps: int | None, start: str | No
     return 0
 
 
+def sv_take_suffix(g: str) -> str:
+    """Suffisso del basename dei ``.sv`` in modalita' take.
+
+    Sonic Visualiser identifica una sessione dal nome del file: due take dello
+    stesso studio producono ``.sv`` omonimi, e se una e' gia' aperta l'altra
+    non si apre — proprio il confronto fra take, che e' il motivo per cui
+    esistono. Il nome della take li distingue.
+    """
+    return f"__{os.path.basename(g)}" if take_label() else ""
+
+
 def _cmd_sv_document(study: str, g: str, layout: str, total: list, process: str,
                      axis_paths: list | None = None) -> None:
     """Emette i .sv dei documenti multi-stream di un processo (``stack``/
@@ -522,14 +533,15 @@ def _cmd_sv_document(study: str, g: str, layout: str, total: list, process: str,
         if not os.path.exists(audio):
             print(f"[sv] audio {base} mancante: esegui prima 'render'.", file=sys.stderr)
             continue
-        suffix = f"_{layout}" if layout == "single" else ""
+        suffix = (f"_{layout}" if layout == "single" else "") + sv_take_suffix(g)
         out = os.path.join(g, "sv", process, f"{study}_{base}" + suffix + ".sv")
         stack_to_sv(variant, audio, out, layout=layout, axis_paths=axis_paths)
         total.append(out)
         print(f"[sv] {out}")
 
         # Un pane per stem (audio separato per stream): richiede 'render --stem'.
-        stems_out = os.path.join(g, "sv", process, f"{study}_{base}_stems.sv")
+        stems_out = os.path.join(
+            g, "sv", process, f"{study}_{base}_stems" + sv_take_suffix(g) + ".sv")
         if stack_stems_to_sv(variant, audio_dir, stems_out, process=base,
                              axis_paths=axis_paths):
             total.append(stems_out)
@@ -581,13 +593,16 @@ def cmd_sv(study: str, layout: str, markers: bool = True, stream: str | None = N
                 continue
             variant_name = fname[:-4]
             # Il basename include lo studio (per distinguerlo aprendo piu' .sv
-            # in Sonic Visualiser) e lo stream (per distinguere i file in SV).
+            # in Sonic Visualiser) e lo stream (per distinguere i file in SV);
+            # in modalita' take ci si aggiunge il nome della take, stessa
+            # ragione (vedi ``sv_take_suffix``). L'audio resta senza: il suo
+            # nome lo cerca ``cmd_sv``, ed e' gia' unico per cartella.
             basename = f"{study}_{sub}_{variant_name}" if sub else f"{study}_{variant_name}"
             audio = os.path.join(audio_dir, basename + ".aif")
             if not os.path.exists(audio):
                 print(f"[sv] {basename}: audio mancante, salto.", file=sys.stderr)
                 continue
-            suffix = f"_{layout}" if layout == "single" else ""
+            suffix = (f"_{layout}" if layout == "single" else "") + sv_take_suffix(g)
             out = os.path.join(sv_dir, basename + suffix + ".sv")
             variant_to_sv(os.path.join(variant_dir, fname), audio, out,
                           layout=layout, markers=markers, markers_scope=markers_scope)

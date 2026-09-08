@@ -10,6 +10,7 @@ test, non nei target make.
 import os
 
 import pytest
+import yaml
 
 from granstudies import __main__ as cli
 from granstudies import render as render_mod
@@ -125,3 +126,62 @@ def test_render_non_tocca_laudio_hardlinkato_della_take_precedente(tmp_path, mon
     for entry in manifest[1:]:
         other = os.path.relpath(entry["audio"], audio_dir)
         assert os.stat(take2 / other).st_nlink == 2
+
+
+# --- nomi dei .sv ----------------------------------------------------------
+
+_DOC_SWEEP = {
+    "study_id": "s_take",
+    "seed": 7,
+    "samples_dir": "samples",
+    "base": {"onset": 0, "sample": "corpus.wav", "duration": 10,
+             "time_mode": "normalized", "grain": {"envelope": "hanning"}},
+    "axes": {"density": {"path": "density", "baseline": 20, "values": [5, 50]}},
+    "sweep": {"mode": "envelope", "orders": [1], "plateau": 5, "transition": 5},
+}
+
+
+def test_sv_di_take_diverse_hanno_nomi_diversi(tmp_path, monkeypatch):
+    """Sonic Visualiser identifica la sessione dal nome file: due take dello
+    stesso studio devono produrre .sv distinguibili, altrimenti la seconda non
+    si apre mentre la prima e' aperta — e il confronto fra take e' il motivo
+    per cui esistono."""
+    import granstudies.render as render_mod
+    import granstudies.sv_export as sv_export
+
+    monkeypatch.setattr(cli, "REPO_ROOT", str(tmp_path))
+    sdir = tmp_path / "studies" / "s_take"
+    sdir.mkdir(parents=True)
+    (sdir / "study.yml").write_text(yaml.safe_dump(_DOC_SWEEP, sort_keys=False))
+
+    def fake_render(yaml_path, output_path, samples_dir, output_sr=48000,
+                    per_stream=False, use_cache=False, cache_dir=None, jobs=1):
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        with open(output_path, "w") as fh:
+            fh.write("x")
+        return [output_path]
+
+    monkeypatch.setattr(render_mod.engine_bridge, "render", fake_render)
+    esportati = []
+    monkeypatch.setattr(
+        sv_export, "variant_to_sv",
+        lambda variant, audio, out, layout, markers, markers_scope: esportati.append(out),
+    )
+
+    for label in ("2026-01-01_1200", "2026-01-01_1400"):
+        (tmp_path / "takes" / "s_take" / label).mkdir(parents=True)
+        monkeypatch.setenv("TAKE", label)
+        assert cli.cmd_sweep("s_take") == 0
+        assert cli.cmd_render("s_take", no_score=True) == 0
+        assert cli.cmd_sv("s_take", layout="multi") == 0
+
+    nomi = [os.path.basename(p) for p in esportati]
+    assert len(nomi) == 2, nomi          # una variante per take: il test non gira a vuoto
+    assert len(nomi) == len(set(nomi)), nomi
+    assert all("2026-01-01_1200" in n or "2026-01-01_1400" in n for n in nomi)
+
+
+def test_sv_senza_take_non_prende_suffisso(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "REPO_ROOT", str(tmp_path))
+    monkeypatch.delenv("TAKE", raising=False)
+    assert cli.sv_take_suffix(os.path.join(str(tmp_path), "generated", "s1")) == ""

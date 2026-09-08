@@ -81,8 +81,11 @@ all'output).
 corrente sovrascrivendola**: la protezione sta nell'aprire la take, non nella
 variabile.
 
-Ogni take ha i **suoi** `.sv`, che puntano al suo audio: `make sv` li rigenera
-dentro la take corrente (e `study` lo fa sempre). Non vengono ereditati dalla
+Ogni take ha i **suoi** `.sv`, col nome della take nel basename
+(`..._e2__grain.duration__pitch.ratio__2026-09-08_1432.sv`) e i path al suo
+audio: `make sv` li rigenera dentro la take corrente (e `study` lo fa sempre).
+Il nome della take nel file serve ad aprire due take insieme — Sonic Visualiser
+identifica la sessione dal nome, e con due `.sv` omonimi la seconda non si apre. Non vengono ereditati dalla
 take precedente — dentro un `.sv` il path dell'audio è assoluto, quindi una
 sessione copiata aprirebbe in silenzio il suono di prima.
 
