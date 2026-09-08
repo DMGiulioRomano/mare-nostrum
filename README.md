@@ -81,6 +81,11 @@ all'output).
 corrente sovrascrivendola**: la protezione sta nell'aprire la take, non nella
 variabile.
 
+Ogni take ha i **suoi** `.sv`, che puntano al suo audio: `make sv` li rigenera
+dentro la take corrente (e `study` lo fa sempre). Non vengono ereditati dalla
+take precedente — dentro un `.sv` il path dell'audio è assoluto, quindi una
+sessione copiata aprirebbe in silenzio il suono di prima.
+
 Per riascoltare una take vecchia senza rigenerare niente, i `.sv` sono lì:
 
 ```bash

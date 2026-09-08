@@ -19,9 +19,14 @@ where: _require-study $(MARKER)
 
 # Solo `audio/` viene hardlinkato: e' li' che stanno i gigabyte, ed e' l'unica
 # cosa che scrive l'engine (con lo sgancio dell'hardlink fatto da render.py).
-# Tutto il resto -- yaml/, cache/, sv/, lo snapshot study.yml -- e' testo, viene
-# copiato davvero: quei file li riscrivono in place scritture che troncano
-# l'inode, e condividerli corromperebbe la take precedente.
+# yaml/, cache/ e lo snapshot study.yml sono testo e vengono copiati davvero:
+# quei file li riscrivono scritture che troncano l'inode, e condividerli
+# corromperebbe la take precedente.
+#
+# `sv/` non viene ereditato affatto: dentro un .sv il path dell'audio e'
+# ASSOLUTO (sv_export.py:485), quindi una sessione copiata aprirebbe in silenzio
+# l'audio della take di prima. `make sv` la rigenera in pochi secondi (e `study`
+# lo fa sempre): meglio nessun .sv che uno che punta altrove.
 #
 # Apre una take nuova, ma solo se study.yml e' cambiato rispetto allo snapshot
 # della take corrente: rilanciare senza aver toccato nulla resta nella stessa
@@ -44,7 +49,7 @@ take: _require-study
 		for e in "$$src"/*; do \
 			case "$$(basename $$e)" in \
 				audio) cp -al "$$e" "$(TAKES_DIR)/$$new/audio" ;; \
-				latest) ;; \
+				sv|latest) ;; \
 				*) cp -a "$$e" "$(TAKES_DIR)/$$new/" ;; \
 			esac; \
 		done; \

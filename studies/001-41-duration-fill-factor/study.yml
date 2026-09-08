@@ -37,7 +37,7 @@ base:
     loop_end: 0.363636363636
   pitch:
     ratio: 1.0
-    #range: 0.05
+    range: 0.05
   pan: 0
   #pan_range: 360
   volume: 12

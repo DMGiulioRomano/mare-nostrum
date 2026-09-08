@@ -540,6 +540,12 @@ def _padded_stem(audio_path: str, onset: float, padded_dir: str) -> str:
     pad_shape = (pad_frames,) + data.shape[1:]
     padded = np.concatenate([np.zeros(pad_shape, dtype=data.dtype), data])
     os.makedirs(padded_dir, exist_ok=True)
+    # Modalita' take: ``padded/`` sta dentro ``audio/``, quindi arriva
+    # hardlinkato dalla take precedente. ``sf.write`` tronca in place e
+    # riscriverebbe l'audio gia' ascoltato — stessa guardia di ``render.py``,
+    # qui perche' questi file li scrive l'export, non il render.
+    if os.path.exists(out_path) and os.stat(out_path).st_nlink > 1:
+        os.unlink(out_path)
     sf.write(out_path, padded, sr, format="AIFF")
     return out_path
 
