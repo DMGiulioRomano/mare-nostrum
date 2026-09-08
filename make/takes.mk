@@ -28,6 +28,11 @@ where: _require-study $(MARKER)
 # l'audio della take di prima. `make sv` la rigenera in pochi secondi (e `study`
 # lo fa sempre): meglio nessun .sv che uno che punta altrove.
 #
+# Il nome della take e' data + le chiavi cambiate rispetto alla take corrente
+# (``2026-09-08_1704-grain.duration+volume``): un timestamp da solo non dice
+# cosa si sta ascoltando, ed e' proprio il confronto fra due take il gesto per
+# cui esistono. Le chiavi le calcola ``granstudies take-slug``.
+#
 # Apre una take nuova, ma solo se study.yml e' cambiato rispetto allo snapshot
 # della take corrente: rilanciare senza aver toccato nulla resta nella stessa
 # take, niente cartelle gemelle. E' il gesto dell'utente -- ho cambiato un
@@ -42,7 +47,9 @@ take: _require-study
 		echo "[take] study.yml invariato: resto in $(TAKES_DIR)/$$(readlink $$cur)"; \
 		exit 0; \
 	fi; \
-	ts=$$(date +%Y-%m-%d_%H%M); new=$$ts; n=1; \
+	slug=""; \
+	if [ -n "$$src" ]; then slug=$$($(PY) -m granstudies take-slug $(STUDY) "$$src/study.yml"); fi; \
+	ts=$$(date +%Y-%m-%d_%H%M)$${slug:+-$$slug}; new=$$ts; n=1; \
 	while [ -e "$(TAKES_DIR)/$$new" ]; do n=$$((n+1)); new=$$ts-$$n; done; \
 	mkdir -p "$(TAKES_DIR)/$$new"; \
 	if [ -n "$$src" ]; then \
@@ -71,7 +78,7 @@ takes: _require-study
 		label=$$(basename "$$d"); \
 		size=$$(du -sh "$$d" 2>/dev/null | cut -f1); \
 		mark=""; [ "$$label" = "$$cur" ] && mark="  <- latest"; \
-		printf "  %-22s %6s%s\n" "$$label" "$$size" "$$mark"; \
+		printf "  %-40s %6s%s\n" "$$label" "$$size" "$$mark"; \
 		if [ -n "$$prev" ] && [ -f "$$prev/study.yml" ] && [ -f "$$d/study.yml" ]; then \
 			diff "$$prev/study.yml" "$$d/study.yml" | grep "^[<>]" | head -6 | sed "s/^/        /"; \
 		elif [ ! -f "$$d/study.yml" ]; then \
@@ -82,7 +89,7 @@ takes: _require-study
 		prev="$$d"; \
 	done; \
 	echo "  ---"; \
-	printf "  %-22s %6s\n" "totale su disco" "$$(du -sh $(TAKES_DIR) | cut -f1)"
+	printf "  %-40s %6s\n" "totale su disco" "$$(du -sh $(TAKES_DIR) | cut -f1)"
 
 # Tiene le KEEP take piu' recenti (default 3) piu' quella corrente, cancella il
 # resto. Cancellare una take non libera lo spazio condiviso via hardlink con
