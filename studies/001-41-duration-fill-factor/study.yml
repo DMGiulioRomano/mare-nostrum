@@ -23,7 +23,7 @@ base:
   distribution_mode: uniform
   # Un arco sync->async dentro OGNI gradino (7 s): n_reps = 24 x 7 = 168.
   # Se cambiano i values degli assi, va rifatto il conto.
-  distribution: [[[[0, 0],[30, 0], [100, 1]], 1.0, 168, "cubic"]]
+  distribution: .3 #[[[[0, 0],[30, 0], [100, 1]], 1.0, 168, "cubic"]]
   grain:
     #duration_range: 0.001
     envelope: hanning

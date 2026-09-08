@@ -26,7 +26,6 @@ STUDY ?=
 include make/venv.mk
 include make/studies.mk
 include make/render.mk
-include make/takes.mk
 include make/clean.mk
 
 .PHONY: help
@@ -49,10 +48,7 @@ help:
 	@echo "  make brano                  renderizza il brano (mare-nostrum.yml -> generated/brano/)"
 	@echo "                              flag: FORMAT=wav|flac VISUALIZE=1 SV=1 JOBS=n RENDERER=numpy|csound"
 	@echo "  make samples               ricrea i symlink di samples/ (override: REFS=...)"
-	@echo "  make take STUDY=...        apre una take nuova (serve 'export TAKE=1' in sessione)"
-	@echo "  make takes STUDY=...       storico delle take: data, peso, diff dello study.yml"
-	@echo "  make takes-clean STUDY=... tiene le ultime KEEP take (default 3)"
-	@echo "  make where STUDY=...       cartella di output corrente (generated/ o takes/)"
+	@echo "  make where STUDY=...       cartelle di output correnti (una per combinazione di for_each:)"
 	@echo "  make clean / clean-all      pulizia output / output+venv"
 	@echo "  make kill-sonic             chiude tutte le istanze di Sonic Visualiser (senza salvare)"
 

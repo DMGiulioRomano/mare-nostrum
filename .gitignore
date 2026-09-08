@@ -22,5 +22,7 @@ htmlcov/
 # OS
 .DS_Store
 .vscode/
-# Storico delle take (audio, gigabyte): rigenerabile ma non ricostruibile
+# Archivio delle vecchie take (la modalita' non esiste piu': vedi for_each:).
+# La riga resta finche' la cartella e' sul disco, per non riempire git status
+# di gigabyte di audio.
 /takes/

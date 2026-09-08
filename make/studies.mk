@@ -16,6 +16,13 @@ versions: _require-study $(MARKER)
 percorso: _require-study $(MARKER)
 	$(PY) -m granstudies percorso $(STUDY)
 
+# Cartella (o cartelle) di output correnti: le risolve granstudies, non lo
+# shell, cosi' la regola di `for_each:` e del filtro COMBO vive in un posto
+# solo (la usa anche la funzione zsh `study`). Una riga per combinazione.
+.PHONY: where
+where: _require-study $(MARKER)
+	@$(PY) -m granstudies where $(STUDY)
+
 .PHONY: describe
 describe: _require-study $(MARKER)
 	$(PY) -m granstudies describe $(STUDY)

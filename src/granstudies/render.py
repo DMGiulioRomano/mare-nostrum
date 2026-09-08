@@ -490,24 +490,6 @@ def render_variants(
              per_stream, use_cache, cache_dir),
         ))
 
-    # Sicurezza hardlink (modalita' take). Una take nasce come ``cp -al`` della
-    # precedente: finche' un file non viene rirenderizzato e' lo STESSO inode di
-    # quello della take di prima. L'engine scrive troncando il file in place,
-    # quindi senza questo unlink il render corromperebbe l'audio gia' ascoltato.
-    # Tocca solo i target delle varianti pending: le skipped non vengono
-    # riscritte e restano condivise — e' proprio li' che sta il risparmio di
-    # disco. Gli stem (``{base}__*.aif``) seguono il mix; quelli che sono a loro
-    # volta il target di un'altra variante restano fuori, altrimenti un nome che
-    # e' prefisso di un altro cancellerebbe un file che nessuno rigenerera'.
-    targets = {e["audio"] for e in manifest}
-    for entry, _args in pending:
-        base = os.path.splitext(entry["audio"])[0]
-        for path in [entry["audio"]] + glob.glob(base + "__*.aif"):
-            if path != entry["audio"] and path in targets:
-                continue
-            if os.path.exists(path) and os.stat(path).st_nlink > 1:
-                os.unlink(path)
-
     if pending:
         # ponytail: cap a 8 processi, una variante lunga puo' tenere in RAM
         # l'intero buffer audio; alzare con jobs= se la memoria lo consente.
