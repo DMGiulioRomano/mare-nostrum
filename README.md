@@ -71,6 +71,20 @@ studio intero.
 | `1`, `true`, `yes` | apre una take se `study.yml` è cambiato, poi rigenera lì |
 | `2026-09-08_1432` | rigenera dentro quella take, senza aprirne di nuove |
 
+**Rigenerare dentro una take vecchia** (`TAKE=<label>`) ne **sovrascrive**
+l'audio: è una modifica di quella take, non una take nuova. Le altre restano
+intatte — `render.py` sgancia l'hardlink prima di scrivere — e `latest` non si
+sposta. Anche lo snapshot `study.yml` della take viene riscritto a ogni render:
+dopo, la take descrive il nuovo stato, non quello di prima. Per ripartire
+proprio dai valori di quella take invece che dallo `study.yml` corrente:
+
+```bash
+export TAKE=2026-09-08_1432
+cp takes/001-41-duration-pitch/$TAKE/study.yml studies/001-41-duration-pitch/study.yml
+# modifica, poi: study 001-41-duration-pitch
+export TAKE=true                    # torna al flusso normale
+```
+
 Per un singolo lancio fuori dalla modalità, senza toccare la sessione:
 `TAKE=false study 001-41-duration-pitch`. Per sapere sempre dove si sta
 scrivendo: `make where STUDY=...` (lo dice anche il render, in testa
