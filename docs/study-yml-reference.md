@@ -1693,7 +1693,7 @@ generated/<study_id>/
 `generated/` è rigenerabile: dopo un aggiornamento basta rilanciare
 `make sweep` / `make stack` / `make versions` / `make percorso`.
 
-Con la **modalità take** (`export TAKE=1`) lo stesso albero, identico in ogni
+Con la **modalità take** (`export TAKE=true`) lo stesso albero, identico in ogni
 sotto-cartella, vive sotto `takes/<study_id>/<data_ora>/` invece che sotto
 `generated/<study_id>/`, più uno `study.yml` — lo snapshot dello stato che ha
 prodotto quell'audio, riscritto a ogni render. Serve a non sovrascrivere ciò

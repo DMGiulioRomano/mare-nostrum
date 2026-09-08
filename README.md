@@ -49,7 +49,7 @@ attivo l'output va invece in `takes/<studio>/<data_ora>/`, un albero completo
 per take: la versione di prima resta lì da riascoltare.
 
 ```bash
-export TAKE=1                       # una volta per sessione
+export TAKE=true                    # una volta per sessione
 study 001-41-duration-pitch         # apre una take nuova e rigenera dentro
 # ascolto, modifica di study.yml
 study 001-41-duration-pitch         # nuova take; la precedente resta intatta
@@ -77,7 +77,7 @@ scrivendo: `make where STUDY=...` (lo dice anche il render, in testa
 all'output).
 
 **La take la apre `study`.** Lanciando `make render STUDY=...` a mano con
-`TAKE=1`, senza passare da `study` o `make take`, si rigenera **dentro la take
+`TAKE=true`, senza passare da `study` o `make take`, si rigenera **dentro la take
 corrente sovrascrivendola**: la protezione sta nell'aprire la take, non nella
 variabile.
 

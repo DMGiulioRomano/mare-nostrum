@@ -1,5 +1,5 @@
 # Modalita' take: ogni rigenerazione va in una cartella nuova invece di
-# sovrascrivere l'audio gia' ascoltato. Interruttore di sessione: `export TAKE=1`.
+# sovrascrivere l'audio gia' ascoltato. Interruttore di sessione: `export TAKE=true`.
 # Senza TAKE tutto resta com'era, in generated/<study>/.
 #
 # Una take nasce come `cp -al` della precedente: hardlink, quindi istantanea e a

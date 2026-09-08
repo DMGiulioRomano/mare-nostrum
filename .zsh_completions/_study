@@ -9,7 +9,7 @@ function study {
     echo "study: '$s' non ha un blocco 'sweep:', STREAM='$stream' verra' ignorato (0 sessioni .sv)." >&2
     return 1
   fi
-  # Modalita' take (export TAKE=1): apre una take nuova PRIMA di rigenerare,
+  # Modalita' take (export TAKE=true): apre una take nuova PRIMA di rigenerare,
   # cosi' l'audio della sessione precedente non viene sovrascritto. `make take`
   # e' un no-op se study.yml non e' cambiato, quindi si puo' chiamare sempre.
   # Con TAKE=<label> si sta rigenerando dentro una take vecchia di proposito:

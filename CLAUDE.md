@@ -49,7 +49,7 @@ cartesiane, non legata a un range.
 
 ## Modalità take
 
-Con `export TAKE=1` in sessione, la rigenerazione non sovrascrive più l'audio
+Con `export TAKE=true` in sessione, la rigenerazione non sovrascrive più l'audio
 già ascoltato: l'output va in `takes/<scala>/<data_ora>/` (albero completo,
 hardlink dell'audio della take precedente, quindi costa solo ciò che cambia).
 `study <scala>` apre la take da sé quando `study.yml` è cambiato. `make takes`
