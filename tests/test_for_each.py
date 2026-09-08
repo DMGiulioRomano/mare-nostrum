@@ -190,7 +190,7 @@ def test_combo_filtra_e_una_label_sbagliata_e_errore(tmp_path, monkeypatch):
     monkeypatch.setenv("COMBO", "volume=99")
     with pytest.raises(SpecError) as e:
         cli._combos("s_fe")
-    assert "volume=0, volume=6" in str(e.value)
+    assert "volume=0\n  volume=6" in str(e.value)
 
 
 def _fake_engine(monkeypatch):
@@ -289,3 +289,31 @@ def test_senza_for_each_niente_suffisso_e_niente_sottocartella(tmp_path, monkeyp
     assert cli.main(["sweep", "s_fe"]) == 0
     assert cli.sv_combo_suffix() == ""
     assert (tmp_path / "generated" / "s_fe" / "yaml").is_dir()
+
+
+# --- COMBO come filtro per fette -------------------------------------------
+
+_DOC_4 = dict(_DOC, for_each={
+    "base.volume": {"values": [0, 6]},
+    "base.pan": {"values": [0, 90]},
+})
+
+
+def test_combo_seleziona_una_fetta_non_solo_una_combinazione(tmp_path, monkeypatch):
+    # Con piu' assi esterni la label intera e' lunga da scrivere e la domanda
+    # e' quasi sempre parziale: "tutte le pan a volume 6".
+    _studio(tmp_path, monkeypatch, _DOC_4)
+    assert [c.label for c in cli._combos("s_fe")] == [
+        "volume=0__pan=0", "volume=0__pan=90", "volume=6__pan=0", "volume=6__pan=90"]
+    monkeypatch.setenv("COMBO", "volume=6")
+    assert [c.label for c in cli._combos("s_fe")] == ["volume=6__pan=0", "volume=6__pan=90"]
+    # i vincoli sono in and, in qualunque ordine
+    monkeypatch.setenv("COMBO", "pan=90__volume=0")
+    assert [c.label for c in cli._combos("s_fe")] == ["volume=0__pan=90"]
+
+
+def test_il_match_e_per_segmento_intero(tmp_path, monkeypatch):
+    # `distribution=0` non deve prendersi anche `distribution=0.3`.
+    _studio(tmp_path, monkeypatch, dict(_DOC, for_each={"base.volume": {"values": [0, 0.3]}}))
+    monkeypatch.setenv("COMBO", "volume=0")
+    assert [c.label for c in cli._combos("s_fe")] == ["volume=0"]

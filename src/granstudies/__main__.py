@@ -729,8 +729,9 @@ def _combos(study: str) -> list:
     """Le combinazioni da girare: quelle dichiarate, ristrette da ``COMBO``.
 
     ``COMBO`` e' un filtro di sessione, non un interruttore di modalita': senza,
-    si fa tutto. Serve a non rirenderizzare sei varianti da venti minuti per
-    sentirne una, e a non aprire sei sessioni di Sonic Visualiser insieme.
+    si fa tutto. Serve a non rirenderizzare decine di varianti da venti minuti
+    per sentirne una, e a non aprire decine di sessioni di Sonic Visualiser
+    insieme.
     """
     from .yaml_loc import load as load_with_locations
 
@@ -742,13 +743,21 @@ def _combos(study: str) -> list:
     voluta = os.environ.get("COMBO", "").strip()
     if not voluta:
         return combos
-    scelte = [c for c in combos if c.label == voluta]
+    # Filtro per **fetta**, non per combinazione singola: i vincoli sono
+    # segmenti di label (``distribution=0.3``), e passa chi li contiene tutti.
+    # Con quattro assi esterni le combinazioni sono decine e la label intera e'
+    # lunga da scrivere, mentre la domanda vera e' quasi sempre parziale —
+    # "tutte le dispersioni a distribution 0.3". Il match e' per segmento
+    # intero, quindi ``distribution=0`` non prende ``distribution=0.3``.
+    vincoli = [v for v in voluta.split("__") if v]
+    scelte = [c for c in combos if set(vincoli) <= set(c.label.split("__"))]
     if not scelte:
-        disponibili = ", ".join(c.label for c in combos if c.label) or "nessuna"
+        disponibili = "\n  ".join(c.label for c in combos if c.label) or "nessuna"
         raise SpecError(
-            f"COMBO='{voluta}' non e' una combinazione di '{study}'.",
+            f"COMBO='{voluta}' non seleziona nessuna combinazione di '{study}'.",
             key=(for_each.BLOCK,),
-            hint=f"combinazioni dichiarate: {disponibili}. "
+            hint=f"i vincoli sono segmenti di label, in and fra loro. "
+                 f"Combinazioni dichiarate:\n  {disponibili}\n"
                  "Togli COMBO dall'ambiente per girarle tutte.",
             source=path,
         )

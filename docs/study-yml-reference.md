@@ -1734,15 +1734,20 @@ Ci sono chiavi che non possono essere assi interni, per costruzione:
 
 ### Il filtro `COMBO`
 
-`COMBO=<label>` restringe ogni comando a una combinazione sola — non
-rirenderizzare sei varianti da venti minuti per sentirne una, e non aprire sei
-sessioni di Sonic Visualiser insieme. È un filtro di sessione, non un
-interruttore di modalità: senza, si fa tutto. Una label che non esiste è un
-errore che elenca quelle dichiarate.
+`COMBO` restringe ogni comando a una **fetta** dello spazio: i vincoli sono
+segmenti di label (`coppia=duration-pitch`, `distribution=0.3`), separati da
+`__` e in **and** fra loro, in qualunque ordine. Passa chi li contiene tutti,
+quindi un vincolo solo seleziona tutte le combinazioni che lo hanno, e la label
+intera ne seleziona una. Il match è per segmento intero: `distribution=0` non
+prende `distribution=0.3`. È un filtro di sessione, non un interruttore di
+modalità: senza, si fa tutto — e con quattro assi esterni «tutto» sono decine
+di render da venti minuti, quindi la fetta è la norma. Un filtro che non
+seleziona niente è un errore che elenca le combinazioni dichiarate.
 
 ```zsh
-make where STUDY=<id>                      # una root per combinazione
-COMBO=distribution=1 study <id>            # genera e apre solo quella
+make where STUDY=<id>                                  # una root per combinazione
+COMBO=distribution=1 study <id>                        # tutte le combinazioni a distribution 1
+COMBO=coppia=speed-pitch__distribution=0.3 study <id>  # la loro intersezione
 ```
 
 ### Combinazioni orfane
