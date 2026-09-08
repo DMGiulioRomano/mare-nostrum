@@ -21,7 +21,9 @@ base:
   sample: 001-41_5-5_5.wav   # crudo, peak -26 dBFS: compensato da volume: 6
   time_mode: normalized
   distribution_mode: uniform
-  distribution: [[0,0,"cubic"],[1,1]]
+  # Un arco sync->async dentro OGNI gradino (7 s): n_reps = 24 x 7 = 168.
+  # Se cambiano i values degli assi, va rifatto il conto.
+  distribution: [[[[0, 0], [100, 1]], 1.0, 168, "cubic"]]
   grain:
     #duration_range: 0.001
     envelope: hanning
