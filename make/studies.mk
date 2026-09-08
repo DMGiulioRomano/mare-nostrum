@@ -31,8 +31,11 @@ compose: _require-study $(MARKER)
 		$(if $(STEPS),--steps $(STEPS),) \
 		$(if $(START),--start $(START),)
 
+# Niente `render` fra i prerequisiti: `all-study` lo ha gia' fatto, e nel giro
+# di `study` la seconda passata era solo rumore nel log. Se l'audio manca,
+# cmd_sv lo dice variante per variante ("esegui prima 'render'").
 .PHONY: sv
-sv: _require-study render
+sv: _require-study $(MARKER)
 	$(PY) -m granstudies sv $(STUDY) $(if $(LAYOUT),--layout $(LAYOUT),) $(if $(STREAM),--stream $(STREAM),)
 
 # Pipeline completa: sweep + stack + versions + percorso + render. versions e

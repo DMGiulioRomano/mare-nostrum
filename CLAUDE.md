@@ -47,6 +47,15 @@ prendono il prefisso `stack_` seguito dallo stesso range: `stack_1-50smp`.
 La cartella `stack` senza suffisso resta quella storica delle curve non
 cartesiane, non legata a un range.
 
+## Modalità take
+
+Con `export TAKE=true` in sessione, la rigenerazione non sovrascrive più l'audio
+già ascoltato: l'output va in `takes/<scala>/<data_ora>/` (albero completo,
+hardlink dell'audio della take precedente, quindi costa solo ciò che cambia).
+`study <scala>` apre la take da sé quando `study.yml` è cambiato. `make takes`
+mostra lo storico col diff dello `study.yml`. Senza `TAKE` tutto resta in
+`generated/`. Vedi `docs/plans/done/take-mode.md`.
+
 ## Diario di ascolto
 
 Il diario è unico per lo studio e vive in `studies/ascolto/`:

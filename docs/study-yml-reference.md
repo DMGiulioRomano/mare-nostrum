@@ -1693,9 +1693,19 @@ generated/<study_id>/
 `generated/` è rigenerabile: dopo un aggiornamento basta rilanciare
 `make sweep` / `make stack` / `make versions` / `make percorso`.
 
+Con la **modalità take** (`export TAKE=true`) lo stesso albero, identico in ogni
+sotto-cartella, vive sotto `takes/<study_id>/<data_ora>/` invece che sotto
+`generated/<study_id>/`, più uno `study.yml` — lo snapshot dello stato che ha
+prodotto quell'audio, riscritto a ogni render. Serve a non sovrascrivere ciò
+che si è già ascoltato: vedi il README.
+
 ## Comandi Make
 
 ```bash
+make take   STUDY=<id>                    # apre una take (no-op se study.yml e' invariato)
+make takes  STUDY=<id>                    # storico delle take: data, peso, diff
+make takes-clean STUDY=<id> KEEP=3        # tiene le KEEP piu' recenti
+make where  STUDY=<id>                    # cartella di output corrente
 make sweep  STUDY=<id>                    # genera tutte le stream
 make sweep  STUDY=<id> STREAM=nome        # genera solo quella stream
 make stack  STUDY=<id>                    # genera il documento multi-stream (stack, puro)

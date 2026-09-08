@@ -37,14 +37,14 @@ base:
     loop_end: 0.363636363636
   pitch:
     ratio: 1.0
-    #range: 0.05
+    range: 0.05
   pan: 0
   #pan_range: 360
-  volume: 6
+  volume: 12
 
 sweep:
   mode: envelope
-  transition: 20   # tutti gli assi step -> durata = N * transition: 20s per gradino
+  transition: 7   # tutti gli assi step -> durata = N * transition: 20s per gradino
   # grain.duration lento, fill_factor veloce: per ogni grana scorrono tutte le densità.
   orderings:
     - [grain.duration, fill_factor]
