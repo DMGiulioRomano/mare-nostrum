@@ -58,10 +58,43 @@ make takes STUDY=001-41-duration-pitch        # storico: data, peso, diff dello 
 make takes-clean STUDY=... KEEP=3             # tiene le 3 più recenti
 ```
 
-Una take nuova nasce **solo se `study.yml` è cambiato**, e nasce come hardlink
-di quella prima: costa il tempo e il disco delle sole varianti effettivamente
-toccate dalla modifica. `TAKE=<data_ora>` torna dentro una take vecchia;
-senza `TAKE` tutto resta come prima, in `generated/`.
+Una take nuova nasce **solo se `study.yml` è cambiato** (se rilanci senza aver
+toccato nulla resti nella stessa), e nasce come hardlink dell'audio di quella
+prima: costa il tempo e il disco delle sole varianti effettivamente toccate
+dalla modifica. Cambiare un valore dentro un asse muove poche varianti;
+cambiare un parametro in `base:` le muove tutte, e la take pesa quanto uno
+studio intero.
+
+| `TAKE` | Cosa fa `study <nome>` |
+|---|---|
+| non impostata, `false`, `0`, `no`, `off` | come sempre: `generated/<studio>/`, sovrascrive |
+| `1`, `true`, `yes` | apre una take se `study.yml` è cambiato, poi rigenera lì |
+| `2026-09-08_1432` | rigenera dentro quella take, senza aprirne di nuove |
+
+Per un singolo lancio fuori dalla modalità, senza toccare la sessione:
+`TAKE=false study 001-41-duration-pitch`. Per sapere sempre dove si sta
+scrivendo: `make where STUDY=...` (lo dice anche il render, in testa
+all'output).
+
+**La take la apre `study`.** Lanciando `make render STUDY=...` a mano con
+`TAKE=1`, senza passare da `study` o `make take`, si rigenera **dentro la take
+corrente sovrascrivendola**: la protezione sta nell'aprire la take, non nella
+variabile.
+
+Per riascoltare una take vecchia senza rigenerare niente, i `.sv` sono lì:
+
+```bash
+sonic takes/001-41-duration-pitch/2026-09-08_1432/sv/sweep/**/*.sv
+```
+
+Cancellare una take non libera lo spazio che condivide con quelle più recenti:
+il `du` della singola take sovrastima, la riga "totale su disco" di `make
+takes` è quella vera.
+
+> Dopo un aggiornamento del repo, la funzione `study` già caricata in una shell
+> aperta resta quella vecchia (il precmd la ricarica solo al cambio di
+> `GRANSTUDIES_ROOT`): `source .zsh_completions/_study`, o apri un terminale
+> nuovo.
 
 ## Struttura
 
