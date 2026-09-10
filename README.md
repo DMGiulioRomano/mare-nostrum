@@ -42,6 +42,34 @@ make compose STUDY=1-10ms
 make render-final STUDY=1-10ms
 ```
 
+## `graph` — la rete delle varianti discrete
+
+Con `sweep.mode: discrete` ogni punto della griglia è un file a sé, e il nome
+porta le coordinate:
+
+```
+o2__grain.duration=0.001__pitch.ratio=0.447.aif
+```
+
+`make graph STUDY=<id>` rilegge quei nomi e scrive un `graph.html` autonomo
+dentro `generated/<id>/[<combo>/]audio/sweep/discrete/`: una griglia
+cliccabile dove ogni cella suona il suo file, le frecce si spostano fra celle
+vicine, e i link in fondo portano alle altre combinazioni di `for_each:` già
+renderizzate.
+
+```bash
+make render STUDY=001-41    # serve l'audio: graph legge i .aif, non gli YAML
+make graph  STUDY=001-41
+open -a Safari "$(make -s where STUDY=001-41)/audio/sweep/discrete/graph.html"
+```
+
+Aprilo con **Safari**: Chrome non legge AIFF. Nessun server e nessuna
+dipendenza — i `src` sono relativi e l'HTML sta accanto all'audio.
+
+L'export per Sonic Visualiser (`make sv`) resta sul ramo `envelope`, dove i
+marker sono i plateau dello sweep; per i file discreti la navigazione è
+`graph`.
+
 ## `for_each:` — n valori del parametro, n file
 
 Gli `axes:` di uno studio scorrono **dentro** il file: su

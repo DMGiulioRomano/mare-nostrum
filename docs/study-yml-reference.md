@@ -74,6 +74,16 @@ axes:                             # * almeno un asse
 # Configurazione dello sweep (il processo possiede X: timing e durata derivata).
 sweep:
   mode: envelope                 # discrete | envelope | both (default discrete)
+                                 # discrete: un file per punto della griglia, con
+                                 #   le coordinate nel nome
+                                 #   (o2__grain.duration=0.001__pitch.ratio=0.447);
+                                 #   `make graph` ne fa una rete navigabile. Richiede
+                                 #   `base.duration` (durata del singolo file) e
+                                 #   ignora `orderings`, che sono roba da envelope:
+                                 #   con orderings popolati `orders` e' [] e non
+                                 #   viene generata nessuna variante discreta.
+                                 # envelope: un file per ordering, l'asse diventa un
+                                 #   envelope a gradini; durata = N * transition.
   plateau: 5                     # secondi di ascolto stabile per valore (default 5.0)
   transition: 5                  # secondi di transizione tra plateau (default 5.0)
                                  # Lo sweep fa SOLO il prodotto cartesiano (N^k plateau).

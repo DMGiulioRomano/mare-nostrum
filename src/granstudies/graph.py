@@ -43,20 +43,28 @@ def collect_nodes(audio_dir: str) -> List[Dict[str, Any]]:
     Scende ricorsivamente perche' il layout sotto ``discrete/`` puo' avere un
     livello di stream_id (vedi ``render.render_variants``).
     """
-    nodes: List[Dict[str, Any]] = []
+    best: Dict[Any, Dict[str, Any]] = {}
     for root, _dirs, files in os.walk(audio_dir):
         for f in sorted(files):
             if not f.endswith(".aif"):
                 continue
-            coords = parse_coords(os.path.splitext(f)[0])
+            name = os.path.splitext(f)[0]
+            coords = parse_coords(name)
             if not coords:
                 continue
-            nodes.append({
-                "name": os.path.splitext(f)[0],
+            node = {
+                "name": name,
                 "src": os.path.relpath(os.path.join(root, f), audio_dir),
                 "coords": coords,
-            })
-    return nodes
+            }
+            # Un punto = un nodo. Con ``render --stem`` accanto al mix c'e' lo
+            # stem per stream (``...__stream.aif``), stesse coordinate: nella
+            # griglia sarebbero la stessa cella. Vince il nome piu' corto, che
+            # e' sempre il mix.
+            k = (root, tuple(sorted(coords.items())))
+            if k not in best or len(name) < len(best[k]["name"]):
+                best[k] = node
+    return sorted(best.values(), key=lambda n: n["name"])
 
 
 def axes_of(nodes: List[Dict[str, Any]], order: List[str] | None = None) -> List[str]:

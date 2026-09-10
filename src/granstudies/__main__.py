@@ -573,7 +573,16 @@ def cmd_sv(study: str, layout: str, markers: bool = True, stream: str | None = N
         sv_dir = os.path.join(g, "sv", "sweep", "envelope", sub) if sub else os.path.join(g, "sv", "sweep", "envelope")
 
         if not os.path.isdir(variant_dir):
-            print(f"[sv] [{sub or 'default'}] nessuna variante envelope: esegui prima 'sweep {study}'.", file=sys.stderr)
+            # ponytail: l'export SV vive sul ramo envelope (i marker sono i
+            # plateau dello sweep). In `mode: discrete` non c'e' niente da
+            # marcare per variante: la navigazione e' `graph`. Se servira' un
+            # .sv anche per i file discreti, e' qui che va aggiunto il ramo.
+            if _load_spec(study).mode == "discrete":
+                print(f"[sv] [{sub or 'default'}] lo studio e' in 'mode: discrete': "
+                      f"l'export SV copre le varianti envelope. Per navigare i file "
+                      f"discreti usa 'graph {study}'.", file=sys.stderr)
+            else:
+                print(f"[sv] [{sub or 'default'}] nessuna variante envelope: esegui prima 'sweep {study}'.", file=sys.stderr)
             continue
         if not os.path.isdir(audio_dir):
             print(f"[sv] [{sub or 'default'}] nessun audio envelope: esegui prima 'render {study}'.", file=sys.stderr)

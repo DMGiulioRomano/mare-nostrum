@@ -34,6 +34,12 @@ def test_collect_nodes_scende_nelle_sottocartelle_di_stream(tmp_path):
     assert nodes[0]["src"] == os.path.join("stream", "o2__a=1__b=2.aif")
 
 
+def test_collect_nodes_tiene_il_mix_e_scarta_lo_stem(tmp_path):
+    _fake_audio(str(tmp_path), ["o2__a=1__b=2", "o2__a=1__b=2__stream"])
+    nodes = collect_nodes(str(tmp_path))
+    assert [n["name"] for n in nodes] == ["o2__a=1__b=2"]
+
+
 def test_collect_nodes_salta_i_file_senza_coordinate(tmp_path):
     _fake_audio(str(tmp_path), ["o2__a=1__b=2", "o0__baseline"])
     assert len(collect_nodes(str(tmp_path))) == 1
