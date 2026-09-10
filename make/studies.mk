@@ -29,6 +29,21 @@ where: _require-study $(MARKER)
 graph: _require-study $(MARKER)
 	$(PY) -m granstudies graph $(STUDY)
 
+# Audio rimasto senza YAML: succede quando si CAMBIA il valore di un asse
+# invece di aggiungerne uno. Di default elenca soltanto; APPLY=1 cancella.
+.PHONY: prune
+prune: _require-study $(MARKER)
+	$(PY) -m granstudies prune $(STUDY) $(if $(APPLY),--apply,)
+
+# Il giro completo per lo studio della grana: YAML, audio, pagina. Senza stem,
+# che per queste varianti sono una seconda copia identica del mix (un solo
+# stream) e raddoppiano lo spazio senza servire a niente: `graph` li scarta.
+# STEM resta sovrascrivibile da riga di comando (`make explore STEM=true`).
+.PHONY: explore
+explore: STEM := false
+explore: sweep render graph
+	@echo "[explore] fatto — 'make serve STUDY=$(STUDY)' per aprirla"
+
 # La pagina legge i campioni con fetch + decodeAudioData per disegnare
 # sonogramma e forma d'onda: da `file://` il browser lo vieta (origine opaca),
 # quindi la si serve. http.server della stdlib basta e avanza.

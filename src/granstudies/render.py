@@ -201,6 +201,29 @@ def write_percorso(
     return [path]
 
 
+def mode_dir(out_dir: str, mode: str, stream_id: str | None) -> str:
+    """Cartella di una modalita' (``discrete``/``envelope``), stream compreso."""
+    sub = stream_id or ""
+    return os.path.join(out_dir, mode, sub) if sub else os.path.join(out_dir, mode)
+
+
+def variant_paths(spec: StudySpec, out_dir: str) -> List[str]:
+    """I path YAML che questo spec **produrrebbe**, senza scrivere niente.
+
+    E' la stessa enumerazione di ``write_variants``, separata dalla scrittura:
+    ``prune`` deve sapere cosa lo study.yml genera oggi per riconoscere cio'
+    che e' rimasto da una versione precedente.
+    """
+    paths: List[str] = []
+    if spec.mode in ("discrete", "both"):
+        d = mode_dir(out_dir, "discrete", spec.stream_id)
+        paths += [os.path.join(d, v.name + ".yml") for v in generate_discrete_variants(spec)]
+    if spec.mode in ("envelope", "both"):
+        e = mode_dir(out_dir, "envelope", spec.stream_id)
+        paths += [os.path.join(e, ev.name + ".yml") for ev in generate_envelope_variants(spec)]
+    return paths
+
+
 def write_variants(spec: StudySpec, out_dir: str, *, output_sr: int = 48000) -> List[str]:
     """Genera lo sweep e scrive i file YAML in sotto-cartelle per modalita'.
 
@@ -209,14 +232,13 @@ def write_variants(spec: StudySpec, out_dir: str, *, output_sr: int = 48000) -> 
 
     Returns: lista dei path YAML scritti (discrete prima, poi envelope).
     """
-    sub = spec.stream_id or ""
     written: List[str] = []
     if spec.mode in ("discrete", "both"):
-        d = os.path.join(out_dir, "discrete", sub) if sub else os.path.join(out_dir, "discrete")
-        written += _write_discrete(spec, d, output_sr=output_sr)
+        written += _write_discrete(spec, mode_dir(out_dir, "discrete", spec.stream_id),
+                                   output_sr=output_sr)
     if spec.mode in ("envelope", "both"):
-        e = os.path.join(out_dir, "envelope", sub) if sub else os.path.join(out_dir, "envelope")
-        written += _write_envelope(spec, e, output_sr=output_sr)
+        written += _write_envelope(spec, mode_dir(out_dir, "envelope", spec.stream_id),
+                                   output_sr=output_sr)
     return written
 
 
@@ -383,6 +405,37 @@ def _split_jobs(budget: int, n_pending: int) -> tuple[int, int]:
     return workers, max(1, budget // workers)
 
 
+def audio_for(yaml_path: str, variant_dir: str, audio_dir: str,
+              study: str | None = None) -> tuple:
+    """``(nome variante, path audio)`` per uno YAML. Unica regola dei nomi.
+
+    Se lo YAML sta in una sotto-cartella di stream della modalita'
+    (``.../{discrete|envelope}/<stream_id>/<variante>``), il nome dello stream
+    entra nel basename per distinguerli in SV. La regola e' relativa alla
+    cartella di modalita', cosi' vale sia per il layout ``yaml/sweep/...`` sia
+    per directory di varianti passate direttamente; i documenti dei processi
+    (stack/versions/percorso) restano senza prefisso. Con ``study`` le varianti
+    di modalita' prendono anche il prefisso dello studio: e' il basename che
+    ``cmd_sv`` si aspetta (``{study}_{stream}_{variante}``), vedi PR #30.
+
+    Vive qui e non dentro ``render_variants`` perche' ``prune`` deve sapere
+    quale audio appartiene a quale YAML: due copie della regola divergerebbero
+    e ``prune`` finirebbe per cancellare file buoni.
+    """
+    rel = os.path.relpath(yaml_path, variant_dir)
+    name = os.path.splitext(rel)[0]
+    parts = name.split(os.sep)
+    audio_basename = parts[-1]
+    for i, p in enumerate(parts[:-1]):
+        if p in ("discrete", "envelope"):
+            if len(parts) - i >= 3:
+                audio_basename = f"{parts[-2]}_{parts[-1]}"
+            if study:
+                audio_basename = f"{study}_{audio_basename}"
+            break
+    return name, os.path.join(audio_dir, *parts[:-1], audio_basename + ".aif")
+
+
 def render_variants(
     variant_dir: str,
     audio_dir: str,
@@ -439,27 +492,7 @@ def render_variants(
     manifest: List[Dict[str, Any]] = []
     pending: List[tuple] = []
     for yaml_path in yaml_files:
-        rel = os.path.relpath(yaml_path, variant_dir)
-        name = os.path.splitext(rel)[0]
-        # Se lo YAML sta in una sotto-cartella di stream della modalita'
-        # (.../{discrete|envelope}/<stream_id>/<variante>), aggiungo il nome
-        # dello stream al basename per distinguerli in SV. La regola e'
-        # relativa alla cartella di modalita', cosi' vale sia per il layout
-        # yaml/sweep/... sia per directory di varianti passate direttamente;
-        # i documenti dei processi (stack/versions/percorso) restano senza
-        # prefisso. Con ``study`` le varianti di modalita' prendono anche il
-        # prefisso dello studio: e' il basename che ``cmd_sv`` si aspetta
-        # ({study}_{stream}_{variante}), vedi PR #30.
-        parts = name.split(os.sep)
-        audio_basename = parts[-1]
-        for i, p in enumerate(parts[:-1]):
-            if p in ("discrete", "envelope"):
-                if len(parts) - i >= 3:
-                    audio_basename = f"{parts[-2]}_{parts[-1]}"
-                if study:
-                    audio_basename = f"{study}_{audio_basename}"
-                break
-        audio_path = os.path.join(audio_dir, *parts[:-1], audio_basename + ".aif")
+        name, audio_path = audio_for(yaml_path, variant_dir, audio_dir, study)
         pdf_path = os.path.join(score_dir, f"{name}.pdf") if score_dir else None
 
         entry: Dict[str, Any] = {"name": name, "yaml": yaml_path, "audio": audio_path}

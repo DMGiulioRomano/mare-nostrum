@@ -63,9 +63,21 @@ o2__grain.duration=0.001__pitch.ratio=0.447.aif
   la pagina mostra il disco, non lo `study.yml`.
 
 ```bash
-make render STUDY=001-41    # serve l'audio: graph legge i .aif, non gli YAML
-make serve  STUDY=001-41    # scrive la pagina, la serve e la apre in Safari
+make explore STUDY=001-41   # sweep + render (senza stem) + graph, in un colpo
+make serve   STUDY=001-41   # scrive la pagina, la serve e la apre in Safari
 ```
+
+`explore` è il giro completo: YAML, audio, pagina. Rende senza stem — per
+queste varianti sono una copia identica del mix (un solo stream) e raddoppiano
+lo spazio senza servire a niente, dato che `graph` li scarta comunque. Per
+tenerli: `make explore STUDY=… STEM=true`.
+
+Il render è **incrementale**: aggiungendo valori a un asse, o una coppia
+nuova, rigenera solo ciò che manca e salta il resto in tempo zero (il nome del
+file porta le sue coordinate, quindi i punti già fatti restano validi). Quando
+invece **cambi** il valore di un asse, il vecchio audio resta orfano e la
+pagina lo mostrerebbe come una colonna fantasma: `make prune STUDY=…` elenca
+quei file, `make prune STUDY=… APPLY=1` li cancella.
 
 **Va servita, non aperta come file.** Il pannello di analisi legge i campioni
 con `fetch` + `decodeAudioData`, e da `file://` il browser lo vieta (origine

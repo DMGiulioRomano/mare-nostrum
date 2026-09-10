@@ -653,6 +653,67 @@ def cmd_graph(study: str) -> int:
     return 0
 
 
+def cmd_prune(study: str, apply: bool = False) -> int:
+    """Elenca (e con ``--apply`` cancella) i residui di una versione precedente.
+
+    Serve quando un valore di un asse **cambia** invece di essere aggiunto:
+    ``fill_factor=0.7`` che diventa ``0.75`` non rigenera il vecchio file, lo
+    lascia li'. Lo sweep lo segnala ma non lo tocca, il render lo salta perche'
+    guarda gli YAML, e ``graph`` — che legge il disco — mostrerebbe una colonna
+    fantasma. Peggio: finche' il vecchio YAML resta, il render lo rifa'.
+
+    Il confronto e' con quello che lo ``study.yml`` **genera oggi**, non con
+    cio' che c'e' su disco: si enumerano le varianti dello spec corrente
+    (``render.variant_paths``) e si toglie tutto il resto. Restano fuori
+    ``stack``/``versions``/``percorso``, che hanno documenti propri, e la
+    cache. Gli stem (``<mix>__<stream>.aif``) seguono il mix a cui
+    appartengono.
+    """
+    from .render import audio_for, variant_paths
+
+    g = gen_dir(study)
+    yaml_root = os.path.join(g, "yaml", "sweep")
+    audio_root = os.path.join(g, "audio", "sweep")
+    if not os.path.isdir(yaml_root) and not os.path.isdir(audio_root):
+        return 0
+
+    attesi_yaml = set()
+    for spec in _load_specs(study, None) or []:
+        attesi_yaml.update(variant_paths(spec, yaml_root))
+    variant_dir = os.path.join(g, "yaml")
+    audio_dir = os.path.join(g, "audio")
+    attesi_audio = {audio_for(p, variant_dir, audio_dir, study)[1] for p in attesi_yaml}
+    basi = {os.path.splitext(p)[0] for p in attesi_audio}
+
+    orfani = []
+    for root, _dirs, files in os.walk(yaml_root):
+        for f in sorted(files):
+            p = os.path.join(root, f)
+            if f.endswith((".yml", ".yaml")) and f != "streams_expanded.yml" and p not in attesi_yaml:
+                orfani.append(p)
+    for root, _dirs, files in os.walk(audio_root):
+        for f in sorted(files):
+            if not f.endswith(".aif"):
+                continue
+            p = os.path.join(root, f)
+            base = os.path.splitext(p)[0]
+            # Uno stem non ha uno YAML suo: vive o muore col mix da cui nasce.
+            if p in attesi_audio or any(base.startswith(b + "__") for b in basi):
+                continue
+            orfani.append(p)
+
+    if not orfani:
+        return 0
+    peso = sum(os.path.getsize(p) for p in orfani)
+    for p in sorted(orfani):
+        print(("[prune] rimosso " if apply else "[prune] orfano  ") + os.path.relpath(p, g))
+        if apply:
+            os.remove(p)
+    print(f"[prune] {len(orfani)} file, {peso / 2**20:.1f} MB"
+          + ("" if apply else "  — rilancia con APPLY=1 per cancellarli"))
+    return 0
+
+
 def _axis_orders(study: str) -> dict:
     """label -> ordine degli assi dello spec, una voce per combinazione.
 
@@ -746,6 +807,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     gp = sub.add_parser("graph", help="rete navigabile delle varianti discrete (HTML)")
     gp.add_argument("study")
+
+    pr = sub.add_parser("prune", help="elenca (o cancella) l'audio senza piu' uno YAML")
+    pr.add_argument("study")
+    pr.add_argument("--apply", action="store_true",
+                    help="cancella davvero; senza, si limita a elencare")
 
     wp = sub.add_parser("where", help="stampa la cartella di output corrente")
     wp.add_argument("study")
@@ -877,6 +943,8 @@ def _run(args) -> int:
         return cmd_render_final(args.study)
     if args.command == "graph":
         return cmd_graph(args.study)
+    if args.command == "prune":
+        return cmd_prune(args.study, args.apply)
     if args.command == "where":
         return cmd_where(args.study)
     if args.command == "sv":
