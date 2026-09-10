@@ -216,12 +216,19 @@ _TEMPLATE = """<!doctype html>
  table { border-collapse:collapse; }
  th { font-weight:400; color:var(--dim); padding:2px 8px 2px 0; text-align:right; white-space:nowrap; }
  td { padding:0; }
+ /* La colonna e' larga quanto serve alla piu' lunga delle etichette X, uguale
+    per tutte: i numeri sotto la griglia restano equidistanziati e leggibili.
+    --cw lo calcola drawGrid in caratteri (font monospace, unita' ch). */
+ #grid { overflow-x:auto; }
  .cell { width:32px; height:32px; border:1px solid var(--line); background:none;
          color:inherit; font:inherit; cursor:pointer; padding:0; }
+ td { text-align:center; }
+ col.v { width:calc(var(--cw) * 1ch + 10px); }
  .cell:hover { border-color:var(--fg); }
  .cell.on { background:var(--on); border-color:var(--on); }
  .cell.void { border-style:dotted; opacity:.25; cursor:default; }
- .xlab { font-size:9px; color:var(--dim); text-align:center; padding-top:4px; }
+ .xlab { font-size:10px; color:var(--dim); text-align:center; padding-top:5px;
+         white-space:nowrap; }
  #now { margin-top:18px; min-height:3em; }
  #now .file { color:var(--dim); }
  audio { margin-top:6px; width:340px; }
@@ -270,16 +277,38 @@ function drawSel() {
 
 function key(x, y) { return x + "|" + y; }
 
+// Etichette: cinque decimali, senza zeri di coda. `0.000020833333333333333`
+// diventa `0.00002` — il valore esatto resta nel nome del file, che e' la
+// fonte di verita'. Sotto i cinque decimali si passa all'esponenziale invece
+// di mostrare uno zero che sarebbe falso.
+function fmt(v) {
+  if (v === 0) return "0";
+  const r = Number(v.toFixed(5));
+  return r === 0 ? v.toExponential(1) : String(r);
+}
+
 function drawGrid() {
   const at = {};
   for (const n of cur.nodes) at[key(n.coords[cur.axX], cur.axY ? n.coords[cur.axY] : 0)] = n;
   cur.at = at;
   const t = document.createElement("table");
+  const labels = cur.xs.map(fmt);
+  t.style.setProperty("--cw", Math.max(...labels.map(l => l.length)));
+  // Una <col> per colonna: la larghezza vale sia per le celle sia per le
+  // etichette, cosi' le due file restano allineate.
+  const cg = document.createElement("colgroup");
+  cg.appendChild(document.createElement("col"));
+  for (let i = 0; i < cur.xs.length; i++) {
+    const c = document.createElement("col");
+    c.className = "v";
+    cg.appendChild(c);
+  }
+  t.appendChild(cg);
   // Riga per riga dall'alto: y cresce verso l'alto, come su un grafico.
   for (let j = cur.ys.length - 1; j >= 0; j--) {
     const tr = t.insertRow();
     const th = document.createElement("th");
-    th.textContent = cur.axY ? cur.ys[j] : "";
+    th.textContent = cur.axY ? fmt(cur.ys[j]) : "";
     tr.appendChild(th);
     for (let i = 0; i < cur.xs.length; i++) {
       const b = document.createElement("button");
@@ -293,10 +322,10 @@ function drawGrid() {
   }
   const foot = t.insertRow();
   foot.appendChild(document.createElement("th"));
-  for (const x of cur.xs) {
+  for (const l of labels) {
     const td = foot.insertCell();
     td.className = "xlab";
-    td.textContent = x;
+    td.textContent = l;
   }
   const box = document.getElementById("grid");
   box.innerHTML = "";
@@ -313,8 +342,8 @@ function go(i, j, play) {
   if (b) b.classList.add("on");
   if (!n) { document.getElementById("now").textContent = "(non renderizzato)"; return; }
   document.getElementById("now").innerHTML =
-    "<b>" + cur.axX + " = " + cur.xs[i] + "</b>" +
-    (cur.axY ? " &nbsp; <b>" + cur.axY + " = " + cur.ys[j] + "</b>" : "") +
+    "<b>" + cur.axX + " = " + fmt(cur.xs[i]) + "</b>" +
+    (cur.axY ? " &nbsp; <b>" + cur.axY + " = " + fmt(cur.ys[j]) + "</b>" : "") +
     "<br><span class='file'>" + n.name + "</span>";
   audio.src = n.src;
   if (play !== false) audio.play();
