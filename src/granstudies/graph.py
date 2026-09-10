@@ -178,7 +178,7 @@ def build_html(study: str, combos: List[Dict[str, Any]]) -> str:
         "values": _sel_values(combos, keys),
         "combos": combos,
     }
-    return _TEMPLATE.replace("__TITLE__", html.escape(f"{study} — rete")) \
+    return _template().replace("__TITLE__", html.escape(f"{study} — rete")) \
                     .replace("__DATA__", json.dumps(data))
 
 
@@ -199,176 +199,14 @@ def write_graph(study: str, gen_root: str, out_path: str,
     return (len(combos), sum(len(c["nodes"]) for c in combos))
 
 
-_TEMPLATE = """<!doctype html>
-<meta charset="utf-8"><title>__TITLE__</title>
-<style>
- :root { color-scheme: light dark; --bg:#fff; --fg:#111; --line:#bbb; --dim:#888; --on:#c33; }
- @media (prefers-color-scheme: dark) { :root { --bg:#141414; --fg:#eee; --line:#444; --dim:#888; } }
- body { background:var(--bg); color:var(--fg); font:13px/1.5 ui-monospace,monospace; margin:24px; }
- h1 { font-size:14px; font-weight:600; margin:0 0 14px; }
- .sel { display:grid; grid-template-columns:max-content 1fr; gap:4px 10px; align-items:center;
-        margin-bottom:18px; }
- .sel .k { color:var(--dim); text-align:right; }
- .sel button { font:inherit; color:inherit; background:none; border:1px solid var(--line);
-               padding:1px 8px; margin-right:4px; cursor:pointer; }
- .sel button.on { border-color:var(--fg); background:var(--fg); color:var(--bg); }
- .sel button:disabled { opacity:.25; cursor:default; }
- table { border-collapse:collapse; }
- th { font-weight:400; color:var(--dim); padding:2px 8px 2px 0; text-align:right; white-space:nowrap; }
- td { padding:0; }
- /* La colonna e' larga quanto serve alla piu' lunga delle etichette X, uguale
-    per tutte: i numeri sotto la griglia restano equidistanziati e leggibili.
-    --cw lo calcola drawGrid in caratteri (font monospace, unita' ch). */
- #grid { overflow-x:auto; }
- .cell { width:32px; height:32px; border:1px solid var(--line); background:none;
-         color:inherit; font:inherit; cursor:pointer; padding:0; }
- td { text-align:center; }
- col.v { width:calc(var(--cw) * 1ch + 10px); }
- .cell:hover { border-color:var(--fg); }
- .cell.on { background:var(--on); border-color:var(--on); }
- .cell.void { border-style:dotted; opacity:.25; cursor:default; }
- .xlab { font-size:10px; color:var(--dim); text-align:center; padding-top:5px;
-         white-space:nowrap; }
- #now { margin-top:18px; min-height:3em; }
- #now .file { color:var(--dim); }
- audio { margin-top:6px; width:340px; }
- #miss { color:var(--dim); margin-top:18px; }
-</style>
-<h1 id="h"></h1>
-<div class="sel" id="sel"></div>
-<div id="grid"></div>
-<div id="now"></div>
-<audio id="a" controls></audio>
-<script>
-const D = __DATA__;
-const byLabel = {};
-for (const c of D.combos) byLabel[c.label] = c;
+_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "graph_page.html")
 
-// Selezione corrente: gli assi esterni della prima combinazione renderizzata.
-let sel = Object.assign({}, D.combos[0].sel);
-let cur = D.combos[0];
-let cx = 0, cy = 0;
 
-function match(s) {
-  return D.combos.find(c => D.keys.every(k => c.sel[k] === s[k]));
-}
+def _template() -> str:
+    """Il guscio della pagina.
 
-function drawSel() {
-  const box = document.getElementById("sel");
-  box.innerHTML = "";
-  for (const k of D.keys) {
-    const kd = document.createElement("div");
-    kd.className = "k"; kd.textContent = k;
-    const vd = document.createElement("div");
-    for (const v of D.values[k]) {
-      const b = document.createElement("button");
-      b.textContent = v;
-      if (sel[k] === v) b.classList.add("on");
-      // Disabilitato se cambiando SOLO questa chiave non esiste una
-      // combinazione renderizzata: il disco decide cosa e' raggiungibile.
-      const probe = Object.assign({}, sel); probe[k] = v;
-      if (!match(probe)) b.disabled = true;
-      else b.onclick = () => { sel[k] = v; show(match(sel)); };
-      vd.appendChild(b);
-    }
-    box.appendChild(kd); box.appendChild(vd);
-  }
-}
-
-function key(x, y) { return x + "|" + y; }
-
-// Etichette: cinque decimali, senza zeri di coda. `0.000020833333333333333`
-// diventa `0.00002` — il valore esatto resta nel nome del file, che e' la
-// fonte di verita'. Sotto i cinque decimali si passa all'esponenziale invece
-// di mostrare uno zero che sarebbe falso.
-function fmt(v) {
-  if (v === 0) return "0";
-  const r = Number(v.toFixed(5));
-  return r === 0 ? v.toExponential(1) : String(r);
-}
-
-function drawGrid() {
-  const at = {};
-  for (const n of cur.nodes) at[key(n.coords[cur.axX], cur.axY ? n.coords[cur.axY] : 0)] = n;
-  cur.at = at;
-  const t = document.createElement("table");
-  const labels = cur.xs.map(fmt);
-  t.style.setProperty("--cw", Math.max(...labels.map(l => l.length)));
-  // Una <col> per colonna: la larghezza vale sia per le celle sia per le
-  // etichette, cosi' le due file restano allineate.
-  const cg = document.createElement("colgroup");
-  cg.appendChild(document.createElement("col"));
-  for (let i = 0; i < cur.xs.length; i++) {
-    const c = document.createElement("col");
-    c.className = "v";
-    cg.appendChild(c);
-  }
-  t.appendChild(cg);
-  // Riga per riga dall'alto: y cresce verso l'alto, come su un grafico.
-  for (let j = cur.ys.length - 1; j >= 0; j--) {
-    const tr = t.insertRow();
-    const th = document.createElement("th");
-    th.textContent = cur.axY ? fmt(cur.ys[j]) : "";
-    tr.appendChild(th);
-    for (let i = 0; i < cur.xs.length; i++) {
-      const b = document.createElement("button");
-      b.className = "cell";
-      const n = at[key(cur.xs[i], cur.ys[j])];
-      if (!n) { b.classList.add("void"); b.disabled = true; }
-      else { b.title = n.name; b.onclick = () => go(i, j); }
-      b.dataset.i = i; b.dataset.j = j;
-      tr.insertCell().appendChild(b);
-    }
-  }
-  const foot = t.insertRow();
-  foot.appendChild(document.createElement("th"));
-  for (const l of labels) {
-    const td = foot.insertCell();
-    td.className = "xlab";
-    td.textContent = l;
-  }
-  const box = document.getElementById("grid");
-  box.innerHTML = "";
-  box.appendChild(t);
-}
-
-const audio = document.getElementById("a");
-
-function go(i, j, play) {
-  const n = cur.at[key(cur.xs[i], cur.ys[j])];
-  cx = i; cy = j;
-  for (const b of document.querySelectorAll(".cell")) b.classList.remove("on");
-  const b = document.querySelector(`.cell[data-i="${i}"][data-j="${j}"]`);
-  if (b) b.classList.add("on");
-  if (!n) { document.getElementById("now").textContent = "(non renderizzato)"; return; }
-  document.getElementById("now").innerHTML =
-    "<b>" + cur.axX + " = " + fmt(cur.xs[i]) + "</b>" +
-    (cur.axY ? " &nbsp; <b>" + cur.axY + " = " + fmt(cur.ys[j]) + "</b>" : "") +
-    "<br><span class='file'>" + n.name + "</span>";
-  audio.src = n.src;
-  if (play !== false) audio.play();
-}
-
-function show(c) {
-  if (!c) return;
-  cur = c;
-  document.getElementById("h").textContent =
-    D.study + "   " + cur.axX + (cur.axY ? " x " + cur.axY : "");
-  drawSel();
-  drawGrid();
-  // La cella resta dov'era, clampata alla nuova griglia: cambiare un asse
-  // esterno e' un A/B sullo stesso punto, non un salto altrove.
-  go(Math.min(cx, cur.xs.length - 1), Math.min(cy, cur.ys.length - 1), false);
-}
-
-addEventListener("keydown", e => {
-  const d = {ArrowRight:[1,0], ArrowLeft:[-1,0], ArrowUp:[0,1], ArrowDown:[0,-1]}[e.key];
-  if (!d) return;
-  e.preventDefault();
-  go(Math.min(cur.xs.length - 1, Math.max(0, cx + d[0])),
-     Math.min(cur.ys.length - 1, Math.max(0, cy + d[1])));
-});
-
-show(cur);
-</script>
-"""
+    Sta in un file suo e non in una stringa qui: e' HTML/CSS/JS vero, e dentro
+    un .py perderebbe evidenziazione, indentazione e ``node --check``.
+    """
+    with open(_TEMPLATE_PATH) as fh:
+        return fh.read()

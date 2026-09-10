@@ -1,0 +1,500 @@
+<!doctype html>
+<meta charset="utf-8"><title>__TITLE__</title>
+<style>
+ :root { color-scheme: light dark; --bg:#fff; --fg:#111; --line:#bbb; --dim:#888; --on:#c33;
+         --panel:#f4f4f4; }
+ @media (prefers-color-scheme: dark) {
+   :root { --bg:#141414; --fg:#eee; --line:#444; --dim:#888; --panel:#1c1c1c; } }
+ body { background:var(--bg); color:var(--fg); font:13px/1.5 ui-monospace,monospace;
+        margin:0; display:flex; align-items:flex-start; }
+ #left { flex:0 0 auto; padding:22px; max-height:100vh; overflow:auto; }
+ #right { flex:1 1 0; min-width:0; padding:22px 22px 22px 0; position:sticky; top:0; }
+ h1 { font-size:14px; font-weight:600; margin:0 0 14px; }
+ .sel { display:grid; grid-template-columns:max-content 1fr; gap:4px 10px; align-items:center;
+        margin-bottom:18px; }
+ .sel .k { color:var(--dim); text-align:right; }
+ .sel button { font:inherit; color:inherit; background:none; border:1px solid var(--line);
+               padding:1px 8px; margin-right:4px; cursor:pointer; }
+ .sel button.on { border-color:var(--fg); background:var(--fg); color:var(--bg); }
+ .sel button:disabled { opacity:.25; cursor:default; }
+ table { border-collapse:collapse; }
+ th { font-weight:400; color:var(--dim); padding:2px 8px 2px 0; text-align:right; white-space:nowrap; }
+ td { padding:0; text-align:center; }
+ /* La colonna e' larga quanto serve alla piu' lunga delle etichette X, uguale
+    per tutte: i numeri sotto la griglia restano equidistanziati e leggibili.
+    --cw lo calcola drawGrid in caratteri (font monospace, unita' ch). */
+ #grid { overflow-x:auto; }
+ col.v { width:calc(var(--cw) * 1ch + 10px); }
+ .cell { width:32px; height:32px; border:1px solid var(--line); background:none;
+         color:inherit; font:inherit; cursor:pointer; padding:0; }
+ .cell:hover { border-color:var(--fg); }
+ .cell.on { background:var(--on); border-color:var(--on); }
+ .cell.void { border-style:dotted; opacity:.25; cursor:default; }
+ .xlab { font-size:10px; color:var(--dim); text-align:center; padding-top:5px; white-space:nowrap; }
+ #now { margin-top:18px; min-height:3em; }
+ #now .file { color:var(--dim); word-break:break-all; }
+ audio { margin-top:6px; width:340px; }
+
+ /* --- pannello di analisi ------------------------------------------------ */
+ .view { position:relative; margin-bottom:10px; background:var(--panel); }
+ .view canvas { display:block; width:100%; }
+ .view .lab { position:absolute; top:3px; left:6px; font-size:10px; color:var(--dim);
+              pointer-events:none; text-shadow:0 0 3px var(--panel); }
+ /* Il cursore e' un semplice div: nessun ridisegno del canvas per muoverlo. */
+ .cur { position:absolute; top:0; bottom:0; width:1px; background:var(--on);
+        pointer-events:none; left:0; }
+ .seek { cursor:col-resize; }
+ .pair { display:flex; gap:10px; }
+ .pair .view { flex:1 1 0; margin-bottom:0; }
+ .pair .view:last-child { flex:0 0 auto; }
+ #status { color:var(--dim); font-size:11px; min-height:1.4em; }
+</style>
+
+<div id="left">
+  <h1 id="h"></h1>
+  <div class="sel" id="sel"></div>
+  <div id="grid"></div>
+  <div id="now"></div>
+  <audio id="a" controls></audio>
+</div>
+
+<div id="right">
+  <div class="view seek" id="specView">
+    <canvas id="spec" height="320"></canvas>
+    <div class="lab">sonogramma — x tempo, y frequenza (log)</div>
+    <div class="cur" id="curSpec"></div>
+  </div>
+  <div class="view seek" id="waveView">
+    <canvas id="wave" height="110"></canvas>
+    <div class="lab">forma d'onda</div>
+    <div class="cur" id="curWave"></div>
+  </div>
+  <div class="pair">
+    <div class="view">
+      <canvas id="scope" height="180"></canvas>
+      <div class="lab">spectroscope — x frequenza (log), y dinamica (dB)</div>
+    </div>
+    <div class="view">
+      <canvas id="stereo" width="180" height="180"></canvas>
+      <div class="lab">stereoscope</div>
+    </div>
+  </div>
+  <div id="status"></div>
+</div>
+
+<script>
+const D = __DATA__;
+const byLabel = {};
+for (const c of D.combos) byLabel[c.label] = c;
+
+let sel = Object.assign({}, D.combos[0].sel);
+let cur = D.combos[0];
+let cx = 0, cy = 0;
+
+function match(s) {
+  return D.combos.find(c => D.keys.every(k => c.sel[k] === s[k]));
+}
+
+function drawSel() {
+  const box = document.getElementById("sel");
+  box.innerHTML = "";
+  for (const k of D.keys) {
+    const kd = document.createElement("div");
+    kd.className = "k"; kd.textContent = k;
+    const vd = document.createElement("div");
+    for (const v of D.values[k]) {
+      const b = document.createElement("button");
+      b.textContent = v;
+      if (sel[k] === v) b.classList.add("on");
+      // Disabilitato se cambiando SOLO questa chiave non esiste una
+      // combinazione renderizzata: il disco decide cosa e' raggiungibile.
+      const probe = Object.assign({}, sel); probe[k] = v;
+      if (!match(probe)) b.disabled = true;
+      else b.onclick = () => { sel[k] = v; show(match(sel)); };
+      vd.appendChild(b);
+    }
+    box.appendChild(kd); box.appendChild(vd);
+  }
+}
+
+function key(x, y) { return x + "|" + y; }
+
+// Etichette: cinque decimali, senza zeri di coda. `0.000020833333333333333`
+// diventa `0.00002` — il valore esatto resta nel nome del file, che e' la
+// fonte di verita'. Sotto i cinque decimali si passa all'esponenziale invece
+// di mostrare uno zero che sarebbe falso.
+function fmt(v) {
+  if (v === 0) return "0";
+  const r = Number(v.toFixed(5));
+  return r === 0 ? v.toExponential(1) : String(r);
+}
+
+function drawGrid() {
+  const at = {};
+  for (const n of cur.nodes) at[key(n.coords[cur.axX], cur.axY ? n.coords[cur.axY] : 0)] = n;
+  cur.at = at;
+  const t = document.createElement("table");
+  const labels = cur.xs.map(fmt);
+  t.style.setProperty("--cw", Math.max(...labels.map(l => l.length)));
+  // Una <col> per colonna: la larghezza vale sia per le celle sia per le
+  // etichette, cosi' le due file restano allineate.
+  const cg = document.createElement("colgroup");
+  cg.appendChild(document.createElement("col"));
+  for (let i = 0; i < cur.xs.length; i++) {
+    const c = document.createElement("col");
+    c.className = "v";
+    cg.appendChild(c);
+  }
+  t.appendChild(cg);
+  // Riga per riga dall'alto: y cresce verso l'alto, come su un grafico.
+  for (let j = cur.ys.length - 1; j >= 0; j--) {
+    const tr = t.insertRow();
+    const th = document.createElement("th");
+    th.textContent = cur.axY ? fmt(cur.ys[j]) : "";
+    tr.appendChild(th);
+    for (let i = 0; i < cur.xs.length; i++) {
+      const b = document.createElement("button");
+      b.className = "cell";
+      const n = at[key(cur.xs[i], cur.ys[j])];
+      if (!n) { b.classList.add("void"); b.disabled = true; }
+      else { b.title = n.name; b.onclick = () => go(i, j); }
+      b.dataset.i = i; b.dataset.j = j;
+      tr.insertCell().appendChild(b);
+    }
+  }
+  const foot = t.insertRow();
+  foot.appendChild(document.createElement("th"));
+  for (const l of labels) {
+    const td = foot.insertCell();
+    td.className = "xlab";
+    td.textContent = l;
+  }
+  const box = document.getElementById("grid");
+  box.innerHTML = "";
+  box.appendChild(t);
+}
+
+const audio = document.getElementById("a");
+const status = document.getElementById("status");
+
+function go(i, j, play) {
+  const n = cur.at[key(cur.xs[i], cur.ys[j])];
+  cx = i; cy = j;
+  for (const b of document.querySelectorAll(".cell")) b.classList.remove("on");
+  const b = document.querySelector(`.cell[data-i="${i}"][data-j="${j}"]`);
+  if (b) b.classList.add("on");
+  if (!n) { document.getElementById("now").textContent = "(non renderizzato)"; return; }
+  document.getElementById("now").innerHTML =
+    "<b>" + cur.axX + " = " + fmt(cur.xs[i]) + "</b>" +
+    (cur.axY ? " &nbsp; <b>" + cur.axY + " = " + fmt(cur.ys[j]) + "</b>" : "") +
+    "<br><span class='file'>" + n.name + "</span>";
+  audio.src = n.src;
+  if (play !== false) audio.play();
+  analyse(n.src);
+}
+
+function show(c) {
+  if (!c) return;
+  cur = c;
+  document.getElementById("h").textContent =
+    D.study + "   " + cur.axX + (cur.axY ? " x " + cur.axY : "");
+  drawSel();
+  drawGrid();
+  // La cella resta dov'era, clampata alla nuova griglia: cambiare un asse
+  // esterno e' un A/B sullo stesso punto, non un salto altrove.
+  go(Math.min(cx, cur.xs.length - 1), Math.min(cy, cur.ys.length - 1), false);
+}
+
+addEventListener("keydown", e => {
+  if (e.target.tagName === "BUTTON") e.target.blur();
+  const d = {ArrowRight:[1,0], ArrowLeft:[-1,0], ArrowUp:[0,1], ArrowDown:[0,-1]}[e.key];
+  if (!d) return;
+  e.preventDefault();
+  go(Math.min(cur.xs.length - 1, Math.max(0, cx + d[0])),
+     Math.min(cur.ys.length - 1, Math.max(0, cy + d[1])));
+});
+
+// ===========================================================================
+// Analisi. Due strade diverse, per due domande diverse:
+//
+//   - sonogramma e forma d'onda guardano il file INTERO, quindi si calcolano
+//     una volta sola sui campioni decodificati (fetch + decodeAudioData) e si
+//     disegnano su canvas fermi;
+//   - spectroscope e stereoscope guardano l'ISTANTE, quindi si leggono dal
+//     grafo Web Audio in riproduzione (AnalyserNode) a ogni frame.
+//
+// Il cursore non e' uno stato: e' una funzione di `audio.currentTime`, letta
+// dallo stesso requestAnimationFrame per entrambe le viste. Il seek scrive su
+// `audio.currentTime` e basta. Non esistendo una seconda copia della
+// posizione, non esiste desincronizzazione possibile.
+// ===========================================================================
+
+const ctx = new (window.AudioContext || window.webkitAudioContext)();
+const analyser = ctx.createAnalyser();
+analyser.fftSize = 4096;
+analyser.smoothingTimeConstant = 0.6;
+const splitter = ctx.createChannelSplitter(2);
+const anL = ctx.createAnalyser(), anR = ctx.createAnalyser();
+anL.fftSize = anR.fftSize = 2048;
+const src = ctx.createMediaElementSource(audio);
+src.connect(analyser);
+analyser.connect(ctx.destination);
+src.connect(splitter);
+splitter.connect(anL, 0);
+splitter.connect(anR, 1);
+
+audio.addEventListener("play", () => ctx.resume());
+
+const FMIN = 20;
+const cache = new Map();      // src -> {peaks, spec} gia' calcolati
+
+// --- FFT radix-2 iterativa, in-place -------------------------------------
+// Cooley-Tukey: bit-reversal in testa, poi log2(N) stadi di farfalle. Le
+// tabelle di seno/coseno si calcolano una volta per dimensione: e' l'unica
+// parte che vale la pena precalcolare, il resto e' aritmetica.
+const twiddles = new Map();
+function tables(n) {
+  if (twiddles.has(n)) return twiddles.get(n);
+  const cos = new Float32Array(n / 2), sin = new Float32Array(n / 2);
+  for (let i = 0; i < n / 2; i++) {
+    cos[i] = Math.cos(-2 * Math.PI * i / n);
+    sin[i] = Math.sin(-2 * Math.PI * i / n);
+  }
+  const rev = new Uint32Array(n);
+  const bits = Math.log2(n);
+  for (let i = 0; i < n; i++) {
+    let r = 0;
+    for (let b = 0; b < bits; b++) if (i & (1 << b)) r |= 1 << (bits - 1 - b);
+    rev[i] = r;
+  }
+  const t = {cos, sin, rev};
+  twiddles.set(n, t);
+  return t;
+}
+
+function fft(re, im) {
+  const n = re.length, {cos, sin, rev} = tables(n);
+  for (let i = 0; i < n; i++) {
+    const j = rev[i];
+    if (j > i) {
+      let t = re[i]; re[i] = re[j]; re[j] = t;
+      t = im[i]; im[i] = im[j]; im[j] = t;
+    }
+  }
+  for (let size = 2; size <= n; size <<= 1) {
+    const half = size >> 1, step = n / size;
+    for (let i = 0; i < n; i += size) {
+      for (let j = 0, k = 0; j < half; j++, k += step) {
+        const l = i + j, r = l + half;
+        const tr = re[r] * cos[k] - im[r] * sin[k];
+        const ti = re[r] * sin[k] + im[r] * cos[k];
+        re[r] = re[l] - tr; im[r] = im[l] - ti;
+        re[l] += tr;        im[l] += ti;
+      }
+    }
+  }
+}
+
+// --- STFT: una colonna di magnitudini in dB per hop ------------------------
+const NFFT = 2048, HOP = 512, DBFLOOR = -96;
+function stft(mono) {
+  const win = new Float32Array(NFFT);          // Hann
+  for (let i = 0; i < NFFT; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / NFFT);
+  const cols = Math.max(1, Math.floor((mono.length - NFFT) / HOP) + 1);
+  const bins = NFFT / 2;
+  const out = new Float32Array(cols * bins);
+  const re = new Float32Array(NFFT), im = new Float32Array(NFFT);
+  for (let c = 0; c < cols; c++) {
+    const off = c * HOP;
+    for (let i = 0; i < NFFT; i++) {
+      re[i] = (mono[off + i] || 0) * win[i];
+      im[i] = 0;
+    }
+    fft(re, im);
+    for (let b = 0; b < bins; b++) {
+      const m = Math.sqrt(re[b] * re[b] + im[b] * im[b]) * 2 / NFFT;
+      out[c * bins + b] = Math.max(DBFLOOR, 20 * Math.log10(m + 1e-12));
+    }
+  }
+  return {cols, bins, db: out};
+}
+
+// Picchi min/max per colonna di pixel: la forma d'onda vera, non un
+// sottocampionamento che salta le transienti (con grani da 20 us salterebbe
+// tutto).
+function peaks(mono, cols) {
+  const per = mono.length / cols;
+  const lo = new Float32Array(cols), hi = new Float32Array(cols);
+  for (let c = 0; c < cols; c++) {
+    const a = Math.floor(c * per), b = Math.min(mono.length, Math.floor((c + 1) * per));
+    let mn = 0, mx = 0;
+    for (let i = a; i < b; i++) {
+      const v = mono[i];
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+    lo[c] = mn; hi[c] = mx;
+  }
+  return {lo, hi};
+}
+
+function mixdown(buf) {
+  const n = buf.length, out = new Float32Array(n);
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < n; i++) out[i] += d[i];
+  }
+  if (buf.numberOfChannels > 1) for (let i = 0; i < n; i++) out[i] /= buf.numberOfChannels;
+  return out;
+}
+
+// Scala di colore: nero -> viola -> arancio -> bianco, in tre tratti lineari.
+// Serve solo a rendere leggibili 96 dB di dinamica, non e' percettivamente
+// uniforme.
+function heat(v) {
+  const s = [[0, 0, 0], [60, 20, 90], [220, 90, 30], [255, 255, 220]];
+  const t = Math.min(0.999, Math.max(0, v)) * 3;
+  const i = Math.floor(t), f = t - i;
+  const a = s[i], b = s[i + 1];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+}
+
+let view = null;   // {duration} della clip attualmente disegnata
+
+async function analyse(url) {
+  const specC = document.getElementById("spec"), waveC = document.getElementById("wave");
+  specC.width = specC.parentNode.clientWidth;
+  waveC.width = waveC.parentNode.clientWidth;
+  status.textContent = "analisi…";
+  let data = cache.get(url);
+  if (!data) {
+    try {
+      const buf = await ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+      const mono = mixdown(buf);
+      data = {duration: buf.duration, rate: buf.sampleRate, mono};
+      cache.set(url, data);
+    } catch (e) {
+      status.textContent = "impossibile leggere l'audio (" + e.name +
+        "): apri la pagina da http://localhost, non da file://.";
+      return;
+    }
+  }
+  view = data;
+  drawSpec(specC, data);
+  drawWave(waveC, data);
+  status.textContent = data.duration.toFixed(2) + " s · " + data.rate + " Hz";
+}
+
+function drawSpec(c, d) {
+  const g = c.getContext("2d"), W = c.width, H = c.height;
+  const s = d.spec || (d.spec = stft(d.mono));
+  const nyq = d.rate / 2, binHz = nyq / s.bins;
+  const img = g.createImageData(W, H);
+  for (let x = 0; x < W; x++) {
+    const col = Math.min(s.cols - 1, Math.floor(x / W * s.cols));
+    for (let y = 0; y < H; y++) {
+      // y=0 in alto = Nyquist; scala logaritmica in frequenza.
+      const f = FMIN * Math.pow(nyq / FMIN, 1 - y / H);
+      const b = Math.min(s.bins - 1, Math.round(f / binHz));
+      const db = s.db[col * s.bins + b];
+      const [r, gg, bb] = heat((db - DBFLOOR) / -DBFLOOR);
+      const p = (y * W + x) * 4;
+      img.data[p] = r; img.data[p + 1] = gg; img.data[p + 2] = bb; img.data[p + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+}
+
+function drawWave(c, d) {
+  const g = c.getContext("2d"), W = c.width, H = c.height, mid = H / 2;
+  const p = peaks(d.mono, W);
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = getComputedStyle(document.body).color;
+  g.globalAlpha = .8;
+  g.beginPath();
+  for (let x = 0; x < W; x++) {
+    g.moveTo(x + .5, mid - p.hi[x] * mid);
+    g.lineTo(x + .5, mid - p.lo[x] * mid);
+  }
+  g.stroke();
+  g.globalAlpha = .25;
+  g.beginPath(); g.moveTo(0, mid); g.lineTo(W, mid); g.stroke();
+  g.globalAlpha = 1;
+}
+
+// --- seek: un solo handler per entrambe le viste --------------------------
+function seekFrom(el, e) {
+  if (!view) return;
+  const r = el.getBoundingClientRect();
+  const t = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * view.duration;
+  audio.currentTime = t;
+}
+for (const id of ["specView", "waveView"]) {
+  const el = document.getElementById(id);
+  let down = false;
+  el.addEventListener("mousedown", e => { down = true; seekFrom(el, e); });
+  addEventListener("mousemove", e => { if (down) seekFrom(el, e); });
+  addEventListener("mouseup", () => { down = false; });
+}
+
+// --- il ciclo: cursori + viste in tempo reale -----------------------------
+const scopeC = document.getElementById("scope"), stereoC = document.getElementById("stereo");
+const freqData = new Uint8Array(analyser.frequencyBinCount);
+const bufL = new Float32Array(anL.fftSize), bufR = new Float32Array(anR.fftSize);
+
+function drawScope() {
+  const c = scopeC, g = c.getContext("2d"), W = c.width, H = c.height;
+  analyser.getByteFrequencyData(freqData);
+  const nyq = ctx.sampleRate / 2, binHz = nyq / freqData.length;
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = getComputedStyle(document.body).color;
+  g.beginPath();
+  for (let x = 0; x < W; x++) {
+    const f = FMIN * Math.pow(nyq / FMIN, x / W);      // x logaritmico in frequenza
+    const v = freqData[Math.min(freqData.length - 1, Math.round(f / binHz))] / 255;
+    const y = H - v * H;                                 // y = dinamica (0..-96 dB)
+    if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
+  }
+  g.stroke();
+}
+
+function drawStereo() {
+  const c = stereoC, g = c.getContext("2d"), W = c.width, H = c.height;
+  anL.getFloatTimeDomainData(bufL);
+  anR.getFloatTimeDomainData(bufR);
+  // Scia: invece di cancellare, si sbiadisce. Un goniometro senza scia e'
+  // illeggibile a 60 fps.
+  g.fillStyle = getComputedStyle(document.querySelector(".view")).backgroundColor;
+  g.globalAlpha = .3; g.fillRect(0, 0, W, H); g.globalAlpha = 1;
+  g.strokeStyle = "#888"; g.globalAlpha = .3;
+  g.beginPath(); g.moveTo(W / 2, 0); g.lineTo(W / 2, H); g.moveTo(0, H / 2); g.lineTo(W, H / 2);
+  g.stroke(); g.globalAlpha = 1;
+  // Lissajous ruotato di 45 gradi: mono in verticale, fuori fase in
+  // orizzontale. x = (R-L)/sqrt2, y = (L+R)/sqrt2.
+  g.fillStyle = getComputedStyle(document.body).color;
+  const k = Math.min(W, H) / 2 * 0.95, r2 = Math.SQRT1_2;
+  for (let i = 0; i < bufL.length; i++) {
+    const x = W / 2 + (bufR[i] - bufL[i]) * r2 * k;
+    const y = H / 2 - (bufL[i] + bufR[i]) * r2 * k;
+    g.fillRect(x, y, 1, 1);
+  }
+}
+
+const curSpec = document.getElementById("curSpec"), curWave = document.getElementById("curWave");
+
+function frame() {
+  // Un solo valore letto una volta sola: i due cursori non possono divergere.
+  if (view && view.duration) {
+    const p = (audio.currentTime / view.duration) * 100;
+    curSpec.style.left = p + "%";
+    curWave.style.left = p + "%";
+  }
+  if (!audio.paused) { drawScope(); drawStereo(); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+addEventListener("resize", () => { if (view) analyse(audio.getAttribute("src")); });
+
+show(cur);
+</script>

@@ -29,6 +29,16 @@ where: _require-study $(MARKER)
 graph: _require-study $(MARKER)
 	$(PY) -m granstudies graph $(STUDY)
 
+# La pagina legge i campioni con fetch + decodeAudioData per disegnare
+# sonogramma e forma d'onda: da `file://` il browser lo vieta (origine opaca),
+# quindi la si serve. http.server della stdlib basta e avanza.
+PORT ?= 8000
+.PHONY: serve
+serve: graph
+	@echo "[serve] http://localhost:$(PORT)/graph.html   (Ctrl-C per fermare)"
+	@cd generated/$(STUDY) && ($(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 >/dev/null 2>&1 & \
+	 sleep 1; open -a Safari "http://localhost:$(PORT)/graph.html"; wait)
+
 .PHONY: describe
 describe: _require-study $(MARKER)
 	$(PY) -m granstudies describe $(STUDY)

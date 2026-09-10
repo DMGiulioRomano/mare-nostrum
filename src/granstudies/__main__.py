@@ -666,7 +666,10 @@ def _axis_orders(study: str) -> dict:
     was = _COMBO
     orders = {}
     try:
-        for c in _combos(study):
+        # Senza filtro ``COMBO``: ``graph`` disegna tutto cio' che e' su disco,
+        # anche le combinazioni fuori dalla fetta che si sta renderizzando, e
+        # ognuna ha bisogno del suo ordine di assi.
+        for c in _combos(study, filtra=False):
             _COMBO = c
             try:
                 orders[c.label] = [ax.name for ax in _load_spec(study).axes]
@@ -785,7 +788,7 @@ def _report_error(args) -> int:
     return 2
 
 
-def _combos(study: str) -> list:
+def _combos(study: str, *, filtra: bool = True) -> list:
     """Le combinazioni da girare: quelle dichiarate, ristrette da ``COMBO``.
 
     ``COMBO`` e' un filtro di sessione, non un interruttore di modalita': senza,
@@ -800,7 +803,7 @@ def _combos(study: str) -> list:
         return [for_each.EMPTY]          # l'errore lo da' il comando, con contesto
     raw, locs = load_with_locations(path)
     combos = for_each.parse(raw, locs)
-    voluta = os.environ.get("COMBO", "").strip()
+    voluta = os.environ.get("COMBO", "").strip() if filtra else ""
     if not voluta:
         return combos
     # Filtro per **fetta**, non per combinazione singola: i vincoli sono

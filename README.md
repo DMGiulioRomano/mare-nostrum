@@ -64,12 +64,30 @@ o2__grain.duration=0.001__pitch.ratio=0.447.aif
 
 ```bash
 make render STUDY=001-41    # serve l'audio: graph legge i .aif, non gli YAML
-make graph  STUDY=001-41
-open -a Safari generated/001-41/graph.html
+make serve  STUDY=001-41    # scrive la pagina, la serve e la apre in Safari
 ```
 
-Aprilo con **Safari**: Chrome non decodifica AIFF. Nessun server e nessuna
-dipendenza — l'HTML sta alla radice dell'output e i `src` sono relativi a lì.
+**Va servita, non aperta come file.** Il pannello di analisi legge i campioni
+con `fetch` + `decodeAudioData`, e da `file://` il browser lo vieta (origine
+opaca): `make serve` avvia `http.server` della stdlib su
+`http://localhost:8000` (`PORT=…` per cambiarla) e apre **Safari**, che a
+differenza di Chrome decodifica AIFF. Aprendo il file direttamente la griglia
+funziona lo stesso, ma le quattro viste restano vuote e la pagina lo dice.
+
+### Il pannello di analisi
+
+A destra, sulla clip selezionata:
+
+| vista | cosa mostra | come |
+|---|---|---|
+| sonogramma | x tempo, y frequenza (log) | STFT precalcolata: Hann 2048, hop 512 |
+| forma d'onda | picchi min/max per colonna | nessun sottocampionamento, o le transienti sparirebbero |
+| spectroscope | x frequenza (log), y dinamica | `AnalyserNode` in tempo reale |
+| stereoscope | goniometro L/R | Lissajous ruotato di 45°: x = (R−L)/√2, y = (L+R)/√2 |
+
+Il cursore si trascina sia sul sonogramma sia sulla forma d'onda. Non può
+desincronizzarsi perché non è uno stato: è una funzione di
+`audio.currentTime`, letta una volta sola per frame e scritta solo dal seek.
 
 `graph` gira una volta sola per studio, non una per combinazione, e quindi
 ignora `COMBO`: il filtro l'ha già fatto `render`, decidendo cosa esiste.
