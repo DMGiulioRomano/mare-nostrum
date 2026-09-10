@@ -573,7 +573,16 @@ def cmd_sv(study: str, layout: str, markers: bool = True, stream: str | None = N
         sv_dir = os.path.join(g, "sv", "sweep", "envelope", sub) if sub else os.path.join(g, "sv", "sweep", "envelope")
 
         if not os.path.isdir(variant_dir):
-            print(f"[sv] [{sub or 'default'}] nessuna variante envelope: esegui prima 'sweep {study}'.", file=sys.stderr)
+            # ponytail: l'export SV vive sul ramo envelope (i marker sono i
+            # plateau dello sweep). In `mode: discrete` non c'e' niente da
+            # marcare per variante: la navigazione e' `graph`. Se servira' un
+            # .sv anche per i file discreti, e' qui che va aggiunto il ramo.
+            if _load_spec(study).mode == "discrete":
+                print(f"[sv] [{sub or 'default'}] lo studio e' in 'mode: discrete': "
+                      f"l'export SV copre le varianti envelope. Per navigare i file "
+                      f"discreti usa 'graph {study}'.", file=sys.stderr)
+            else:
+                print(f"[sv] [{sub or 'default'}] nessuna variante envelope: esegui prima 'sweep {study}'.", file=sys.stderr)
             continue
         if not os.path.isdir(audio_dir):
             print(f"[sv] [{sub or 'default'}] nessun audio envelope: esegui prima 'render {study}'.", file=sys.stderr)
@@ -618,6 +627,123 @@ def cmd_render_final(study: str) -> int:
     engine_bridge.render(final_yaml, audio, samples_dir=sdir)
     print(f"[render-final] {audio}")
     return 0
+
+
+def cmd_graph(study: str) -> int:
+    """Scrive la rete navigabile delle varianti discrete: una pagina per studio.
+
+    Legge i nomi dei file audio, non lo YAML: le coordinate sono gia' nel nome
+    (``o2__grain.duration=0.001__pitch.ratio=0.447``) e cosi' la pagina mostra
+    esattamente cio' che e' stato renderizzato, non cio' che sarebbe da
+    renderizzare. Per la stessa ragione gira **una volta sola** e non una per
+    combinazione (vedi ``_dispatch``): gli assi esterni sono selettori dentro
+    la pagina, non file diversi, e ``COMBO`` ha gia' fatto il suo filtro a
+    monte decidendo cosa renderizzare.
+    """
+    from .graph import write_graph
+
+    gen_root = os.path.join(REPO_ROOT, "generated", study)
+    out = os.path.join(gen_root, "graph.html")
+    n_combos, n_nodes = write_graph(study, gen_root, out, _axis_orders(study))
+    if not n_combos:
+        print(f"[graph] nessun audio discrete in {gen_root}: esegui prima "
+              f"'render {study}' (serve sweep.mode: discrete).", file=sys.stderr)
+        return 1
+    print(f"[graph] {out}  ({n_nodes} nodi in {n_combos} combinazioni)")
+    return 0
+
+
+def cmd_prune(study: str, apply: bool = False, stems: bool = False) -> int:
+    """Elenca (e con ``--apply`` cancella) i residui di una versione precedente.
+
+    Serve quando un valore di un asse **cambia** invece di essere aggiunto:
+    ``fill_factor=0.7`` che diventa ``0.75`` non rigenera il vecchio file, lo
+    lascia li'. Lo sweep lo segnala ma non lo tocca, il render lo salta perche'
+    guarda gli YAML, e ``graph`` — che legge il disco — mostrerebbe una colonna
+    fantasma. Peggio: finche' il vecchio YAML resta, il render lo rifa'.
+
+    Il confronto e' con quello che lo ``study.yml`` **genera oggi**, non con
+    cio' che c'e' su disco: si enumerano le varianti dello spec corrente
+    (``render.variant_paths``) e si toglie tutto il resto. Restano fuori
+    ``stack``/``versions``/``percorso``, che hanno documenti propri, e la
+    cache. Gli stem (``<mix>__<stream>.aif``) seguono il mix a cui
+    appartengono, a meno di ``--stems``: allora sono loro il bersaglio, perche'
+    quando c'e' un solo stream sono una copia identica del mix e `graph` li
+    scarta comunque.
+    """
+    from .render import audio_for, variant_paths
+
+    g = gen_dir(study)
+    yaml_root = os.path.join(g, "yaml", "sweep")
+    audio_root = os.path.join(g, "audio", "sweep")
+    if not os.path.isdir(yaml_root) and not os.path.isdir(audio_root):
+        return 0
+
+    attesi_yaml = set()
+    for spec in _load_specs(study, None) or []:
+        attesi_yaml.update(variant_paths(spec, yaml_root))
+    variant_dir = os.path.join(g, "yaml")
+    audio_dir = os.path.join(g, "audio")
+    attesi_audio = {audio_for(p, variant_dir, audio_dir, study)[1] for p in attesi_yaml}
+    basi = {os.path.splitext(p)[0] for p in attesi_audio}
+
+    orfani = []
+    for root, _dirs, files in os.walk(yaml_root):
+        for f in sorted(files):
+            p = os.path.join(root, f)
+            if f.endswith((".yml", ".yaml")) and f != "streams_expanded.yml" and p not in attesi_yaml:
+                orfani.append(p)
+    for root, _dirs, files in os.walk(audio_root):
+        for f in sorted(files):
+            if not f.endswith(".aif"):
+                continue
+            p = os.path.join(root, f)
+            base = os.path.splitext(p)[0]
+            if p in attesi_audio:
+                continue
+            # Uno stem non ha uno YAML suo: vive o muore col mix da cui nasce,
+            # salvo quando sono gli stem stessi cio' che si vuole togliere.
+            if any(base.startswith(b + "__") for b in basi) and not stems:
+                continue
+            orfani.append(p)
+
+    if not orfani:
+        return 0
+    peso = sum(os.path.getsize(p) for p in orfani)
+    for p in sorted(orfani):
+        print(("[prune] rimosso " if apply else "[prune] orfano  ") + os.path.relpath(p, g))
+        if apply:
+            os.remove(p)
+    print(f"[prune] {len(orfani)} file, {peso / 2**20:.1f} MB"
+          + ("" if apply else "  — rilancia con APPLY=1 per cancellarli"))
+    return 0
+
+
+def _axis_orders(study: str) -> dict:
+    """label -> ordine degli assi dello spec, una voce per combinazione.
+
+    Con ``for_each:`` gli assi interni li dichiara la combinazione, quindi lo
+    spec del documento base puo' non averne nessuno: si carica uno spec per
+    label, impostando il contesto come fa ``_dispatch``. Le combinazioni che
+    non caricano (studio a meta', spec invalido) si saltano — al massimo la
+    griglia esce con gli assi in ordine alfabetico.
+    """
+    global _COMBO
+    was = _COMBO
+    orders = {}
+    try:
+        # Senza filtro ``COMBO``: ``graph`` disegna tutto cio' che e' su disco,
+        # anche le combinazioni fuori dalla fetta che si sta renderizzando, e
+        # ognuna ha bisogno del suo ordine di assi.
+        for c in _combos(study, filtra=False):
+            _COMBO = c
+            try:
+                orders[c.label] = [ax.name for ax in _load_spec(study).axes]
+            except (SpecError, yaml.YAMLError):
+                continue
+    finally:
+        _COMBO = was
+    return orders
 
 
 def cmd_where(study: str) -> int:
@@ -684,6 +810,16 @@ def build_parser() -> argparse.ArgumentParser:
     fp = sub.add_parser("render-final", help="renderizza il brano finale")
     fp.add_argument("study")
 
+    gp = sub.add_parser("graph", help="rete navigabile delle varianti discrete (HTML)")
+    gp.add_argument("study")
+
+    pr = sub.add_parser("prune", help="elenca (o cancella) l'audio senza piu' uno YAML")
+    pr.add_argument("study")
+    pr.add_argument("--apply", action="store_true",
+                    help="cancella davvero; senza, si limita a elencare")
+    pr.add_argument("--stems", action="store_true",
+                    help="prendi di mira anche gli stem (<mix>__<stream>.aif)")
+
     wp = sub.add_parser("where", help="stampa la cartella di output corrente")
     wp.add_argument("study")
 
@@ -725,7 +861,7 @@ def _report_error(args) -> int:
     return 2
 
 
-def _combos(study: str) -> list:
+def _combos(study: str, *, filtra: bool = True) -> list:
     """Le combinazioni da girare: quelle dichiarate, ristrette da ``COMBO``.
 
     ``COMBO`` e' un filtro di sessione, non un interruttore di modalita': senza,
@@ -740,7 +876,7 @@ def _combos(study: str) -> list:
         return [for_each.EMPTY]          # l'errore lo da' il comando, con contesto
     raw, locs = load_with_locations(path)
     combos = for_each.parse(raw, locs)
-    voluta = os.environ.get("COMBO", "").strip()
+    voluta = os.environ.get("COMBO", "").strip() if filtra else ""
     if not voluta:
         return combos
     # Filtro per **fetta**, non per combinazione singola: i vincoli sono
@@ -774,7 +910,12 @@ def _dispatch(args) -> int:
     dallo stesso ``study.yml``, non da uno stato per sessione.
     """
     global _COMBO
-    combos = _combos(args.study) if getattr(args, "study", None) else [for_each.EMPTY]
+    # ``graph`` guarda tutto l'output dello studio in un colpo solo: girarlo per
+    # combinazione riscriverebbe la stessa pagina N volte.
+    if args.command == "graph" or not getattr(args, "study", None):
+        combos = [for_each.EMPTY]
+    else:
+        combos = _combos(args.study)
     rc = 0
     try:
         for i, c in enumerate(combos, 1):
@@ -807,6 +948,10 @@ def _run(args) -> int:
         return cmd_compose(args.study, args.seed, args.steps, args.start)
     if args.command == "render-final":
         return cmd_render_final(args.study)
+    if args.command == "graph":
+        return cmd_graph(args.study)
+    if args.command == "prune":
+        return cmd_prune(args.study, args.apply, args.stems)
     if args.command == "where":
         return cmd_where(args.study)
     if args.command == "sv":

@@ -722,3 +722,42 @@ def test_render_passes_engine_jobs_to_bridge(tmp_path, monkeypatch):
     # Una sola variante pendente: il pool esterno resta a 1 worker (path
     # in-process) e l'engine riceve l'intero budget.
     assert seen == [8]
+
+
+# --- variant_paths: la stessa enumerazione, senza scrivere -----------------
+
+def test_variant_paths_coincide_con_write_variants(tmp_path):
+    """Il contratto su cui poggia `prune`: se i due divergono, prune cancella
+    file buoni. Vale per tutte e tre le modalita'."""
+    from granstudies.render import variant_paths
+
+    for mode in ("discrete", "envelope", "both"):
+        d = tmp_path / mode
+        written = write_variants(_spec(mode), str(d))
+        assert sorted(variant_paths(_spec(mode), str(d))) == sorted(written)
+
+
+def test_variant_paths_non_scrive_niente(tmp_path):
+    from granstudies.render import variant_paths
+
+    paths = variant_paths(_spec("discrete"), str(tmp_path))
+    assert paths
+    assert os.listdir(str(tmp_path)) == []   # nessuna cartella 'discrete/' creata
+
+
+def test_audio_for_mette_studio_e_stream_nel_basename(tmp_path):
+    from granstudies.render import audio_for
+
+    v, a = str(tmp_path / "yaml"), str(tmp_path / "audio")
+    y = os.path.join(v, "discrete", "st", "o2__a=1.yml")
+    name, audio = audio_for(y, v, a, "s01")
+    assert name == os.path.join("discrete", "st", "o2__a=1")
+    assert audio == os.path.join(a, "discrete", "st", "s01_st_o2__a=1.aif")
+
+
+def test_audio_for_senza_sottocartella_di_stream(tmp_path):
+    from granstudies.render import audio_for
+
+    v, a = str(tmp_path / "yaml"), str(tmp_path / "audio")
+    _, audio = audio_for(os.path.join(v, "discrete", "o2__a=1.yml"), v, a, "s01")
+    assert audio == os.path.join(a, "discrete", "s01_o2__a=1.aif")

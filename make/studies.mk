@@ -23,6 +23,39 @@ percorso: _require-study $(MARKER)
 where: _require-study $(MARKER)
 	@$(PY) -m granstudies where $(STUDY)
 
+# La rete delle varianti discrete: un HTML per combinazione, accanto all'audio.
+# Va dopo render: legge i .aif esistenti, non gli YAML.
+.PHONY: graph
+graph: _require-study $(MARKER)
+	$(PY) -m granstudies graph $(STUDY)
+
+# Audio rimasto senza YAML: succede quando si CAMBIA il valore di un asse
+# invece di aggiungerne uno. Di default elenca soltanto; APPLY=1 cancella.
+# STEMS=1 aggiunge al bersaglio gli stem (<mix>__<stream>.aif), che altrimenti
+# sono tenuti perche' seguono il mix da cui nascono.
+.PHONY: prune
+prune: _require-study $(MARKER)
+	$(PY) -m granstudies prune $(STUDY) $(if $(APPLY),--apply,) $(if $(STEMS),--stems,)
+
+# Il giro completo per lo studio della grana: YAML, audio, pagina. Senza stem,
+# che per queste varianti sono una seconda copia identica del mix (un solo
+# stream) e raddoppiano lo spazio senza servire a niente: `graph` li scarta.
+# STEM resta sovrascrivibile da riga di comando (`make explore STEM=true`).
+.PHONY: explore
+explore: STEM := false
+explore: sweep render graph
+	@echo "[explore] fatto — 'make serve STUDY=$(STUDY)' per aprirla"
+
+# La pagina legge i campioni con fetch + decodeAudioData per disegnare
+# sonogramma e forma d'onda: da `file://` il browser lo vieta (origine opaca),
+# quindi la si serve. http.server della stdlib basta e avanza.
+PORT ?= 8000
+.PHONY: serve
+serve: graph
+	@echo "[serve] http://localhost:$(PORT)/graph.html   (Ctrl-C per fermare)"
+	@cd generated/$(STUDY) && ($(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 >/dev/null 2>&1 & \
+	 sleep 1; open -a Safari "http://localhost:$(PORT)/graph.html"; wait)
+
 .PHONY: describe
 describe: _require-study $(MARKER)
 	$(PY) -m granstudies describe $(STUDY)

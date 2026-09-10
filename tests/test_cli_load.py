@@ -105,3 +105,54 @@ def test_cmd_versions_writes_one_document_per_outer_value(tmp_path, monkeypatch)
         assert ids == [f"fermo__d={label}", f"mobile__d={label}"]
         assert [s["onset"] for s in doc["streams"]] == [0, 0]
         assert doc["duration"] == 10
+
+
+# --- prune --stems -----------------------------------------------------------
+
+PRUNE_DOC = {
+    "study_id": "s_prune",
+    "samples_dir": "samples",
+    "base": {"onset": 0, "duration": 5, "sample": "corpus.wav"},
+    "axes": {"a": {"path": "density", "baseline": 20, "values": [5, 50]}},
+    "sweep": {"mode": "discrete", "orders": [1]},
+}
+
+
+def _prune_tree(tmp_path, monkeypatch):
+    """Scrive le varianti attese piu' un mix, il suo stem e un orfano."""
+    from granstudies.render import audio_for, variant_paths
+
+    study = _write_study(tmp_path, monkeypatch, PRUNE_DOC)
+    g = os.path.join(str(tmp_path), "generated", study)
+    monkeypatch.setattr(cli, "gen_dir", lambda s: g)
+    spec = cli._load_spec(study)
+    attesi = variant_paths(spec, os.path.join(g, "yaml", "sweep"))
+    for p in attesi:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        open(p, "w").close()
+    audio = [audio_for(p, os.path.join(g, "yaml"), os.path.join(g, "audio"), study)[1]
+             for p in attesi]
+    for p in audio:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        open(p, "wb").close()
+    stem = os.path.splitext(audio[0])[0] + "__stream.aif"
+    open(stem, "wb").close()
+    orfano = os.path.join(os.path.dirname(audio[0]), "vecchio.aif")
+    open(orfano, "wb").close()
+    return study, audio, stem, orfano
+
+
+def test_prune_tiene_gli_stem_e_toglie_solo_gli_orfani(tmp_path, monkeypatch):
+    study, audio, stem, orfano = _prune_tree(tmp_path, monkeypatch)
+    assert cli.cmd_prune(study, apply=True) == 0
+    assert not os.path.exists(orfano)
+    assert os.path.exists(stem)
+    assert all(os.path.exists(p) for p in audio)
+
+
+def test_prune_stems_toglie_gli_stem_ma_non_i_mix(tmp_path, monkeypatch):
+    """--stems prende di mira proprio cio' che il prune normale protegge."""
+    study, audio, stem, _orfano = _prune_tree(tmp_path, monkeypatch)
+    assert cli.cmd_prune(study, apply=True, stems=True) == 0
+    assert not os.path.exists(stem)
+    assert all(os.path.exists(p) for p in audio)

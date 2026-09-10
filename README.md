@@ -42,6 +42,84 @@ make compose STUDY=1-10ms
 make render-final STUDY=1-10ms
 ```
 
+## `graph` — la rete delle varianti discrete
+
+Con `sweep.mode: discrete` ogni punto della griglia è un file a sé, e il nome
+porta le coordinate:
+
+```
+o2__grain.duration=0.001__pitch.ratio=0.447.aif
+```
+
+`make graph STUDY=<id>` rilegge quei nomi e scrive **una** pagina autonoma,
+`generated/<id>/graph.html`, che tiene dentro tutte le combinazioni di
+`for_each:` già renderizzate:
+
+- gli **assi interni** sono la griglia — click per sentire una cella, frecce
+  per spostarsi su una cella vicina;
+- gli **assi esterni** sono i selettori in cima — cambiarne uno tiene la cella
+  dov'è, quindi è un A/B sullo stesso punto;
+- un valore è disattivato quando quella combinazione non è stata renderizzata:
+  la pagina mostra il disco, non lo `study.yml`.
+
+```bash
+make explore STUDY=001-41   # sweep + render (senza stem) + graph, in un colpo
+make serve   STUDY=001-41   # scrive la pagina, la serve e la apre in Safari
+```
+
+`explore` è il giro completo: YAML, audio, pagina. Rende senza stem — per
+queste varianti sono una copia identica del mix (un solo stream) e raddoppiano
+lo spazio senza servire a niente, dato che `graph` li scarta comunque. Per
+tenerli: `make explore STUDY=… STEM=true`.
+
+Il render è **incrementale**: aggiungendo valori a un asse, o una coppia
+nuova, rigenera solo ciò che manca e salta il resto in tempo zero (il nome del
+file porta le sue coordinate, quindi i punti già fatti restano validi). Quando
+invece **cambi** il valore di un asse, il vecchio audio resta orfano e la
+pagina lo mostrerebbe come una colonna fantasma: `make prune STUDY=…` elenca
+quei file, `make prune STUDY=… APPLY=1` li cancella.
+
+Gli stem restano fuori dal conto, perche' non hanno uno YAML proprio: seguono
+il mix da cui nascono. Per togliere anche quelli — tipicamente i residui di
+render fatti prima che `explore` imponesse `STEM=false` — aggiungi `STEMS=1`:
+`make prune STUDY=… STEMS=1 APPLY=1`.
+
+**Va servita, non aperta come file.** Il pannello di analisi legge i campioni
+con `fetch` + `decodeAudioData`, e da `file://` il browser lo vieta (origine
+opaca): `make serve` avvia `http.server` della stdlib su
+`http://localhost:8000` (`PORT=…` per cambiarla) e apre **Safari**, che a
+differenza di Chrome decodifica AIFF. Aprendo il file direttamente la griglia
+funziona lo stesso, ma le quattro viste restano vuote e la pagina lo dice.
+
+### Il pannello di analisi
+
+A destra, sulla clip selezionata:
+
+| vista | cosa mostra | come |
+|---|---|---|
+| sonogramma | x tempo, y frequenza | STFT propria (FFT radix-2), Hann, hop = ¼ finestra; scala **lin/log** e **risoluzione** (256…8192) scelte dai bottoni sopra |
+| forma d'onda | picchi min/max per colonna | nessun sottocampionamento, o le transienti sparirebbero |
+| spectroscope | x frequenza (log), y dinamica | `AnalyserNode` in tempo reale |
+| stereoscope | goniometro L/R | Lissajous ruotato di 45°: x = (R−L)/√2, y = (L+R)/√2 |
+
+Il cursore si trascina sia sul sonogramma sia sulla forma d'onda. Non può
+desincronizzarsi perché non è uno stato: è una funzione di
+`audio.currentTime`, letta una volta sola per frame e scritta solo dal seek.
+
+**Barra spaziatrice**: play/pausa. **Frecce**: ci si sposta di una cella.
+Due spunte sotto il player: **continua dal punto in cui era** (cambiando cella
+la riproduzione riprende alla stessa posizione, e continua se stava suonando —
+è così che si sente la differenza fra due grani invece della loro partenza) e
+**loop**. Restano impostate fra una sessione e l'altra.
+Il divisore fra le due colonne si trascina, e la larghezza scelta resta.
+
+`graph` gira una volta sola per studio, non una per combinazione, e quindi
+ignora `COMBO`: il filtro l'ha già fatto `render`, decidendo cosa esiste.
+
+L'export per Sonic Visualiser (`make sv`) resta sul ramo `envelope`, dove i
+marker sono i plateau dello sweep; per i file discreti la navigazione è
+`graph`.
+
 ## `for_each:` — n valori del parametro, n file
 
 Gli `axes:` di uno studio scorrono **dentro** il file: su
