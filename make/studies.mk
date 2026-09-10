@@ -41,10 +41,18 @@ prune: _require-study $(MARKER)
 # che per queste varianti sono una seconda copia identica del mix (un solo
 # stream) e raddoppiano lo spazio senza servire a niente: `graph` li scarta.
 # STEM resta sovrascrivibile da riga di comando (`make explore STEM=true`).
+# Il tempo totale lo puo' misurare solo chi vede inizio e fine: con
+# `sweep render graph` come prerequisiti la ricetta parte a lavoro gia' finito.
+# Quindi un sub-make in una ricetta sola. STEM resta target-specific: da riga
+# di comando `make explore STEM=true` vince e si propaga al sub-make.
 .PHONY: explore
 explore: STEM := false
-explore: sweep render graph
-	@echo "[explore] fatto — 'make serve STUDY=$(STUDY)' per aprirla"
+explore: _require-study
+	@t0=$$(date +%s); \
+	 $(MAKE) --no-print-directory sweep render graph STUDY=$(STUDY) STEM=$(STEM); \
+	 d=$$(( $$(date +%s) - t0 )); \
+	 printf "[explore] fatto in %d:%02d — 'make serve STUDY=%s' per aprirla\n" \
+	   $$((d / 60)) $$((d % 60)) "$(STUDY)"
 
 # La pagina legge i campioni con fetch + decodeAudioData per disegnare
 # sonogramma e forma d'onda: da `file://` il browser lo vieta (origine opaca),
