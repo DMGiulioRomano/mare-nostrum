@@ -31,9 +31,11 @@ graph: _require-study $(MARKER)
 
 # Audio rimasto senza YAML: succede quando si CAMBIA il valore di un asse
 # invece di aggiungerne uno. Di default elenca soltanto; APPLY=1 cancella.
+# STEMS=1 aggiunge al bersaglio gli stem (<mix>__<stream>.aif), che altrimenti
+# sono tenuti perche' seguono il mix da cui nascono.
 .PHONY: prune
 prune: _require-study $(MARKER)
-	$(PY) -m granstudies prune $(STUDY) $(if $(APPLY),--apply,)
+	$(PY) -m granstudies prune $(STUDY) $(if $(APPLY),--apply,) $(if $(STEMS),--stems,)
 
 # Il giro completo per lo studio della grana: YAML, audio, pagina. Senza stem,
 # che per queste varianti sono una seconda copia identica del mix (un solo

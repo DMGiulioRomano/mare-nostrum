@@ -79,6 +79,11 @@ invece **cambi** il valore di un asse, il vecchio audio resta orfano e la
 pagina lo mostrerebbe come una colonna fantasma: `make prune STUDY=…` elenca
 quei file, `make prune STUDY=… APPLY=1` li cancella.
 
+Gli stem restano fuori dal conto, perche' non hanno uno YAML proprio: seguono
+il mix da cui nascono. Per togliere anche quelli — tipicamente i residui di
+render fatti prima che `explore` imponesse `STEM=false` — aggiungi `STEMS=1`:
+`make prune STUDY=… STEMS=1 APPLY=1`.
+
 **Va servita, non aperta come file.** Il pannello di analisi legge i campioni
 con `fetch` + `decodeAudioData`, e da `file://` il browser lo vieta (origine
 opaca): `make serve` avvia `http.server` della stdlib su

@@ -653,7 +653,7 @@ def cmd_graph(study: str) -> int:
     return 0
 
 
-def cmd_prune(study: str, apply: bool = False) -> int:
+def cmd_prune(study: str, apply: bool = False, stems: bool = False) -> int:
     """Elenca (e con ``--apply`` cancella) i residui di una versione precedente.
 
     Serve quando un valore di un asse **cambia** invece di essere aggiunto:
@@ -667,7 +667,9 @@ def cmd_prune(study: str, apply: bool = False) -> int:
     (``render.variant_paths``) e si toglie tutto il resto. Restano fuori
     ``stack``/``versions``/``percorso``, che hanno documenti propri, e la
     cache. Gli stem (``<mix>__<stream>.aif``) seguono il mix a cui
-    appartengono.
+    appartengono, a meno di ``--stems``: allora sono loro il bersaglio, perche'
+    quando c'e' un solo stream sono una copia identica del mix e `graph` li
+    scarta comunque.
     """
     from .render import audio_for, variant_paths
 
@@ -697,8 +699,11 @@ def cmd_prune(study: str, apply: bool = False) -> int:
                 continue
             p = os.path.join(root, f)
             base = os.path.splitext(p)[0]
-            # Uno stem non ha uno YAML suo: vive o muore col mix da cui nasce.
-            if p in attesi_audio or any(base.startswith(b + "__") for b in basi):
+            if p in attesi_audio:
+                continue
+            # Uno stem non ha uno YAML suo: vive o muore col mix da cui nasce,
+            # salvo quando sono gli stem stessi cio' che si vuole togliere.
+            if any(base.startswith(b + "__") for b in basi) and not stems:
                 continue
             orfani.append(p)
 
@@ -812,6 +817,8 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("study")
     pr.add_argument("--apply", action="store_true",
                     help="cancella davvero; senza, si limita a elencare")
+    pr.add_argument("--stems", action="store_true",
+                    help="prendi di mira anche gli stem (<mix>__<stream>.aif)")
 
     wp = sub.add_parser("where", help="stampa la cartella di output corrente")
     wp.add_argument("study")
@@ -944,7 +951,7 @@ def _run(args) -> int:
     if args.command == "graph":
         return cmd_graph(args.study)
     if args.command == "prune":
-        return cmd_prune(args.study, args.apply)
+        return cmd_prune(args.study, args.apply, args.stems)
     if args.command == "where":
         return cmd_where(args.study)
     if args.command == "sv":
