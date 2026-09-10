@@ -106,6 +106,8 @@ for_each:
     speed-pitch:
       axes: {interpolation: step, pointer.speed_ratio: *ax_speed, pitch.ratio: *ax_pitch}
   base.distribution: {values: [0, 0.3, 1]}
-  base.pointer.offset_range: {values: [0, 0.01]}
+  # 0.0001 -> 0.01 in passi geometrici (~x3.16): l'offset e' una dispersione,
+  # conta il rapporto non la differenza.
+  base.pointer.offset_range: {values: [0, 0.0001, 0.000316, 0.001, 0.00316, 0.01]}
   base.grain.duration_range: {values: [0, 0.01]}
   base.pitch.range: {values: [0, 0.05]}
