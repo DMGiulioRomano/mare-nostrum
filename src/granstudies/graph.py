@@ -109,11 +109,17 @@ def _grid(nodes: List[Dict[str, Any]], order: List[str] | None) -> Dict[str, Any
     axes = axes_of(nodes, order)
     ax_x = axes[0] if axes else ""
     ax_y = axes[1] if len(axes) > 1 else ""
+    vals = {a: sorted({n["coords"][a] for n in nodes}) for a in (ax_x, ax_y) if a}
+    # L'asse piu' lungo va in verticale: una colonna che scorre si legge,
+    # una riga che sborda orizzontalmente no. A pari lunghezza vince
+    # l'ordine dichiarato nello study.yml.
+    if ax_y and len(vals[ax_x]) > len(vals[ax_y]):
+        ax_x, ax_y = ax_y, ax_x
     return {
         "axX": ax_x,
         "axY": ax_y,
-        "xs": sorted({n["coords"][ax_x] for n in nodes}) if ax_x else [],
-        "ys": sorted({n["coords"][ax_y] for n in nodes}) if ax_y else [0],
+        "xs": vals[ax_x] if ax_x else [],
+        "ys": vals[ax_y] if ax_y else [0],
         "nodes": nodes,
     }
 

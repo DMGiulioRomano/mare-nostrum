@@ -121,3 +121,20 @@ def test_write_graph_una_pagina_sola_per_tutte_le_combinazioni(tmp_path):
     out = os.path.join(root, "graph.html")
     assert write_graph("s01", root, out) == (2, 3)
     assert os.path.exists(out)
+
+
+def test_asse_con_piu_valori_va_in_verticale():
+    """La griglia e' piu' alta che larga: 24 grain.duration su una riga
+    sborderebbero, in colonna scorrono."""
+    from granstudies.graph import _grid
+    nodes = [{"coords": {"grain.duration": d, "pitch.ratio": p}}
+             for d in (0.001, 0.002, 0.004) for p in (0.2, 1.0)]
+    g = _grid(nodes, ["grain.duration", "pitch.ratio"])
+    assert g["axY"] == "grain.duration" and len(g["ys"]) == 3
+    assert g["axX"] == "pitch.ratio" and len(g["xs"]) == 2
+
+
+def test_a_pari_lunghezza_resta_l_ordine_dichiarato():
+    from granstudies.graph import _grid
+    nodes = [{"coords": {"a": x, "b": y}} for x in (1, 2) for y in (3, 4)]
+    assert _grid(nodes, ["a", "b"])["axX"] == "a"
