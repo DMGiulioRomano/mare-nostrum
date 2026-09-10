@@ -524,9 +524,11 @@ def render_variants(
         ))
 
     if pending:
-        # ponytail: cap a 8 processi, una variante lunga puo' tenere in RAM
-        # l'intero buffer audio; alzare con jobs= se la memoria lo consente.
-        budget = jobs or min(8, os.cpu_count() or 1)
+        # ponytail: tutti i core. Il vecchio cap a 8 proteggeva dalla RAM di
+        # una variante lunga; le varianti dello studio stanno sotto i 20s
+        # (~15 MB di buffer), quindi non e' un rischio. Se un giorno tornano
+        # varianti da decine di minuti, abbassare con jobs=.
+        budget = jobs or os.cpu_count() or 1
         workers, engine_jobs = _split_jobs(budget, len(pending))
         if workers == 1:
             for entry, args in pending:
