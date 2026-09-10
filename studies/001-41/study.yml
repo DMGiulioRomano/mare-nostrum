@@ -36,16 +36,16 @@ _assi:
     baseline: 0.2
     # 0.2 -> 1.0 in passi geometrici (ratio 5^(1/4) ~ 1.495): il pitch ratio
     # e' esponenziale, passi uguali all'orecchio = passi uguali in rapporto.
-    values: [0.2, 0.299, 0.447, 0.669, 0.75, 0.9, 1.0]
+    values: [0.2, 0.447, 0.75, 1.0]
   speed: &ax_speed
     baseline: 0.1
     # ponytail: placeholder geometrico x2 attorno al valore base (0.1), da
     # correggere ascoltando.
-    values: [0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.6]
+    values: [0.025, 0.05, 0.1, 0.25, 0.5, 1]
   fill_factor: &ax_fill_factor
     baseline: 2
     # ponytail: placeholder geometrico x2, da correggere ascoltando.
-    values: [0.5, 0.7, 0.85, 1, 2, 4, 8]
+    values: [0.5, 0.7, 0.85, 1, 2]
 
 # Da mare-nostrum.yml, stream2. Escluso `grain.read_direction` (envelope
 # scritto sul brano: qui falserebbe l'ascolto, resta al default 1). I valori a
@@ -95,16 +95,16 @@ for_each:
   coppia:
     duration-pitch:
       axes: {interpolation: step, grain.duration: *ax_duration, pitch.ratio: *ax_pitch}
-      sweep.orderings: [[grain.duration, pitch.ratio], [pitch.ratio, grain.duration]]
+      sweep.orderings: [[grain.duration, pitch.ratio]] #, [pitch.ratio, grain.duration]]
     duration-fill-factor:
       axes: {interpolation: step, grain.duration: *ax_duration, fill_factor: *ax_fill_factor}
-      sweep.orderings: [[grain.duration, fill_factor], [fill_factor, grain.duration]]
+      sweep.orderings: [[grain.duration, fill_factor]] #, [fill_factor, grain.duration]]
     duration-speed:
       axes: {interpolation: step, grain.duration: *ax_duration, pointer.speed_ratio: *ax_speed}
-      sweep.orderings: [[grain.duration, pointer.speed_ratio], [pointer.speed_ratio, grain.duration]]
+      sweep.orderings: [[grain.duration, pointer.speed_ratio]] #, [pointer.speed_ratio, grain.duration]]
     speed-pitch:
       axes: {interpolation: step, pointer.speed_ratio: *ax_speed, pitch.ratio: *ax_pitch}
-      sweep.orderings: [[pointer.speed_ratio, pitch.ratio], [pitch.ratio, pointer.speed_ratio]]
+      sweep.orderings: [[pointer.speed_ratio, pitch.ratio]] #, [pitch.ratio, pointer.speed_ratio]]
   base.distribution: {values: [0, 0.3, 1]}
   base.pointer.offset_range: {values: [0, 0.01]}
   base.grain.duration_range: {values: [0, 0.01]}
