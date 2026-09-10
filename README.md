@@ -80,7 +80,7 @@ A destra, sulla clip selezionata:
 
 | vista | cosa mostra | come |
 |---|---|---|
-| sonogramma | x tempo, y frequenza (log) | STFT precalcolata: Hann 2048, hop 512 |
+| sonogramma | x tempo, y frequenza | STFT propria (FFT radix-2), Hann, hop = ¼ finestra; scala **lin/log** e **risoluzione** (256…8192) scelte dai bottoni sopra |
 | forma d'onda | picchi min/max per colonna | nessun sottocampionamento, o le transienti sparirebbero |
 | spectroscope | x frequenza (log), y dinamica | `AnalyserNode` in tempo reale |
 | stereoscope | goniometro L/R | Lissajous ruotato di 45°: x = (R−L)/√2, y = (L+R)/√2 |
@@ -88,6 +88,9 @@ A destra, sulla clip selezionata:
 Il cursore si trascina sia sul sonogramma sia sulla forma d'onda. Non può
 desincronizzarsi perché non è uno stato: è una funzione di
 `audio.currentTime`, letta una volta sola per frame e scritta solo dal seek.
+
+**Barra spaziatrice**: play/pausa. **Frecce**: ci si sposta di una cella.
+Il divisore fra le due colonne si trascina, e la larghezza scelta resta.
 
 `graph` gira una volta sola per studio, non una per combinazione, e quindi
 ignora `COMBO`: il filtro l'ha già fatto `render`, decidendo cosa esiste.

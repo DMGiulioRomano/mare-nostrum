@@ -54,6 +54,13 @@
  .pair .view { flex:1 1 0; margin-bottom:0; }
  .pair .view:last-child { flex:0 0 auto; }
  #status { color:var(--dim); font-size:11px; min-height:1.4em; }
+ #ctl { margin-bottom:8px; font-size:12px; }
+ #ctl .k { color:var(--dim); margin-right:6px; }
+ #ctl span + span { margin-left:4px; }
+ #ctl button { font:inherit; color:inherit; background:none; border:1px solid var(--line);
+               padding:0 6px; margin-right:3px; cursor:pointer; }
+ #ctl button.on { border-color:var(--fg); background:var(--fg); color:var(--bg); }
+ #ctl #res { margin-right:14px; }
 </style>
 
 <div id="left">
@@ -67,13 +74,17 @@
 <div id="gutter" title="trascina per ridimensionare"></div>
 
 <div id="right">
+  <div id="ctl">
+    <span class="k">scala</span><span id="scale"></span>
+    <span class="k">risoluzione</span><span id="res"></span>
+  </div>
   <div class="view seek" id="specView">
     <canvas id="spec" height="320"></canvas>
     <div class="lab">sonogramma — x tempo, y frequenza (log)</div>
     <div class="cur" id="curSpec"></div>
   </div>
   <div class="view seek" id="waveView">
-    <canvas id="wave" height="110"></canvas>
+    <canvas id="wave" height="180"></canvas>
     <div class="lab">forma d'onda</div>
     <div class="cur" id="curWave"></div>
   </div>
@@ -214,7 +225,14 @@ function show(c) {
 }
 
 addEventListener("keydown", e => {
+  // I bottoni tengono il focus dopo un click, e col focus la barra spaziatrice
+  // li ripremerebbe invece di comandare il trasporto.
   if (e.target.tagName === "BUTTON") e.target.blur();
+  if (e.key === " ") {
+    e.preventDefault();
+    if (audio.paused) audio.play(); else audio.pause();
+    return;
+  }
   const d = {ArrowRight:[1,0], ArrowLeft:[-1,0], ArrowUp:[0,1], ArrowDown:[0,-1]}[e.key];
   if (!d) return;
   e.preventDefault();
@@ -304,23 +322,29 @@ function fft(re, im) {
 }
 
 // --- STFT: una colonna di magnitudini in dB per hop ------------------------
-const NFFT = 2048, HOP = 512, DBFLOOR = -96;
-function stft(mono) {
-  const win = new Float32Array(NFFT);          // Hann
-  for (let i = 0; i < NFFT; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / NFFT);
-  const cols = Math.max(1, Math.floor((mono.length - NFFT) / HOP) + 1);
-  const bins = NFFT / 2;
+const DBFLOOR = -96;
+
+// La finestra decide il compromesso: piu' lunga = piu' risoluzione in
+// frequenza e meno nel tempo. Su grani da 20 us conta la seconda, su grani da
+// mezzo secondo la prima — per questo la scelta e' esposta e non fissata.
+// L'hop resta un quarto della finestra: 75% di sovrapposizione a ogni misura.
+function stft(mono, n) {
+  const win = new Float32Array(n);              // Hann
+  for (let i = 0; i < n; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / n);
+  const hop = n / 4;
+  const cols = Math.max(1, Math.floor((mono.length - n) / hop) + 1);
+  const bins = n / 2;
   const out = new Float32Array(cols * bins);
-  const re = new Float32Array(NFFT), im = new Float32Array(NFFT);
+  const re = new Float32Array(n), im = new Float32Array(n);
   for (let c = 0; c < cols; c++) {
-    const off = c * HOP;
-    for (let i = 0; i < NFFT; i++) {
+    const off = c * hop;
+    for (let i = 0; i < n; i++) {
       re[i] = (mono[off + i] || 0) * win[i];
       im[i] = 0;
     }
     fft(re, im);
     for (let b = 0; b < bins; b++) {
-      const m = Math.sqrt(re[b] * re[b] + im[b] * im[b]) * 2 / NFFT;
+      const m = Math.sqrt(re[b] * re[b] + im[b] * im[b]) * 2 / n;
       out[c * bins + b] = Math.max(DBFLOOR, 20 * Math.log10(m + 1e-12));
     }
   }
@@ -368,6 +392,36 @@ function heat(v) {
 }
 
 let view = null;   // {duration} della clip attualmente disegnata
+let logScale = true, nfft = 2048;
+
+const RES = [256, 512, 1024, 2048, 4096, 8192];
+function drawCtl() {
+  const sc = document.getElementById("scale"), rs = document.getElementById("res");
+  sc.innerHTML = ""; rs.innerHTML = "";
+  for (const [lab, v] of [["lin", false], ["log", true]]) {
+    const b = document.createElement("button");
+    b.textContent = lab;
+    if (logScale === v) b.classList.add("on");
+    b.onclick = () => { logScale = v; drawCtl(); redrawSpec(); };
+    sc.appendChild(b);
+  }
+  for (const n of RES) {
+    const b = document.createElement("button");
+    b.textContent = n;
+    if (nfft === n) b.classList.add("on");
+    // Ogni risoluzione ha la sua STFT, tenuta in cache a parte: tornare
+    // indietro non ricalcola.
+    b.onclick = () => { nfft = n; drawCtl(); redrawSpec(); };
+    rs.appendChild(b);
+  }
+}
+
+function redrawSpec() {
+  if (!view) return;
+  const c = document.getElementById("spec");
+  c.width = c.parentNode.clientWidth;
+  drawSpec(c, view);
+}
 
 async function analyse(url) {
   const specC = document.getElementById("spec"), waveC = document.getElementById("wave");
@@ -390,21 +444,28 @@ async function analyse(url) {
     }
   }
   view = data;
+  drawCtl();
   drawSpec(specC, data);
   drawWave(waveC, data);
-  status.textContent = data.duration.toFixed(2) + " s · " + data.rate + " Hz";
+  const s = data.specs[nfft];
+  status.textContent = data.duration.toFixed(2) + " s · " + data.rate + " Hz · " +
+    "finestra " + nfft + " campioni (" + (nfft / data.rate * 1000).toFixed(1) + " ms, " +
+    (data.rate / nfft).toFixed(1) + " Hz per bin) · " + s.cols + " colonne";
 }
 
 function drawSpec(c, d) {
   const g = c.getContext("2d"), W = c.width, H = c.height;
-  const s = d.spec || (d.spec = stft(d.mono));
+  d.specs = d.specs || {};
+  const s = d.specs[nfft] || (d.specs[nfft] = stft(d.mono, nfft));
   const nyq = d.rate / 2, binHz = nyq / s.bins;
   const img = g.createImageData(W, H);
   for (let x = 0; x < W; x++) {
     const col = Math.min(s.cols - 1, Math.floor(x / W * s.cols));
     for (let y = 0; y < H; y++) {
-      // y=0 in alto = Nyquist; scala logaritmica in frequenza.
-      const f = FMIN * Math.pow(nyq / FMIN, 1 - y / H);
+      // y=0 in alto = Nyquist. In log lo spazio e' distribuito per ottave —
+      // le prime armoniche si leggono; in lineare per hertz — l'alto si legge.
+      const f = logScale ? FMIN * Math.pow(nyq / FMIN, 1 - y / H)
+                         : nyq * (1 - y / H);
       const b = Math.min(s.bins - 1, Math.round(f / binHz));
       const db = s.db[col * s.bins + b];
       const [r, gg, bb] = heat((db - DBFLOOR) / -DBFLOOR);
