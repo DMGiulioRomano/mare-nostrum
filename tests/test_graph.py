@@ -138,3 +138,26 @@ def test_a_pari_lunghezza_resta_l_ordine_dichiarato():
     from granstudies.graph import _grid
     nodes = [{"coords": {"a": x, "b": y}} for x in (1, 2) for y in (3, 4)]
     assert _grid(nodes, ["a", "b"])["axX"] == "a"
+
+
+def test_un_asse_solo_non_scambia_nulla():
+    from granstudies.graph import _grid
+    g = _grid([{"coords": {"a": 1}}, {"coords": {"a": 2}}], ["a"])
+    assert (g["axX"], g["axY"]) == ("a", "")
+    assert g["xs"] == [1, 2] and g["ys"] == [0]
+
+
+def test_nessun_asse_griglia_degenere():
+    from granstudies.graph import _grid
+    g = _grid([{"coords": {}}], [])
+    assert (g["axX"], g["axY"]) == ("", "")
+    assert g["xs"] == [] and g["ys"] == [0]
+
+
+def test_y_gia_piu_lungo_resta_dov_e():
+    from granstudies.graph import _grid
+    nodes = [{"coords": {"a": x, "b": y}}
+             for x in (1, 2) for y in (3, 4, 5)]
+    g = _grid(nodes, ["a", "b"])
+    assert g["axX"] == "a" and g["xs"] == [1, 2]
+    assert g["axY"] == "b" and g["ys"] == [3, 4, 5]
