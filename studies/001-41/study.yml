@@ -10,8 +10,9 @@
 #   COMBO=coppia=duration-pitch__distribution=0.3 study 001-41
 #
 # Senza COMBO si generano TUTTE le combinazioni: 4 coppie x 3 distribution x
-# 2 x 2 x 2 = 96 render (ognuno ~20 min di audio nelle coppie con
-# grain.duration). Restringi sempre a una fetta.
+# 2 x 2 x 2 = 96 render (ognuno = tutti i punti della griglia, un file da 8s
+# per punto: 96 file per la coppia duration-pitch). Restringi sempre a una
+# fetta.
 
 study_id: 001-41
 title: "001-41 — matrice degli assi"
@@ -53,7 +54,7 @@ _assi:
 # muove, la patch della coppia li sovrascrive.
 base:
   onset: 0
-  duration: 1000  # tetto: la durata vera la fissa sweep.transition
+  duration: 8     # durata del singolo grano-file, in secondi
   sample: 001-41_5-5_5.wav   # crudo, peak -26 dBFS: compensato da volume: 12
   time_mode: normalized
   distribution_mode: uniform
@@ -78,33 +79,32 @@ base:
   volume: 12
 
 sweep:
-  mode: envelope
-  transition: 7   # tutti gli assi step -> durata = N * transition per gradino
-  orderings: []   # la coppia li dichiara
+  # Un file per punto della griglia invece di un unico envelope lungo: il nome
+  # del file porta le coordinate (o2__grain.duration=...__pitch.ratio=...) e
+  # `graph` ne fa una rete navigabile. `orders: [2]` = solo la griglia piena,
+  # niente varianti a un asse solo (le baseline non stanno nei values).
+  mode: discrete
+  orders: [2]
 
 axes:
   interpolation: step
   # gli assi interni li dichiara la coppia, in for_each
 
 # --- assi esterni ----------------------------------------------------------
-# `coppia` sceglie quali due parametri diventano assi interni (e in quali due
-# ordinamenti percorrerli); gli altri restano ai valori di riposo di `base:`.
+# `coppia` sceglie quali due parametri diventano assi interni; gli altri
+# restano ai valori di riposo di `base:`.
 # Gli altri assi sono i parametri di contorno, quelli che finora divergevano
 # fra i quattro file senza che nessuno l'avesse deciso.
 for_each:
   coppia:
     duration-pitch:
       axes: {interpolation: step, grain.duration: *ax_duration, pitch.ratio: *ax_pitch}
-      sweep.orderings: [[grain.duration, pitch.ratio]] #, [pitch.ratio, grain.duration]]
     duration-fill-factor:
       axes: {interpolation: step, grain.duration: *ax_duration, fill_factor: *ax_fill_factor}
-      sweep.orderings: [[grain.duration, fill_factor]] #, [fill_factor, grain.duration]]
     duration-speed:
       axes: {interpolation: step, grain.duration: *ax_duration, pointer.speed_ratio: *ax_speed}
-      sweep.orderings: [[grain.duration, pointer.speed_ratio]] #, [pointer.speed_ratio, grain.duration]]
     speed-pitch:
       axes: {interpolation: step, pointer.speed_ratio: *ax_speed, pitch.ratio: *ax_pitch}
-      sweep.orderings: [[pointer.speed_ratio, pitch.ratio]] #, [pitch.ratio, pointer.speed_ratio]]
   base.distribution: {values: [0, 0.3, 1]}
   base.pointer.offset_range: {values: [0, 0.01]}
   base.grain.duration_range: {values: [0, 0.01]}
