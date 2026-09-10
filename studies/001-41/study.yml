@@ -1,0 +1,111 @@
+# gl-ls
+# Studio della grana su 001-41_5-5_5.wav — il sample piu' ricorrente nel brano.
+#
+# UN documento per tutte le coppie di assi. Il `base:` sta scritto una volta
+# sola: cambiare un parametro comune non vuol dire piu' ricordarsi di cambiarlo
+# in quattro file. Le coppie di assi e i parametri di contorno sono assi
+# ESTERNI (`for_each:`): ogni combinazione e' un render a se', in
+# generated/001-41/<label>/.
+#
+#   COMBO=coppia=duration-pitch__distribution=0.3 study 001-41
+#
+# Senza COMBO si generano TUTTE le combinazioni: 4 coppie x 3 distribution x
+# 2 x 2 x 2 = 96 render (ognuno ~20 min di audio nelle coppie con
+# grain.duration). Restringi sempre a una fetta.
+
+study_id: 001-41
+title: "001-41 — matrice degli assi"
+seed: 1441
+samples_dir: samples
+
+# Catalogo degli assi: i valori di ogni parametro stanno qui una volta sola, e
+# gli stati di `for_each.coppia` li riusano per alias YAML (`*ax_duration`).
+# Non e' una chiave del linguaggio, e' un magazzino: la pipeline la ignora.
+_assi:
+  duration: &ax_duration
+    baseline: 0.05
+    # Da 1 campione (floor dinamico, 1/48000 s) a mezzo secondo. Passo x2
+    # (ottava) fuori dalla banda 500-5000 Hz; dentro quella banda passo piu'
+    # fitto (fino a ~x1.13) perche' li' la discriminazione di altezza
+    # dell'orecchio e' piu' fine e un salto di ottava si sente come un buco.
+    values: [0.000020833333333333333, 0.00004, 0.00008, 0.00016,
+             0.00025, 0.00035, 0.0004, 0.00045, 0.0005, 0.0006, 0.0007, 0.0008,
+             0.0009, 0.001, 0.0014, 0.002,
+             0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512]
+  pitch: &ax_pitch
+    baseline: 0.2
+    # 0.2 -> 1.0 in passi geometrici (ratio 5^(1/4) ~ 1.495): il pitch ratio
+    # e' esponenziale, passi uguali all'orecchio = passi uguali in rapporto.
+    values: [0.2, 0.447, 0.75, 1.0]
+  speed: &ax_speed
+    baseline: 0.1
+    # ponytail: placeholder geometrico x2 attorno al valore base (0.1), da
+    # correggere ascoltando.
+    values: [0.025, 0.05, 0.1, 0.25, 0.5, 1]
+  fill_factor: &ax_fill_factor
+    baseline: 2
+    # ponytail: placeholder geometrico x2, da correggere ascoltando.
+    values: [0.5, 0.7, 0.85, 1, 2]
+
+# Da mare-nostrum.yml, stream2. Escluso `grain.read_direction` (envelope
+# scritto sul brano: qui falserebbe l'ascolto, resta al default 1). I valori a
+# riposo dei parametri che in una coppia sono assi stanno qui: quando l'asse li
+# muove, la patch della coppia li sovrascrive.
+base:
+  onset: 0
+  duration: 1000  # tetto: la durata vera la fissa sweep.transition
+  sample: 001-41_5-5_5.wav   # crudo, peak -26 dBFS: compensato da volume: 12
+  time_mode: normalized
+  distribution_mode: uniform
+  # fill_factor non e' scritto: il default dell'engine e' 2
+  # (parameter_schema.py). Quando e' asse, la coppia lo dichiara.
+  grain:
+    duration: 0.001          # a riposo: meta' della banda dell'asse
+    envelope: hanning
+  pointer:
+    start: 0
+    speed_ratio: 0.1         # a riposo
+    loop_unit: normalized
+    loop_start: 0
+    # ponytail: loop_end era sincronizzato allo step di sweep assumendo
+    # speed_ratio fisso a 0.1 (loop_end_norm*5.5s/speed_ratio = 20s). Nelle
+    # coppie dove speed_ratio e' l'asse il sync varia per gradino: valore
+    # lasciato com'era, da correggere ascoltando.
+    loop_end: 0.363636363636
+  pitch:
+    ratio: 1.0               # a riposo
+  pan: 0
+  volume: 12
+
+sweep:
+  mode: envelope
+  transition: 7   # tutti gli assi step -> durata = N * transition per gradino
+  orderings: []   # la coppia li dichiara
+
+axes:
+  interpolation: step
+  # gli assi interni li dichiara la coppia, in for_each
+
+# --- assi esterni ----------------------------------------------------------
+# `coppia` sceglie quali due parametri diventano assi interni (e in quali due
+# ordinamenti percorrerli); gli altri restano ai valori di riposo di `base:`.
+# Gli altri assi sono i parametri di contorno, quelli che finora divergevano
+# fra i quattro file senza che nessuno l'avesse deciso.
+for_each:
+  coppia:
+    duration-pitch:
+      axes: {interpolation: step, grain.duration: *ax_duration, pitch.ratio: *ax_pitch}
+      sweep.orderings: [[grain.duration, pitch.ratio]] #, [pitch.ratio, grain.duration]]
+    duration-fill-factor:
+      axes: {interpolation: step, grain.duration: *ax_duration, fill_factor: *ax_fill_factor}
+      sweep.orderings: [[grain.duration, fill_factor]] #, [fill_factor, grain.duration]]
+    duration-speed:
+      axes: {interpolation: step, grain.duration: *ax_duration, pointer.speed_ratio: *ax_speed}
+      sweep.orderings: [[grain.duration, pointer.speed_ratio]] #, [pointer.speed_ratio, grain.duration]]
+    speed-pitch:
+      axes: {interpolation: step, pointer.speed_ratio: *ax_speed, pitch.ratio: *ax_pitch}
+      sweep.orderings: [[pointer.speed_ratio, pitch.ratio]] #, [pitch.ratio, pointer.speed_ratio]]
+  base.distribution: {values: [0, 0.3, 1]}
+  base.pointer.offset_range: {values: [0, 0.01]}
+  base.grain.duration_range: {values: [0, 0.01]}
+  base.pitch.range: {values: [0, 0.05]}

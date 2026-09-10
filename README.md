@@ -42,76 +42,55 @@ make compose STUDY=1-10ms
 make render-final STUDY=1-10ms
 ```
 
-## Modalità take: non sovrascrivere l'audio già ascoltato
+## `for_each:` — n valori del parametro, n file
 
-Di default ogni rigenerazione sovrascrive l'audio precedente. Con `TAKE`
-attivo l'output va invece in `takes/<studio>/<data_ora>/`, un albero completo
-per take: la versione di prima resta lì da riascoltare.
+Gli `axes:` di uno studio scorrono **dentro** il file: su
+`001-41-duration-fill-factor` i due assi fanno 24 × 7 gradini da 7s, cioè venti
+minuti a variante. Un terzo asse triplicherebbe la durata, e il confronto fra
+`distribution: 0` e `distribution: 1` finirebbe a mezz'ora di distanza.
 
-```bash
-export TAKE=true                    # una volta per sessione
-study 001-41-duration-pitch         # apre una take nuova e rigenera dentro
-# ascolto, modifica di study.yml
-study 001-41-duration-pitch         # nuova take; la precedente resta intatta
+`for_each:` è l'asse **esterno**: non allunga il file, ne fa uno per valore.
 
-make takes STUDY=001-41-duration-pitch        # storico: data, peso, diff dello study.yml
-make takes-clean STUDY=... KEEP=3             # tiene le 3 più recenti
+```yaml
+for_each:
+  base.distribution: {values: [0, 0.5, 1]}   # 3 render dello stesso sweep
 ```
 
-Una take nuova nasce **solo se `study.yml` è cambiato** (se rilanci senza aver
-toccato nulla resti nella stessa), e nasce come hardlink dell'audio di quella
-prima: costa il tempo e il disco delle sole varianti effettivamente toccate
-dalla modifica. Cambiare un valore dentro un asse muove poche varianti;
-cambiare un parametro in `base:` le muove tutte, e la take pesa quanto uno
-studio intero.
-
-| `TAKE` | Cosa fa `study <nome>` |
-|---|---|
-| non impostata, `false`, `0`, `no`, `off` | come sempre: `generated/<studio>/`, sovrascrive |
-| `1`, `true`, `yes` | apre una take se `study.yml` è cambiato, poi rigenera lì |
-| `2026-09-08_1432` | rigenera dentro quella take, senza aprirne di nuove |
-
-**Rigenerare dentro una take vecchia** (`TAKE=<label>`) ne **sovrascrive**
-l'audio: è una modifica di quella take, non una take nuova. Le altre restano
-intatte — `render.py` sgancia l'hardlink prima di scrivere — e `latest` non si
-sposta. Anche lo snapshot `study.yml` della take viene riscritto a ogni render:
-dopo, la take descrive il nuovo stato, non quello di prima. Per ripartire
-proprio dai valori di quella take invece che dallo `study.yml` corrente:
-
 ```bash
-export TAKE=2026-09-08_1432
-cp takes/001-41-duration-pitch/$TAKE/study.yml studies/001-41-duration-pitch/study.yml
-# modifica, poi: study 001-41-duration-pitch
-export TAKE=true                    # torna al flusso normale
+study 001-41-duration-fill-factor           # genera e apre tutte le combinazioni
+COMBO=distribution=1 study 001-41-...       # solo la fetta a distribution 1
+make where STUDY=...                        # dove si sta scrivendo, una riga per combinazione
 ```
 
-Per un singolo lancio fuori dalla modalità, senza toccare la sessione:
-`TAKE=false study 001-41-duration-pitch`. Per sapere sempre dove si sta
-scrivendo: `make where STUDY=...` (lo dice anche il render, in testa
-all'output).
+Ogni combinazione ha il suo albero completo sotto
+`generated/<studio>/distribution=0.5/`, con dentro anche lo snapshot dello
+`study.yml` patchato che l'ha prodotta e i suoi `.sv` (la label è nel basename:
+Sonic Visualiser identifica la sessione dal nome, e con due `.sv` omonimi la
+seconda non si apre — proprio il confronto per cui gli assi esterni esistono).
 
-**La take la apre `study`.** Lanciando `make render STUDY=...` a mano con
-`TAKE=true`, senza passare da `study` o `make take`, si rigenera **dentro la take
-corrente sovrascrivendola**: la protezione sta nell'aprire la take, non nella
-variabile.
+`COMBO` taglia una **fetta**: i vincoli sono segmenti di label separati da
+`__`, in and fra loro (`COMBO=coppia=speed-pitch__distribution=0.3`), e il
+match è per segmento intero (`distribution=0` non prende `distribution=0.3`).
+Con più assi esterni le combinazioni sono decine e generarle tutte non ha
+senso: il documento dichiara lo spazio, `COMBO` sceglie cosa materializzare
+oggi.
 
-Ogni take ha i **suoi** `.sv`, col nome della take nel basename
-(`..._e2__grain.duration__pitch.ratio__2026-09-08_1432.sv`) e i path al suo
-audio: `make sv` li rigenera dentro la take corrente (e `study` lo fa sempre).
-Il nome della take nel file serve ad aprire due take insieme — Sonic Visualiser
-identifica la sessione dal nome, e con due `.sv` omonimi la seconda non si apre. Non vengono ereditati dalla
-take precedente — dentro un `.sv` il path dell'audio è assoluto, quindi una
-sessione copiata aprirebbe in silenzio il suono di prima.
+Le chiavi sono path su tutto il documento, non solo su `base:` — quindi
+funziona anche dove un asse interno non potrebbe esistere: `stack.seed` (cinque
+realizzazioni della stessa camminata stocastica), `percorso.arco` (la stessa
+legge distesa su tre durate), `axes.*.values` (due griglie diverse dello stesso
+studio). Per gli override non scalari serve un nome:
 
-Per riascoltare una take vecchia senza rigenerare niente, i `.sv` sono lì:
-
-```bash
-sonic takes/001-41-duration-pitch/2026-09-08_1432/sv/sweep/**/*.sv
+```yaml
+for_each:
+  griglia:
+    fitta: {axes.fill_factor.values: [0.5, 0.7, 0.85, 1, 2, 4, 8]}
+    rada:  {axes.fill_factor.values: [0.5, 1, 4]}
 ```
 
-Cancellare una take non libera lo spazio che condivide con quelle più recenti:
-il `du` della singola take sovrastima, la riga "totale su disco" di `make
-takes` è quella vera.
+Dettagli, guardie e forme in `docs/study-yml-reference.md`. Togliere un valore
+dal blocco non cancella la sua cartella: resta lì con l'audio già ascoltato,
+segnalata come orfana.
 
 > Dopo un aggiornamento del repo, la funzione `study` già caricata in una shell
 > aperta resta quella vecchia (il precmd la ricarica solo al cambio di
@@ -123,7 +102,6 @@ takes` è quella vera.
 - `src/granstudies/` — il pacchetto (uno stadio per modulo).
 - `studies/<id>/` — input versionati: `study.yml`, `states.yml`, `composition.yml`.
 - `generated/<id>/` — output rigenerabile (git-ignorato).
-- `takes/<id>/<data_ora>/` — storico delle rigenerazioni (git-ignorato, vedi sopra).
 - `samples/` — corpus audio (file git-ignorati, solo manifest versionato).
 - `engine/` — submodule del motore (pin su commit).
 - `tests/` — suite pytest (mirror di `src/`); `tests/e2e/` — end-to-end.

@@ -37,7 +37,7 @@ base:
     # per gradino: valore lasciato cosi' com'era, da correggere ascoltando.
     loop_end: 0.363636363636
   pan: 0
-  volume: 6
+  volume: 12
 
 sweep:
   mode: envelope
