@@ -23,6 +23,12 @@ percorso: _require-study $(MARKER)
 where: _require-study $(MARKER)
 	@$(PY) -m granstudies where $(STUDY)
 
+# La rete delle varianti discrete: un HTML per combinazione, accanto all'audio.
+# Va dopo render: legge i .aif esistenti, non gli YAML.
+.PHONY: graph
+graph: _require-study $(MARKER)
+	$(PY) -m granstudies graph $(STUDY)
+
 .PHONY: describe
 describe: _require-study $(MARKER)
 	$(PY) -m granstudies describe $(STUDY)

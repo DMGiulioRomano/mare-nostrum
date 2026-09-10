@@ -620,6 +620,41 @@ def cmd_render_final(study: str) -> int:
     return 0
 
 
+def cmd_graph(study: str) -> int:
+    """Scrive la rete navigabile delle varianti discrete della combinazione.
+
+    Legge i nomi dei file audio, non lo YAML: le coordinate sono gia' nel nome
+    (``o2__grain.duration=0.001__pitch.ratio=0.447``) e cosi' il grafo mostra
+    esattamente cio' che e' stato renderizzato, non cio' che sarebbe da
+    renderizzare.
+    """
+    from .graph import write_graph
+
+    g = gen_dir(study)
+    audio_dir = os.path.join(g, "audio", "sweep", "discrete")
+    if not os.path.isdir(audio_dir):
+        print(f"[graph] nessun audio discrete: esegui prima 'render {study}' "
+              f"(serve sweep.mode: discrete).", file=sys.stderr)
+        return 1
+    # Le sorelle: le altre combinazioni gia' renderizzate, per i link in fondo.
+    siblings = []
+    if _COMBO.label:
+        parent = os.path.dirname(g)
+        siblings = sorted(
+            d for d in os.listdir(parent)
+            if d != _COMBO.label
+            and os.path.isdir(os.path.join(parent, d, "audio", "sweep", "discrete"))
+        )
+    order = [ax.name for ax in _load_spec(study).axes]
+    out = os.path.join(audio_dir, "graph.html")
+    n = write_graph(study, _COMBO.label, audio_dir, out, siblings, order)
+    if not n:
+        print(f"[graph] nessun .aif con coordinate in {audio_dir}.", file=sys.stderr)
+        return 1
+    print(f"[graph] {out}  ({n} nodi)")
+    return 0
+
+
 def cmd_where(study: str) -> int:
     """Stampa la cartella di output della combinazione corrente, nient'altro.
 
@@ -683,6 +718,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     fp = sub.add_parser("render-final", help="renderizza il brano finale")
     fp.add_argument("study")
+
+    gp = sub.add_parser("graph", help="rete navigabile delle varianti discrete (HTML)")
+    gp.add_argument("study")
 
     wp = sub.add_parser("where", help="stampa la cartella di output corrente")
     wp.add_argument("study")
@@ -807,6 +845,8 @@ def _run(args) -> int:
         return cmd_compose(args.study, args.seed, args.steps, args.start)
     if args.command == "render-final":
         return cmd_render_final(args.study)
+    if args.command == "graph":
+        return cmd_graph(args.study)
     if args.command == "where":
         return cmd_where(args.study)
     if args.command == "sv":
