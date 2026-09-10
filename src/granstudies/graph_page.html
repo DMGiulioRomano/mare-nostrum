@@ -6,9 +6,15 @@
  @media (prefers-color-scheme: dark) {
    :root { --bg:#141414; --fg:#eee; --line:#444; --dim:#888; --panel:#1c1c1c; } }
  body { background:var(--bg); color:var(--fg); font:13px/1.5 ui-monospace,monospace;
-        margin:0; display:flex; align-items:flex-start; }
- #left { flex:0 0 auto; padding:22px; max-height:100vh; overflow:auto; }
- #right { flex:1 1 0; min-width:0; padding:22px 22px 22px 0; position:sticky; top:0; }
+        margin:0; display:flex; align-items:stretch; height:100vh; overflow:hidden; }
+ #left { flex:0 0 auto; width:52%; min-width:220px; padding:22px; overflow:auto; }
+ #right { flex:1 1 0; min-width:260px; padding:22px 22px 22px 0; overflow:auto; }
+ /* Divisore trascinabile. La larghezza vive in localStorage, cosi' la
+    proporzione fra griglia e analisi resta quella scelta. */
+ #gutter { flex:0 0 9px; cursor:col-resize; background:var(--panel);
+           border-left:1px solid var(--line); border-right:1px solid var(--line); }
+ #gutter:hover, #gutter.drag { background:var(--line); }
+ body.dragging { user-select:none; cursor:col-resize; }
  h1 { font-size:14px; font-weight:600; margin:0 0 14px; }
  .sel { display:grid; grid-template-columns:max-content 1fr; gap:4px 10px; align-items:center;
         margin-bottom:18px; }
@@ -57,6 +63,8 @@
   <div id="now"></div>
   <audio id="a" controls></audio>
 </div>
+
+<div id="gutter" title="trascina per ridimensionare"></div>
 
 <div id="right">
   <div class="view seek" id="specView">
@@ -363,8 +371,10 @@ let view = null;   // {duration} della clip attualmente disegnata
 
 async function analyse(url) {
   const specC = document.getElementById("spec"), waveC = document.getElementById("wave");
+  const scopeEl = document.getElementById("scope");
   specC.width = specC.parentNode.clientWidth;
   waveC.width = waveC.parentNode.clientWidth;
+  scopeEl.width = scopeEl.parentNode.clientWidth;
   status.textContent = "analisi…";
   let data = cache.get(url);
   if (!data) {
@@ -494,7 +504,51 @@ function frame() {
 }
 requestAnimationFrame(frame);
 
-addEventListener("resize", () => { if (view) analyse(audio.getAttribute("src")); });
+// --- divisore trascinabile ------------------------------------------------
+const left = document.getElementById("left"), gutter = document.getElementById("gutter");
+const SAVED = "graph.split";
+try {
+  const w = localStorage.getItem(SAVED);
+  if (w) left.style.width = w;
+} catch (e) { /* localStorage negato: si parte dal default */ }
+
+gutter.addEventListener("mousedown", e => {
+  e.preventDefault();
+  document.body.classList.add("dragging");
+  gutter.classList.add("drag");
+  const move = ev => {
+    const w = Math.min(innerWidth - 280, Math.max(220, ev.clientX));
+    left.style.width = w + "px";
+  };
+  const up = () => {
+    removeEventListener("mousemove", move);
+    removeEventListener("mouseup", up);
+    document.body.classList.remove("dragging");
+    gutter.classList.remove("drag");
+    try { localStorage.setItem(SAVED, left.style.width); } catch (e) {}
+  };
+  addEventListener("mousemove", move);
+  addEventListener("mouseup", up);
+});
+
+// I canvas hanno una larghezza in pixel, non in percentuale: vanno ridisegnati
+// quando la colonna cambia. La STFT no, quella e' in cache: si ridisegna e
+// basta. Un frame di ritardo per non ricalcolare a ogni pixel del trascinamento.
+let pending = false;
+new ResizeObserver(() => {
+  if (pending || !view) return;
+  pending = true;
+  requestAnimationFrame(() => {
+    pending = false;
+    const specC = document.getElementById("spec"), waveC = document.getElementById("wave");
+    specC.width = specC.parentNode.clientWidth;
+    waveC.width = waveC.parentNode.clientWidth;
+    drawSpec(specC, view);
+    drawWave(waveC, view);
+    const sc = document.getElementById("scope");
+    sc.width = sc.parentNode.clientWidth;
+  });
+}).observe(document.getElementById("right"));
 
 show(cur);
 </script>
