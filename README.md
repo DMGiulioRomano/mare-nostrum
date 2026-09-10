@@ -51,20 +51,28 @@ porta le coordinate:
 o2__grain.duration=0.001__pitch.ratio=0.447.aif
 ```
 
-`make graph STUDY=<id>` rilegge quei nomi e scrive un `graph.html` autonomo
-dentro `generated/<id>/[<combo>/]audio/sweep/discrete/`: una griglia
-cliccabile dove ogni cella suona il suo file, le frecce si spostano fra celle
-vicine, e i link in fondo portano alle altre combinazioni di `for_each:` già
-renderizzate.
+`make graph STUDY=<id>` rilegge quei nomi e scrive **una** pagina autonoma,
+`generated/<id>/graph.html`, che tiene dentro tutte le combinazioni di
+`for_each:` già renderizzate:
+
+- gli **assi interni** sono la griglia — click per sentire una cella, frecce
+  per spostarsi su una cella vicina;
+- gli **assi esterni** sono i selettori in cima — cambiarne uno tiene la cella
+  dov'è, quindi è un A/B sullo stesso punto;
+- un valore è disattivato quando quella combinazione non è stata renderizzata:
+  la pagina mostra il disco, non lo `study.yml`.
 
 ```bash
 make render STUDY=001-41    # serve l'audio: graph legge i .aif, non gli YAML
 make graph  STUDY=001-41
-open -a Safari "$(make -s where STUDY=001-41)/audio/sweep/discrete/graph.html"
+open -a Safari generated/001-41/graph.html
 ```
 
-Aprilo con **Safari**: Chrome non legge AIFF. Nessun server e nessuna
-dipendenza — i `src` sono relativi e l'HTML sta accanto all'audio.
+Aprilo con **Safari**: Chrome non decodifica AIFF. Nessun server e nessuna
+dipendenza — l'HTML sta alla radice dell'output e i `src` sono relativi a lì.
+
+`graph` gira una volta sola per studio, non una per combinazione, e quindi
+ignora `COMBO`: il filtro l'ha già fatto `render`, decidendo cosa esiste.
 
 L'export per Sonic Visualiser (`make sv`) resta sul ramo `envelope`, dove i
 marker sono i plateau dello sweep; per i file discreti la navigazione è

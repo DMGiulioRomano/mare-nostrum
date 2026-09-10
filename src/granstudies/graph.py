@@ -1,20 +1,26 @@
-"""Rete navigabile delle varianti discrete: un HTML autonomo per combinazione.
+"""Rete navigabile delle varianti discrete: UNA pagina per tutto lo studio.
 
 In ``mode: discrete`` lo sweep produce un file per punto della griglia e il
 nome porta le coordinate (``o2__grain.duration=0.001__pitch.ratio=0.447``).
-Qui quei nomi si rileggono e diventano una griglia cliccabile: ogni cella
-suona il suo file, le frecce si spostano fra celle vicine, e i link in fondo
-portano alle altre combinazioni di ``for_each:``.
+Qui quei nomi si rileggono e diventano una griglia cliccabile.
 
-Nessuna dipendenza e nessun server: l'HTML sta accanto all'audio e lo carica
-con path relativi.
+La pagina e' una sola, in ``generated/<study>/graph.html``, e tiene dentro
+**tutte** le combinazioni di ``for_each:`` gia' renderizzate: gli assi esterni
+diventano selettori in cima, la griglia sotto cambia quando li muovi, e la
+cella su cui stai resta la stessa — cosi' cambiare ``distribution`` e' un A/B
+sullo stesso punto, non un giro fra quattro schede del browser.
+
+Nessuna dipendenza e nessun server: l'HTML sta alla radice dell'output e
+carica l'audio con path relativi.
 """
 from __future__ import annotations
 
 import html
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
+
+DISCRETE = os.path.join("audio", "sweep", "discrete")
 
 
 def parse_coords(basename: str) -> Dict[str, float]:
@@ -37,8 +43,23 @@ def parse_coords(basename: str) -> Dict[str, float]:
     return out
 
 
-def collect_nodes(audio_dir: str) -> List[Dict[str, Any]]:
-    """Un nodo per ogni .aif sotto ``audio_dir``, con coordinate e path relativo.
+def parse_label(label: str) -> Dict[str, str]:
+    """Gli assi esterni di una label ``for_each``, come stringhe.
+
+    Restano stringhe: ``coppia=duration-pitch`` non e' un numero, e per i
+    selettori conta l'etichetta, non il valore.
+    """
+    out: Dict[str, str] = {}
+    for part in label.split("__"):
+        if "=" not in part:
+            continue
+        k, _, v = part.partition("=")
+        out[k] = v
+    return out
+
+
+def collect_nodes(audio_dir: str, rel_to: str) -> List[Dict[str, Any]]:
+    """Un nodo per ogni .aif sotto ``audio_dir``, con ``src`` relativo a ``rel_to``.
 
     Scende ricorsivamente perche' il layout sotto ``discrete/`` puo' avere un
     livello di stream_id (vedi ``render.render_variants``).
@@ -54,7 +75,7 @@ def collect_nodes(audio_dir: str) -> List[Dict[str, Any]]:
                 continue
             node = {
                 "name": name,
-                "src": os.path.relpath(os.path.join(root, f), audio_dir),
+                "src": os.path.relpath(os.path.join(root, f), rel_to),
                 "coords": coords,
             }
             # Un punto = un nodo. Con ``render --stem`` accanto al mix c'e' lo
@@ -84,132 +105,241 @@ def axes_of(nodes: List[Dict[str, Any]], order: List[str] | None = None) -> List
     return seen
 
 
-def build_html(study: str, label: str, nodes: List[Dict[str, Any]],
-               siblings: List[str], order: List[str] | None = None) -> str:
+def _grid(nodes: List[Dict[str, Any]], order: List[str] | None) -> Dict[str, Any]:
     axes = axes_of(nodes, order)
     ax_x = axes[0] if axes else ""
     ax_y = axes[1] if len(axes) > 1 else ""
-    xs = sorted({n["coords"][ax_x] for n in nodes if ax_x in n["coords"]})
-    ys = sorted({n["coords"].get(ax_y, 0) for n in nodes}) if ax_y else [0]
-    data = {
-        "study": study, "label": label,
-        "axX": ax_x, "axY": ax_y, "xs": xs, "ys": ys,
+    return {
+        "axX": ax_x,
+        "axY": ax_y,
+        "xs": sorted({n["coords"][ax_x] for n in nodes}) if ax_x else [],
+        "ys": sorted({n["coords"][ax_y] for n in nodes}) if ax_y else [0],
         "nodes": nodes,
-        "siblings": siblings,
     }
-    return _TEMPLATE.replace("__TITLE__", html.escape(f"{study} — {label or 'rete'}")) \
+
+
+def collect_combos(gen_root: str,
+                   orders: Dict[str, List[str]] | None = None) -> List[Dict[str, Any]]:
+    """Una voce per combinazione renderizzata, piu' la radice se ha audio.
+
+    Guarda il disco, non lo ``study.yml``: la pagina mostra cio' che e' stato
+    renderizzato, e le combinazioni non ancora rese semplicemente non ci sono.
+
+    ``orders`` e' label -> ordine degli assi dichiarato nello ``study.yml``:
+    con gli assi esterni ogni combinazione ha i suoi (``coppia`` decide quali
+    parametri sono assi), quindi non c'e' un ordine unico per lo studio.
+    """
+    combos: List[Dict[str, Any]] = []
+    candidates: List[Tuple[str, str]] = [("", gen_root)]
+    if os.path.isdir(gen_root):
+        candidates += [
+            (d, os.path.join(gen_root, d))
+            for d in sorted(os.listdir(gen_root))
+            if os.path.isdir(os.path.join(gen_root, d, DISCRETE))
+        ]
+    for label, base in candidates:
+        audio_dir = os.path.join(base, DISCRETE)
+        if not os.path.isdir(audio_dir):
+            continue
+        nodes = collect_nodes(audio_dir, gen_root)
+        if not nodes:
+            continue
+        combo = {"label": label, "sel": parse_label(label)}
+        combo.update(_grid(nodes, (orders or {}).get(label)))
+        combos.append(combo)
+    return combos
+
+
+def _sel_keys(combos: List[Dict[str, Any]]) -> List[str]:
+    keys: List[str] = []
+    for c in combos:
+        for k in c["sel"]:
+            if k not in keys:
+                keys.append(k)
+    return keys
+
+
+def _sel_values(combos: List[Dict[str, Any]], keys: List[str]) -> Dict[str, List[str]]:
+    def as_num(v: str):
+        try:
+            return (0, float(v))
+        except ValueError:
+            return (1, v)
+
+    return {k: sorted({c["sel"][k] for c in combos if k in c["sel"]}, key=as_num)
+            for k in keys}
+
+
+def build_html(study: str, combos: List[Dict[str, Any]]) -> str:
+    keys = _sel_keys(combos)
+    data = {
+        "study": study,
+        "keys": keys,
+        "values": _sel_values(combos, keys),
+        "combos": combos,
+    }
+    return _TEMPLATE.replace("__TITLE__", html.escape(f"{study} — rete")) \
                     .replace("__DATA__", json.dumps(data))
 
 
-def write_graph(study: str, label: str, audio_dir: str, out_path: str,
-                siblings: List[str], order: List[str] | None = None) -> int:
-    """Scrive ``out_path``. Ritorna il numero di nodi (0 = niente audio).
+def write_graph(study: str, gen_root: str, out_path: str,
+                orders: Dict[str, List[str]] | None = None) -> Tuple[int, int]:
+    """Scrive ``out_path``. Ritorna ``(combinazioni, nodi)``; (0, 0) = niente audio.
 
-    L'HTML sta accanto all'audio (``audio/sweep/discrete/graph.html``) perche'
-    i ``src`` sono relativi a li': aprendolo da ``file://`` suona senza server.
+    L'HTML sta alla radice dell'output (``generated/<study>/graph.html``)
+    perche' i ``src`` sono relativi a li': una sola pagina raggiunge l'audio di
+    tutte le combinazioni.
     """
-    nodes = collect_nodes(audio_dir)
-    if not nodes:
-        return 0
+    combos = collect_combos(gen_root, orders)
+    if not combos:
+        return (0, 0)
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w") as fh:
-        fh.write(build_html(study, label, nodes, siblings, order))
-    return len(nodes)
+        fh.write(build_html(study, combos))
+    return (len(combos), sum(len(c["nodes"]) for c in combos))
 
 
 _TEMPLATE = """<!doctype html>
 <meta charset="utf-8"><title>__TITLE__</title>
 <style>
- :root { color-scheme: light dark; --bg:#fff; --fg:#111; --line:#ccc; --on:#c33; }
- @media (prefers-color-scheme: dark) { :root { --bg:#141414; --fg:#eee; --line:#444; } }
- body { background:var(--bg); color:var(--fg); font:13px/1.4 ui-monospace,monospace; margin:20px; }
- h1 { font-size:14px; font-weight:600; margin:0 0 2px; }
- .sub { opacity:.6; margin-bottom:16px; word-break:break-all; }
+ :root { color-scheme: light dark; --bg:#fff; --fg:#111; --line:#bbb; --dim:#888; --on:#c33; }
+ @media (prefers-color-scheme: dark) { :root { --bg:#141414; --fg:#eee; --line:#444; --dim:#888; } }
+ body { background:var(--bg); color:var(--fg); font:13px/1.5 ui-monospace,monospace; margin:24px; }
+ h1 { font-size:14px; font-weight:600; margin:0 0 14px; }
+ .sel { display:grid; grid-template-columns:max-content 1fr; gap:4px 10px; align-items:center;
+        margin-bottom:18px; }
+ .sel .k { color:var(--dim); text-align:right; }
+ .sel button { font:inherit; color:inherit; background:none; border:1px solid var(--line);
+               padding:1px 8px; margin-right:4px; cursor:pointer; }
+ .sel button.on { border-color:var(--fg); background:var(--fg); color:var(--bg); }
+ .sel button:disabled { opacity:.25; cursor:default; }
  table { border-collapse:collapse; }
- th { font-weight:400; opacity:.7; padding:2px 6px; text-align:right; white-space:nowrap; }
+ th { font-weight:400; color:var(--dim); padding:2px 8px 2px 0; text-align:right; white-space:nowrap; }
  td { padding:0; }
- .cell { width:34px; height:34px; border:1px solid var(--line); background:none;
-         color:inherit; font:inherit; cursor:pointer; }
+ .cell { width:32px; height:32px; border:1px solid var(--line); background:none;
+         color:inherit; font:inherit; cursor:pointer; padding:0; }
  .cell:hover { border-color:var(--fg); }
- .cell.on { background:var(--on); border-color:var(--on); color:#fff; }
- .cell.void { border-style:dotted; opacity:.3; cursor:default; }
- #now { margin-top:16px; min-height:2.4em; }
- #now b { font-weight:600; }
- audio { margin-top:8px; width:340px; }
- .sib { margin-top:24px; border-top:1px solid var(--line); padding-top:10px; opacity:.75; }
- .sib a { display:block; color:inherit; }
+ .cell.on { background:var(--on); border-color:var(--on); }
+ .cell.void { border-style:dotted; opacity:.25; cursor:default; }
+ .xlab { font-size:9px; color:var(--dim); text-align:center; padding-top:4px; }
+ #now { margin-top:18px; min-height:3em; }
+ #now .file { color:var(--dim); }
+ audio { margin-top:6px; width:340px; }
+ #miss { color:var(--dim); margin-top:18px; }
 </style>
 <h1 id="h"></h1>
-<div class="sub" id="s"></div>
-<table id="grid"></table>
-<div id="now">clicca una cella, o muoviti con le frecce</div>
+<div class="sel" id="sel"></div>
+<div id="grid"></div>
+<div id="now"></div>
 <audio id="a" controls></audio>
-<div class="sib" id="sib"></div>
 <script>
 const D = __DATA__;
-const at = {};
-for (const n of D.nodes) at[key(n.coords[D.axX], D.axY ? n.coords[D.axY] : 0)] = n;
-function key(x, y) { return x + "|" + y; }
-document.getElementById("h").textContent = D.study + (D.axY ? "  " + D.axX + " x " + D.axY : "  " + D.axX);
-document.getElementById("s").textContent = D.label || "(nessun asse esterno)";
+const byLabel = {};
+for (const c of D.combos) byLabel[c.label] = c;
 
+// Selezione corrente: gli assi esterni della prima combinazione renderizzata.
+let sel = Object.assign({}, D.combos[0].sel);
+let cur = D.combos[0];
 let cx = 0, cy = 0;
-const t = document.getElementById("grid");
-// Riga per riga dall'alto: y cresce verso l'alto, come su un grafico.
-for (let j = D.ys.length - 1; j >= 0; j--) {
-  const tr = t.insertRow();
-  const th = document.createElement("th");
-  th.textContent = D.axY ? D.ys[j] : "";
-  tr.appendChild(th);
-  for (let i = 0; i < D.xs.length; i++) {
-    const td = tr.insertCell();
-    const b = document.createElement("button");
-    b.className = "cell";
-    const n = at[key(D.xs[i], D.ys[j])];
-    if (!n) { b.classList.add("void"); b.disabled = true; }
-    else { b.title = n.name; b.onclick = () => go(i, j); }
-    b.dataset.i = i; b.dataset.j = j;
-    td.appendChild(b);
+
+function match(s) {
+  return D.combos.find(c => D.keys.every(k => c.sel[k] === s[k]));
+}
+
+function drawSel() {
+  const box = document.getElementById("sel");
+  box.innerHTML = "";
+  for (const k of D.keys) {
+    const kd = document.createElement("div");
+    kd.className = "k"; kd.textContent = k;
+    const vd = document.createElement("div");
+    for (const v of D.values[k]) {
+      const b = document.createElement("button");
+      b.textContent = v;
+      if (sel[k] === v) b.classList.add("on");
+      // Disabilitato se cambiando SOLO questa chiave non esiste una
+      // combinazione renderizzata: il disco decide cosa e' raggiungibile.
+      const probe = Object.assign({}, sel); probe[k] = v;
+      if (!match(probe)) b.disabled = true;
+      else b.onclick = () => { sel[k] = v; show(match(sel)); };
+      vd.appendChild(b);
+    }
+    box.appendChild(kd); box.appendChild(vd);
   }
 }
-const foot = t.insertRow();
-foot.appendChild(document.createElement("th"));
-for (const x of D.xs) {
-  const td = foot.insertCell();
-  td.style.cssText = "font-size:9px;opacity:.6;text-align:center;padding-top:3px";
-  td.textContent = x;
+
+function key(x, y) { return x + "|" + y; }
+
+function drawGrid() {
+  const at = {};
+  for (const n of cur.nodes) at[key(n.coords[cur.axX], cur.axY ? n.coords[cur.axY] : 0)] = n;
+  cur.at = at;
+  const t = document.createElement("table");
+  // Riga per riga dall'alto: y cresce verso l'alto, come su un grafico.
+  for (let j = cur.ys.length - 1; j >= 0; j--) {
+    const tr = t.insertRow();
+    const th = document.createElement("th");
+    th.textContent = cur.axY ? cur.ys[j] : "";
+    tr.appendChild(th);
+    for (let i = 0; i < cur.xs.length; i++) {
+      const b = document.createElement("button");
+      b.className = "cell";
+      const n = at[key(cur.xs[i], cur.ys[j])];
+      if (!n) { b.classList.add("void"); b.disabled = true; }
+      else { b.title = n.name; b.onclick = () => go(i, j); }
+      b.dataset.i = i; b.dataset.j = j;
+      tr.insertCell().appendChild(b);
+    }
+  }
+  const foot = t.insertRow();
+  foot.appendChild(document.createElement("th"));
+  for (const x of cur.xs) {
+    const td = foot.insertCell();
+    td.className = "xlab";
+    td.textContent = x;
+  }
+  const box = document.getElementById("grid");
+  box.innerHTML = "";
+  box.appendChild(t);
 }
 
 const audio = document.getElementById("a");
-function go(i, j) {
-  const n = at[key(D.xs[i], D.ys[j])];
-  if (!n) return;
+
+function go(i, j, play) {
+  const n = cur.at[key(cur.xs[i], cur.ys[j])];
   cx = i; cy = j;
   for (const b of document.querySelectorAll(".cell")) b.classList.remove("on");
-  document.querySelector(`.cell[data-i="${i}"][data-j="${j}"]`).classList.add("on");
+  const b = document.querySelector(`.cell[data-i="${i}"][data-j="${j}"]`);
+  if (b) b.classList.add("on");
+  if (!n) { document.getElementById("now").textContent = "(non renderizzato)"; return; }
   document.getElementById("now").innerHTML =
-    "<b>" + D.axX + " = " + D.xs[i] + "</b>" + (D.axY ? " &nbsp; <b>" + D.axY + " = " + D.ys[j] + "</b>" : "") +
-    "<br><span style='opacity:.6'>" + n.name + "</span>";
+    "<b>" + cur.axX + " = " + cur.xs[i] + "</b>" +
+    (cur.axY ? " &nbsp; <b>" + cur.axY + " = " + cur.ys[j] + "</b>" : "") +
+    "<br><span class='file'>" + n.name + "</span>";
   audio.src = n.src;
-  audio.play();
+  if (play !== false) audio.play();
 }
+
+function show(c) {
+  if (!c) return;
+  cur = c;
+  document.getElementById("h").textContent =
+    D.study + "   " + cur.axX + (cur.axY ? " x " + cur.axY : "");
+  drawSel();
+  drawGrid();
+  // La cella resta dov'era, clampata alla nuova griglia: cambiare un asse
+  // esterno e' un A/B sullo stesso punto, non un salto altrove.
+  go(Math.min(cx, cur.xs.length - 1), Math.min(cy, cur.ys.length - 1), false);
+}
+
 addEventListener("keydown", e => {
   const d = {ArrowRight:[1,0], ArrowLeft:[-1,0], ArrowUp:[0,1], ArrowDown:[0,-1]}[e.key];
   if (!d) return;
   e.preventDefault();
-  const i = Math.min(D.xs.length - 1, Math.max(0, cx + d[0]));
-  const j = Math.min(D.ys.length - 1, Math.max(0, cy + d[1]));
-  go(i, j);
+  go(Math.min(cur.xs.length - 1, Math.max(0, cx + d[0])),
+     Math.min(cur.ys.length - 1, Math.max(0, cy + d[1])));
 });
-const sib = document.getElementById("sib");
-if (D.siblings.length) {
-  sib.innerHTML = "<div style='margin-bottom:4px'>altre combinazioni:</div>";
-  for (const s of D.siblings) {
-    const a = document.createElement("a");
-    a.href = "../" + s + "/graph.html";
-    a.textContent = s;
-    sib.appendChild(a);
-  }
-}
+
+show(cur);
 </script>
 """

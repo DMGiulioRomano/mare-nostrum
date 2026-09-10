@@ -630,38 +630,51 @@ def cmd_render_final(study: str) -> int:
 
 
 def cmd_graph(study: str) -> int:
-    """Scrive la rete navigabile delle varianti discrete della combinazione.
+    """Scrive la rete navigabile delle varianti discrete: una pagina per studio.
 
     Legge i nomi dei file audio, non lo YAML: le coordinate sono gia' nel nome
-    (``o2__grain.duration=0.001__pitch.ratio=0.447``) e cosi' il grafo mostra
+    (``o2__grain.duration=0.001__pitch.ratio=0.447``) e cosi' la pagina mostra
     esattamente cio' che e' stato renderizzato, non cio' che sarebbe da
-    renderizzare.
+    renderizzare. Per la stessa ragione gira **una volta sola** e non una per
+    combinazione (vedi ``_dispatch``): gli assi esterni sono selettori dentro
+    la pagina, non file diversi, e ``COMBO`` ha gia' fatto il suo filtro a
+    monte decidendo cosa renderizzare.
     """
     from .graph import write_graph
 
-    g = gen_dir(study)
-    audio_dir = os.path.join(g, "audio", "sweep", "discrete")
-    if not os.path.isdir(audio_dir):
-        print(f"[graph] nessun audio discrete: esegui prima 'render {study}' "
-              f"(serve sweep.mode: discrete).", file=sys.stderr)
+    gen_root = os.path.join(REPO_ROOT, "generated", study)
+    out = os.path.join(gen_root, "graph.html")
+    n_combos, n_nodes = write_graph(study, gen_root, out, _axis_orders(study))
+    if not n_combos:
+        print(f"[graph] nessun audio discrete in {gen_root}: esegui prima "
+              f"'render {study}' (serve sweep.mode: discrete).", file=sys.stderr)
         return 1
-    # Le sorelle: le altre combinazioni gia' renderizzate, per i link in fondo.
-    siblings = []
-    if _COMBO.label:
-        parent = os.path.dirname(g)
-        siblings = sorted(
-            d for d in os.listdir(parent)
-            if d != _COMBO.label
-            and os.path.isdir(os.path.join(parent, d, "audio", "sweep", "discrete"))
-        )
-    order = [ax.name for ax in _load_spec(study).axes]
-    out = os.path.join(audio_dir, "graph.html")
-    n = write_graph(study, _COMBO.label, audio_dir, out, siblings, order)
-    if not n:
-        print(f"[graph] nessun .aif con coordinate in {audio_dir}.", file=sys.stderr)
-        return 1
-    print(f"[graph] {out}  ({n} nodi)")
+    print(f"[graph] {out}  ({n_nodes} nodi in {n_combos} combinazioni)")
     return 0
+
+
+def _axis_orders(study: str) -> dict:
+    """label -> ordine degli assi dello spec, una voce per combinazione.
+
+    Con ``for_each:`` gli assi interni li dichiara la combinazione, quindi lo
+    spec del documento base puo' non averne nessuno: si carica uno spec per
+    label, impostando il contesto come fa ``_dispatch``. Le combinazioni che
+    non caricano (studio a meta', spec invalido) si saltano — al massimo la
+    griglia esce con gli assi in ordine alfabetico.
+    """
+    global _COMBO
+    was = _COMBO
+    orders = {}
+    try:
+        for c in _combos(study):
+            _COMBO = c
+            try:
+                orders[c.label] = [ax.name for ax in _load_spec(study).axes]
+            except (SpecError, yaml.YAMLError):
+                continue
+    finally:
+        _COMBO = was
+    return orders
 
 
 def cmd_where(study: str) -> int:
@@ -821,7 +834,12 @@ def _dispatch(args) -> int:
     dallo stesso ``study.yml``, non da uno stato per sessione.
     """
     global _COMBO
-    combos = _combos(args.study) if getattr(args, "study", None) else [for_each.EMPTY]
+    # ``graph`` guarda tutto l'output dello studio in un colpo solo: girarlo per
+    # combinazione riscriverebbe la stessa pagina N volte.
+    if args.command == "graph" or not getattr(args, "study", None):
+        combos = [for_each.EMPTY]
+    else:
+        combos = _combos(args.study)
     rc = 0
     try:
         for i, c in enumerate(combos, 1):
