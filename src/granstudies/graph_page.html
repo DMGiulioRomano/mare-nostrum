@@ -39,7 +39,10 @@
  .xlab { font-size:10px; color:var(--dim); text-align:center; padding-top:5px; white-space:nowrap; }
  #now { margin-top:18px; min-height:3em; }
  #now .file { color:var(--dim); word-break:break-all; }
- audio { margin-top:6px; width:340px; }
+ audio { margin-top:6px; width:340px; display:block; }
+ #transport { margin-top:6px; font-size:12px; color:var(--dim); }
+ #transport label { margin-right:14px; cursor:pointer; }
+ #transport input { vertical-align:-1px; margin-right:3px; }
 
  /* --- pannello di analisi ------------------------------------------------ */
  .view { position:relative; margin-bottom:10px; background:var(--panel); }
@@ -69,6 +72,10 @@
   <div id="grid"></div>
   <div id="now"></div>
   <audio id="a" controls></audio>
+  <div id="transport">
+    <label><input type="checkbox" id="hold"> continua dal punto in cui era</label>
+    <label><input type="checkbox" id="loop"> loop</label>
+  </div>
 </div>
 
 <div id="gutter" title="trascina per ridimensionare"></div>
@@ -199,6 +206,10 @@ const status = document.getElementById("status");
 function go(i, j, play) {
   const n = cur.at[key(cur.xs[i], cur.ys[j])];
   cx = i; cy = j;
+  // Posizione e stato del trasporto PRIMA di cambiare file: con "continua"
+  // attivo il confronto fra due grani si fa restando fermi nel tempo, che e'
+  // l'unico modo di sentire la differenza invece della partenza.
+  const wasAt = audio.currentTime, wasPlaying = !audio.paused;
   for (const b of document.querySelectorAll(".cell")) b.classList.remove("on");
   const b = document.querySelector(`.cell[data-i="${i}"][data-j="${j}"]`);
   if (b) b.classList.add("on");
@@ -208,7 +219,17 @@ function go(i, j, play) {
     (cur.axY ? " &nbsp; <b>" + cur.axY + " = " + fmt(cur.ys[j]) + "</b>" : "") +
     "<br><span class='file'>" + n.name + "</span>";
   audio.src = n.src;
-  if (play !== false) audio.play();
+  if (hold.checked) {
+    // La durata non c'e' finche' il file non e' caricato, e la posizione va
+    // limitata a quella: le clip di una griglia hanno la stessa durata, ma
+    // fra griglie diverse no.
+    audio.addEventListener("loadedmetadata", () => {
+      audio.currentTime = Math.min(wasAt, audio.duration || wasAt);
+      if (wasPlaying) audio.play();
+    }, {once: true});
+  } else if (play !== false) {
+    audio.play();
+  }
   analyse(n.src);
 }
 
@@ -270,6 +291,17 @@ splitter.connect(anL, 0);
 splitter.connect(anR, 1);
 
 audio.addEventListener("play", () => ctx.resume());
+
+// --- spunte del trasporto, ricordate fra una sessione e l'altra -----------
+const hold = document.getElementById("hold"), loop = document.getElementById("loop");
+for (const [el, k] of [[hold, "graph.hold"], [loop, "graph.loop"]]) {
+  try { el.checked = localStorage.getItem(k) === "1"; } catch (e) {}
+  el.addEventListener("change", () => {
+    try { localStorage.setItem(k, el.checked ? "1" : "0"); } catch (e) {}
+    if (el === loop) audio.loop = loop.checked;
+  });
+}
+audio.loop = loop.checked;
 
 const FMIN = 20;
 const cache = new Map();      // src -> {peaks, spec} gia' calcolati

@@ -90,6 +90,10 @@ desincronizzarsi perché non è uno stato: è una funzione di
 `audio.currentTime`, letta una volta sola per frame e scritta solo dal seek.
 
 **Barra spaziatrice**: play/pausa. **Frecce**: ci si sposta di una cella.
+Due spunte sotto il player: **continua dal punto in cui era** (cambiando cella
+la riproduzione riprende alla stessa posizione, e continua se stava suonando —
+è così che si sente la differenza fra due grani invece della loro partenza) e
+**loop**. Restano impostate fra una sessione e l'altra.
 Il divisore fra le due colonne si trascina, e la larghezza scelta resta.
 
 `graph` gira una volta sola per studio, non una per combinazione, e quindi
