@@ -9,10 +9,10 @@
 #
 #   COMBO=coppia=duration-pitch__distribution=0.3 study 001-41
 #
-# Senza COMBO si generano TUTTE le combinazioni: 4 coppie x 3 distribution x
-# 2 x 2 x 2 = 96 render (ognuno = tutti i punti della griglia, un file da 8s
-# per punto: 96 file per la coppia duration-pitch). Restringi sempre a una
-# fetta.
+# Senza COMBO si generano TUTTE le combinazioni: 5 coppie x 3 distribution x
+# 9 offset_range x 16 envelope x 2 x 2 = 8640 render (ognuno = tutti i punti
+# della griglia, un file da 8s per punto: 96 file per la coppia
+# duration-pitch). Restringi sempre a una fetta.
 
 study_id: 001-41
 title: "001-41 — matrice degli assi"
@@ -105,11 +105,30 @@ for_each:
       axes: {interpolation: step, grain.duration: *ax_duration, pointer.speed_ratio: *ax_speed}
     speed-pitch:
       axes: {interpolation: step, pointer.speed_ratio: *ax_speed, pitch.ratio: *ax_pitch}
+    # grain.duration x envelope. `envelope` non puo' essere un asse interno (i
+    # values di un asse devono essere numeri: study_spec li rifiuta), quindi la
+    # seconda gamba della coppia e' l'asse esterno `base.grain.envelope` qui
+    # sotto: le finestre si confrontano al riascolto, un render per finestra.
+    # Con un solo asse interno la griglia piena (`orders: [2]`) sarebbe vuota:
+    # serve `orders: [1]`.
+    duration-envelope:
+      sweep.orders: [1]
+      axes: {interpolation: step, grain.duration: *ax_duration}
   base.distribution: {values: [0, 0.3, 1]}
   # 0.0001 -> 0.01 in passi geometrici (~x3.16), infittiti a ~x1.33 sopra
   # 0.003: e' li' che si e' deciso di guardare da vicino.
   base.pointer.offset_range:
     values: [0, 0.0001, 0.000316, 0.001,
              0.00316, 0.0042, 0.0056, 0.0075, 0.01]
+  # Tutte le finestre del catalogo dell'engine (WindowRegistry.WINDOWS): 9
+  # GEN20 simmetriche, half_sine (GEN09), 6 asimmetriche GEN16. L'alias
+  # `triangle` non c'e': e' bartlett. Ha senso solo con coppia=duration-envelope
+  # (nelle altre coppie lascia fisso hanning restringendo con COMBO).
+  base.grain.envelope:
+    values: [hamming, hanning, bartlett, blackman, blackman_harris,
+             gaussian, kaiser, rectangle, sinc,
+             half_sine,
+             expodec, expodec_strong, exporise, exporise_strong,
+             rexpodec, rexporise]
   base.grain.duration_range: {values: [0, 0.01]}
   base.pitch.range: {values: [0, 0.05]}
