@@ -81,6 +81,28 @@ def known_paths() -> frozenset:
     )
 
 
+# Path il cui dominio non e' un intervallo ma un elenco di nomi: i bounds non
+# li descrivono (``grain.envelope`` non ha min/max), il catalogo dell'engine
+# si'. Stessa regola dei bounds: nessuna tabella copiata qui, solo il ponte.
+_CATEGORICAL: Dict[str, str] = {
+    "grain.envelope": "window_names",
+}
+
+
+def categorical_domain(path: str) -> Optional[frozenset]:
+    """I nomi ammessi per un path categoriale, o ``None`` se il path non lo e'.
+
+    Un asse su un path categoriale enumera stringhe (``[hanning, expodec, ...]``)
+    invece di numeri: e' il dominio che lo dice, non il tipo dei valori scritti.
+    """
+    fn = _CATEGORICAL.get(path)
+    if fn is None:
+        return None
+    from . import engine_bridge
+
+    return getattr(engine_bridge, fn)()
+
+
 def bounds_for(
     path: str,
     output_sr: Optional[int] = None,

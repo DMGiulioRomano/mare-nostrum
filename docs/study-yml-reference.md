@@ -71,6 +71,14 @@ axes:                             # * almeno un asse
     range: .002
     interpolation: cubic         # es. density a scalini + grain morbido nello stesso file
 
+  grain.envelope:                # asse CATEGORIALE: il dominio non e' un intervallo
+                                 # ma l'elenco dei nomi noti all'engine (le finestre
+                                 # di WindowRegistry). I values sono stringhe, non
+                                 # numeri; un nome fuori catalogo e' errore di parse,
+                                 # e il confronto bounds non si applica.
+    values: [hanning, expodec, sinc]
+    interpolation: step          # obbligatorio qui: fra due nomi non c'e' rampa
+
 # Configurazione dello sweep (il processo possiede X: timing e durata derivata).
 sweep:
   mode: envelope                 # discrete | envelope | both (default discrete)
