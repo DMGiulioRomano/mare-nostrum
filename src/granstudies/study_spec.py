@@ -229,6 +229,33 @@ def _validate(spec: StudySpec, ctx: ErrCtx, *, orders_explicit: bool = False) ->
                 axis=ax.name,
                 hint="dichiara 'values', 'ramp' o una banda ('base'/'range'/'n').",
             )
+        # Asse categoriale (``grain.envelope``): il dominio e' un elenco di nomi,
+        # non un intervallo. I valori sono stringhe, si validano contro il
+        # catalogo dell'engine e saltano il confronto bounds, che qui non ha
+        # senso. L'interpolazione dev'essere ``step``: fra due finestre non c'e'
+        # rampa da percorrere.
+        domain = bounds_mod.categorical_domain(ax.path)
+        if domain is not None:
+            if ax.interpolation != "step":
+                raise ctx.err(
+                    f"Asse '{ax.name}': un asse categoriale vuole "
+                    f"'interpolation: step' (dichiarato: {ax.interpolation}).",
+                    key=("axes", ax.name, "interpolation"),
+                    axis=ax.name,
+                    hint="fra due valori nominali non c'e' rampa da percorrere.",
+                )
+            for slot, v in (
+                [("baseline", ax.baseline)] + [("values", x) for x in ax.values]
+            ):
+                if v not in domain:
+                    raise ctx.err(
+                        f"Asse '{ax.name}': '{slot}' contiene {v!r}, che non e' "
+                        f"un valore ammesso per il path '{ax.path}'.",
+                        key=("axes", ax.name, slot),
+                        axis=ax.name,
+                        hint=f"ammessi: {', '.join(sorted(domain))}.",
+                    )
+            continue
         # Non-numero fuori sede: ``baseline`` e gli elementi di ``values`` sono
         # slot *strutturali* (il baseline di riposo, i valori che si enumerano),
         # non ambienti Env dove un ``expr:`` avrebbe senso. Qualunque non-numero

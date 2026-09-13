@@ -9,10 +9,10 @@
 #
 #   COMBO=coppia=duration-pitch__distribution=0.3 study 001-41
 #
-# Senza COMBO si generano TUTTE le combinazioni: 4 coppie x 3 distribution x
-# 2 x 2 x 2 = 96 render (ognuno = tutti i punti della griglia, un file da 8s
-# per punto: 96 file per la coppia duration-pitch). Restringi sempre a una
-# fetta.
+# Senza COMBO si generano TUTTE le combinazioni: 5 coppie x 3 distribution x
+# 9 offset_range x 2 x 2 = 540 render (ognuno = tutti i punti della griglia,
+# un file da 8s per punto: 96 file per la coppia duration-pitch, 384 per
+# duration-envelope). Restringi sempre a una fetta.
 
 study_id: 001-41
 title: "001-41 — matrice degli assi"
@@ -47,6 +47,16 @@ _assi:
     baseline: 2
     # ponytail: placeholder geometrico x2, da correggere ascoltando.
     values: [0.5, 0.7, 0.85, 1, 2]
+  envelope: &ax_envelope
+    baseline: hanning
+    # Asse categoriale: tutte le finestre del catalogo dell'engine
+    # (WindowRegistry.WINDOWS) — 9 GEN20 simmetriche, half_sine (GEN09), 6
+    # asimmetriche GEN16. L'alias `triangle` non c'e': e' bartlett.
+    values: [hamming, hanning, bartlett, blackman, blackman_harris,
+             gaussian, kaiser, rectangle, sinc,
+             half_sine,
+             expodec, expodec_strong, exporise, exporise_strong,
+             rexpodec, rexporise]
 
 # Da mare-nostrum.yml, stream2. Escluso `grain.read_direction` (envelope
 # scritto sul brano: qui falserebbe l'ascolto, resta al default 1). I valori a
@@ -105,6 +115,8 @@ for_each:
       axes: {interpolation: step, grain.duration: *ax_duration, pointer.speed_ratio: *ax_speed}
     speed-pitch:
       axes: {interpolation: step, pointer.speed_ratio: *ax_speed, pitch.ratio: *ax_pitch}
+    duration-envelope:
+      axes: {interpolation: step, grain.duration: *ax_duration, grain.envelope: *ax_envelope}
   base.distribution: {values: [0, 0.3, 1]}
   # 0.0001 -> 0.01 in passi geometrici (~x3.16), infittiti a ~x1.33 sopra
   # 0.003: e' li' che si e' deciso di guardare da vicino.

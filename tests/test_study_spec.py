@@ -1,5 +1,6 @@
 import pytest
 
+from granstudies.errors import SpecError
 from granstudies.study_spec import parse_study_spec, resolve_streams
 
 
@@ -1022,3 +1023,41 @@ def test_pitch_ratio_fuori_bounds_rifiutato():
     }
     with pytest.raises(ValueError, match="fuori bounds"):
         parse_study_spec(d)
+
+
+# --- assi categoriali (grain.envelope) --------------------------------------
+
+def _envelope_axis(values, interpolation="step"):
+    return {
+        "study_id": "s",
+        "base": {"onset": 0, "duration": 8, "sample": "x.wav"},
+        "axes": {
+            "interpolation": interpolation,
+            "grain.duration": {"values": [0.001, 0.01]},
+            "grain.envelope": {"values": values},
+        },
+        "sweep": {"mode": "discrete", "orders": [2]},
+    }
+
+
+def test_categorical_axis_accepts_window_names():
+    # `grain.envelope` non ha min/max: il suo dominio e' il catalogo delle
+    # finestre dell'engine, e i valori sono stringhe.
+    spec = parse_study_spec(_envelope_axis(["hanning", "expodec", "sinc"]), "s")
+    ax = spec.axis("grain.envelope")
+    assert ax.values == ["hanning", "expodec", "sinc"]
+    assert ax.baseline == "hanning"      # default engine, non dichiarato
+
+
+def test_categorical_axis_rejects_unknown_window():
+    with pytest.raises(SpecError) as exc:
+        parse_study_spec(_envelope_axis(["hanning", "banana"]), "s")
+    e = exc.value
+    assert e.key == ("axes", "grain.envelope", "values")
+    assert "banana" in e.msg
+
+
+def test_categorical_axis_requires_step_interpolation():
+    with pytest.raises(SpecError) as exc:
+        parse_study_spec(_envelope_axis(["hanning", "expodec"], "linear"), "s")
+    assert exc.value.key == ("axes", "grain.envelope", "interpolation")

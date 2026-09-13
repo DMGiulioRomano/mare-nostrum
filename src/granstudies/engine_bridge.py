@@ -253,3 +253,11 @@ def parameter_defaults() -> dict:
         for spec in schema:
             out[spec.yaml_path] = spec.default
     return out
+
+
+def window_names() -> frozenset:
+    """Nomi di finestra (``grain.envelope``) noti all'engine, alias inclusi."""
+    _ensure_engine_on_path()
+    from pge.controllers.window_registry import WindowRegistry
+
+    return frozenset(WindowRegistry.all_names())
