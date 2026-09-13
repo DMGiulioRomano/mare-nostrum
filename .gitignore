@@ -1,8 +1,9 @@
 # Output rigenerabile della pipeline
 /generated/
 
-# L'engine scrive qui i log di caricamento anche con --log-dir: cli.py:507,511
-# inchiodano './logs' e onorano il flag solo per il renderer (cli.py:531).
+# Log dell'engine. Dalla #251 --log-dir e' onorato da entrambi i logger
+# (cli.py:600-607), quindi `make brano` scrive sotto generated/brano/logs/;
+# './logs' resta il default di chi non passa il flag.
 /logs/
 
 # Audio del corpus: versioniamo solo il manifest, non i file
