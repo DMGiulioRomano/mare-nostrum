@@ -22,6 +22,7 @@ sentirne una.
 from __future__ import annotations
 
 import argparse
+import errno
 import glob
 import json
 import os
@@ -670,16 +671,23 @@ def cmd_serve(study: str, port: int = 8000) -> int:
     scegliere fra audio gia' pronti, compone uno stream e chiede di renderlo
     (``POST /render``). Vedi ``granstudies.serve``.
     """
-    from .serve import serve
+    from .serve import crea, porta_occupata
 
     gen_root = os.path.join(REPO_ROOT, "generated", study)
     if not os.path.isdir(gen_root):
         print(f"[serve] {gen_root} non esiste: esegui prima 'sweep {study}'.",
               file=sys.stderr)
         return 1
+    try:
+        server = crea(gen_root, REPO_ROOT, port)
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        print(f"[serve] {porta_occupata(port)}", file=sys.stderr)
+        return 1
     print(f"[serve] http://localhost:{port}/graph.html   (Ctrl-C per fermare)")
     try:
-        serve(gen_root, REPO_ROOT, port)
+        server.serve_forever()
     except KeyboardInterrupt:
         pass
     return 0

@@ -112,9 +112,36 @@ class Handler(SimpleHTTPRequestHandler):
         pass                                 # la console del terminale resta pulita
 
 
-def serve(gen_root: str, repo_root: str, port: int = 8000):
-    handler = partial(Handler, directory=gen_root)
+def crea(gen_root: str, repo_root: str, port: int = 8000) -> ThreadingHTTPServer:
+    """Prende la porta. Separata da ``serve`` perche' e' qui che si fallisce:
+    l'URL va stampato dopo, non prima di sapere se la porta e' libera.
+
+    Threading: un render dura secondi o minuti e con un server a thread
+    singolo bloccherebbe anche il caricamento dell'audio gia' pronto.
+    """
     Handler.repo_root = os.path.abspath(repo_root)
-    # Threading: un render dura minuti e con il server a thread singolo
-    # bloccherebbe anche il caricamento dell'audio gia' pronto.
-    ThreadingHTTPServer(("127.0.0.1", port), handler).serve_forever()
+    return ThreadingHTTPServer(("127.0.0.1", port), partial(Handler, directory=gen_root))
+
+
+def serve(gen_root: str, repo_root: str, port: int = 8000):
+    crea(gen_root, repo_root, port).serve_forever()
+
+
+def porta_occupata(port: int) -> str:
+    """Chi tiene la porta, per dirlo invece di stampare uno stack trace.
+
+    Capita di continuo: un `make serve` di ieri e' ancora vivo in un terminale
+    chiuso. La domanda e' sempre "chi", e ``lsof`` ce l'ha.
+    """
+    try:
+        out = subprocess.run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
+                             capture_output=True, text=True, timeout=5).stdout
+        righe = out.strip().splitlines()[1:]
+        if righe:
+            pid = righe[0].split()[1]
+            return (f"la porta {port} e' gia' occupata dal processo {pid}: "
+                    f"chiudilo con 'kill {pid}', o usa 'make serve PORT=<altra>'.")
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return (f"la porta {port} e' gia' occupata: chiudi l'altro server, "
+            f"o usa 'make serve PORT=<altra>'.")
