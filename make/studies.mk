@@ -56,13 +56,13 @@ explore: _require-study
 
 # La pagina legge i campioni con fetch + decodeAudioData per disegnare
 # sonogramma e forma d'onda: da `file://` il browser lo vieta (origine opaca),
-# quindi la si serve. http.server della stdlib basta e avanza.
+# quindi la si serve. Non e' piu' `http.server` perche' il laboratorio del
+# singolo stream fa `POST /render`: vedi `granstudies.serve`.
 PORT ?= 8000
 .PHONY: serve
 serve: graph
-	@echo "[serve] http://localhost:$(PORT)/graph.html   (Ctrl-C per fermare)"
-	@cd generated/$(STUDY) && ($(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 >/dev/null 2>&1 & \
-	 sleep 1; open -a Safari "http://localhost:$(PORT)/graph.html"; wait)
+	@($(PY) -m granstudies serve $(STUDY) --port $(PORT) & \
+	  sleep 1; open -a Safari "http://localhost:$(PORT)/graph.html"; wait)
 
 .PHONY: describe
 describe: _require-study $(MARKER)

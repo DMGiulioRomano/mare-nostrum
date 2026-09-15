@@ -653,6 +653,28 @@ def cmd_graph(study: str) -> int:
     return 0
 
 
+def cmd_serve(study: str, port: int = 8000) -> int:
+    """Serve la pagina dello studio, con il render on demand del laboratorio.
+
+    ``python -m http.server`` non basta piu': la pagina non si limita a
+    scegliere fra audio gia' pronti, compone uno stream e chiede di renderlo
+    (``POST /render``). Vedi ``granstudies.serve``.
+    """
+    from .serve import serve
+
+    gen_root = os.path.join(REPO_ROOT, "generated", study)
+    if not os.path.isdir(gen_root):
+        print(f"[serve] {gen_root} non esiste: esegui prima 'sweep {study}'.",
+              file=sys.stderr)
+        return 1
+    print(f"[serve] http://localhost:{port}/graph.html   (Ctrl-C per fermare)")
+    try:
+        serve(gen_root, REPO_ROOT, port)
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 def cmd_prune(study: str, apply: bool = False, stems: bool = False) -> int:
     """Elenca (e con ``--apply`` cancella) i residui di una versione precedente.
 
@@ -813,6 +835,10 @@ def build_parser() -> argparse.ArgumentParser:
     gp = sub.add_parser("graph", help="rete navigabile delle varianti discrete (HTML)")
     gp.add_argument("study")
 
+    sp = sub.add_parser("serve", help="serve la pagina dello studio (con render on demand)")
+    sp.add_argument("study")
+    sp.add_argument("--port", type=int, default=8000)
+
     pr = sub.add_parser("prune", help="elenca (o cancella) l'audio senza piu' uno YAML")
     pr.add_argument("study")
     pr.add_argument("--apply", action="store_true",
@@ -912,7 +938,7 @@ def _dispatch(args) -> int:
     global _COMBO
     # ``graph`` guarda tutto l'output dello studio in un colpo solo: girarlo per
     # combinazione riscriverebbe la stessa pagina N volte.
-    if args.command == "graph" or not getattr(args, "study", None):
+    if args.command in ("graph", "serve") or not getattr(args, "study", None):
         combos = [for_each.EMPTY]
     else:
         combos = _combos(args.study)
@@ -950,6 +976,8 @@ def _run(args) -> int:
         return cmd_render_final(args.study)
     if args.command == "graph":
         return cmd_graph(args.study)
+    if args.command == "serve":
+        return cmd_serve(args.study, args.port)
     if args.command == "prune":
         return cmd_prune(args.study, args.apply, args.stems)
     if args.command == "where":
