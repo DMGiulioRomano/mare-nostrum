@@ -399,7 +399,14 @@ function labInit() {
   for (const p of NUM) document.getElementById("P:" + p.path).onchange = labInfo;
   document.getElementById("labRender").onclick = labRender;
   document.getElementById("labSave").onclick = () => labPost(false);
-  document.getElementById("labOpen").onchange = e => { if (e.target.value) labOpen(e.target.value); };
+  document.getElementById("labOpen").onchange = e => {
+    if (!e.target.value) return;
+    labOpen(e.target.value);
+    // Torna su "apri…": restando sul nome scelto, riselezionare lo stesso
+    // file non emetterebbe `change` e il menu sembrerebbe rotto. Quale
+    // progetto e' aperto lo dicono il campo nome e la riga di stato.
+    e.target.value = "";
+  };
   labList();
   ripristina();
 }
