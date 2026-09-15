@@ -95,6 +95,17 @@
  #tl .bp.on { background:var(--on); border-color:var(--on); }
  #tl .bp .t { position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
               font-size:10px; color:var(--dim); white-space:nowrap; }
+ /* Le finestre: il nome da solo non dice niente, la forma si'. */
+ #envs { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 4px; }
+ #envs button { font:inherit; color:inherit; background:none; border:1px solid var(--line);
+                padding:3px 5px 1px; cursor:pointer; line-height:1; }
+ #envs button:hover { border-color:var(--fg); }
+ #envs button.on { border-color:var(--on); }
+ #envs button.on svg { stroke:var(--on); }
+ #envs svg { display:block; stroke:var(--fg); fill:none; stroke-width:1.2; }
+ #envs .n { font-size:9px; color:var(--dim); display:block; margin-top:2px;
+            text-align:center; }
+ #envs button.on .n { color:var(--fg); }
  #labInfo { color:var(--dim); font-size:11px; min-height:1.4em; margin-top:4px; }
  #labYaml { white-space:pre; font-size:11px; color:var(--dim); margin-top:10px;
             max-height:12em; overflow:auto; }
@@ -356,10 +367,17 @@ function labInit() {
     r.appendChild(k); r.appendChild(s); box.appendChild(r);
   };
   const fixed = document.getElementById("labFixed");
+  // `grain.envelope`: tutte le finestre dell'engine, non solo quelle rimaste
+  // nello study.yml — non e' un asse, e' una scelta per stream — e ognuna col
+  // suo profilo disegnato, che e' l'unica cosa che le distingue davvero.
+  const ENV = L.envelopes || {};
   // I categoriali non sono automatizzabili (l'engine vuole UNA finestra per
   // stream): stanno fuori dai breakpoint, con la durata e il nome.
   fixed.innerHTML = "<h2>fissi per lo stream</h2>";
-  for (const p of CAT) mk(p, fixed);
+  for (const p of CAT) {
+    if (p.path === "grain.envelope" && Object.keys(ENV).length) mkEnv(p, fixed, ENV);
+    else mk(p, fixed);
+  }
   for (const [id, lab, val, type] of [["labDur", "durata (s)", 8, "number"],
                                       ["labName", "nome", "lab", "text"]]) {
     const r = document.createElement("div"); r.className = "row";
@@ -378,6 +396,40 @@ function labInit() {
   // e' l'unica cosa che si puo' guardare senza accorgersene. Lo dice l'info.
   for (const p of NUM) document.getElementById("P:" + p.path).onchange = labInfo;
   document.getElementById("labRender").onclick = labRender;
+}
+
+// Una finestra disegnata: polilinea del profilo vero, quello che l'engine
+// moltiplica per il grano.
+function envSvg(pts) {
+  const w = 46, h = 20;
+  const d = pts.map((v, i) =>
+    (i ? "L" : "M") + (i / (pts.length - 1) * w).toFixed(1) + " " +
+    ((1 - v) * (h - 2) + 1).toFixed(1)).join(" ");
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><path d="${d}"/></svg>`;
+}
+
+function mkEnv(p, box, ENV) {
+  const r = document.createElement("div"); r.className = "row";
+  const k = document.createElement("div"); k.className = "k"; k.textContent = p.path;
+  // Il valore vive in un campo nascosto: labDoc legge "P:<path>" come per
+  // ogni altro parametro, e la galleria e' solo il modo di sceglierlo.
+  const hid = document.createElement("input");
+  hid.type = "hidden"; hid.id = "P:" + p.path;
+  hid.value = p.values.includes("hanning") ? "hanning" : Object.keys(ENV)[0];
+  const box2 = document.createElement("div"); box2.id = "envs";
+  for (const [name, pts] of Object.entries(ENV)) {
+    const b = document.createElement("button");
+    b.innerHTML = envSvg(pts) + "<span class='n'>" + name + "</span>";
+    b.title = name;
+    if (name === hid.value) b.classList.add("on");
+    b.onclick = () => {
+      hid.value = name;
+      for (const o of box2.querySelectorAll("button")) o.classList.toggle("on", o === b);
+    };
+    box2.appendChild(b);
+  }
+  r.appendChild(k); r.appendChild(box2);
+  box.appendChild(r); box.appendChild(hid);
 }
 
 function snapshot() {

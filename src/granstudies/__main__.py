@@ -651,6 +651,7 @@ def cmd_graph(study: str) -> int:
     # combinazione sola.
     with open(os.path.join(study_dir(study), "study.yml")) as fh:
         lab = lab_data(yaml.safe_load(fh))
+    lab["envelopes"] = _finestre()
     os.makedirs(gen_root, exist_ok=True)
     n_combos, n_nodes = write_graph(study, gen_root, out, _axis_orders(study), lab)
     if not n_combos and not lab["params"]:
@@ -662,6 +663,41 @@ def cmd_graph(study: str) -> int:
         return 0
     print(f"[graph] {out}  ({n_nodes} nodi in {n_combos} combinazioni)")
     return 0
+
+
+# Quanti punti per disegnare una finestra: sotto i 10 campioni l'engine
+# restituisce una rettangolare (WINDOW_MIN_SHAPE_SAMPLES), e sopra i cinquanta
+# il disegno non guadagna niente ma la pagina si allunga.
+_PUNTI_FINESTRA = 48
+
+
+def _finestre() -> dict:
+    """nome -> profilo della finestra, preso dall'engine, non riscritto qui.
+
+    Il laboratorio offre TUTTE le finestre del catalogo, non solo quelle
+    rimaste nello ``study.yml``: e' una scelta per stream, non un asse, e non
+    c'e' ragione di limitarla a quelle di un esperimento. Il profilo serve a
+    disegnarle accanto al nome — `expodec` e `rexpodec` scendono tutte e due,
+    ma una tiene e poi crolla e l'altra crolla subito.
+
+    Se il submodule non c'e', la pagina resta senza disegni e con i soli nomi
+    dello studio: e' un di piu', non deve far fallire `graph`.
+    """
+    try:
+        from .engine_bridge import _ensure_engine_on_path
+        _ensure_engine_on_path()
+        from pge.controllers.window_registry import WindowRegistry
+        from pge.rendering.numpy_window_registry import NumpyWindowRegistry
+    except (ImportError, RuntimeError):
+        return {}
+    reg = NumpyWindowRegistry()
+    out = {}
+    for name in WindowRegistry.WINDOWS:
+        try:
+            out[name] = [round(float(v), 3) for v in reg.get(name, _PUNTI_FINESTRA)]
+        except Exception:      # noqa: BLE001 — una finestra rotta non ferma la pagina
+            continue
+    return out
 
 
 def cmd_serve(study: str, port: int = 8000) -> int:

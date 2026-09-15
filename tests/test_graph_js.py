@@ -139,3 +139,16 @@ def test_salva_modifica_riscrive_solo_il_breakpoint_selezionato(tmp_path):
     assert dopo == [[0, 1], [1, 9]]     # salvato sul secondo punto
     assert primo == 1                   # il primo non e' stato toccato
     assert b == 5                       # invariato: resta scalare
+
+
+@node
+def test_il_profilo_disegnato_parte_e_finisce_dove_deve(tmp_path):
+    """La polilinea e' il profilo vero: y invertita (1 = in alto) e x distesa."""
+    js = _script()
+    frag = js[js.index("function envSvg"):js.index("function mkEnv")]
+    p = tmp_path / "e.js"
+    p.write_text(frag + "console.log(envSvg([0, 1, 0]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    # x: 0 -> 23 -> 46 (la larghezza); y: 19 (fondo) -> 1 (cima) -> 19
+    assert 'd="M0.0 19.0 L23.0 1.0 L46.0 19.0"' in out.stdout
