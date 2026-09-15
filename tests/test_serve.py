@@ -55,3 +55,28 @@ def test_elenco_dei_progetti_salvati(tmp_path, monkeypatch):
     el = S.elenco(str(tmp_path))
     assert sorted(el) == ["due", "uno"]      # il file rotto si salta, non esplode
     assert el["uno"]["streams"][0]["grain"]["duration"] == [[0, 0.001], [1, 0.02]]
+
+
+def test_pagina_ed_elenco_non_si_cachano_ma_l_audio_si(tmp_path):
+    """La pagina cambia a ogni `graph`: una copia vecchia mostra un
+    laboratorio di ieri senza dirlo. L'audio invece ha sempre un nome nuovo."""
+    import http.client
+    import threading
+
+    (tmp_path / "graph.html").write_text("<p>x</p>")
+    (tmp_path / "a.aif").write_bytes(b"FORM")
+    srv = S.crea(str(tmp_path), str(tmp_path), 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
+        got = {}
+        for path in ("/graph.html", "/live.json", "/a.aif"):
+            c.request("GET", path)
+            r = c.getresponse()
+            got[path] = r.getheader("Cache-Control")
+            r.read()
+        assert got["/graph.html"] == "no-store"
+        assert got["/live.json"] == "no-store"
+        assert got["/a.aif"] is None
+    finally:
+        srv.shutdown()

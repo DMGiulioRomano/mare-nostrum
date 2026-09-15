@@ -622,7 +622,14 @@ function setSel(path, v) {
 async function labList() {
   const sel = document.getElementById("labOpen");
   let elenco = {};
-  try { elenco = await (await fetch("live.json")).json(); } catch (e) { return; }
+  try {
+    elenco = await (await fetch("live.json")).json();
+  } catch (e) {
+    // Senza elenco la tendina resta vuota e sembra rotta: dillo.
+    document.getElementById("labInfo").textContent =
+      "non riesco a leggere i progetti (live.json): " + e;
+    return;
+  }
   sel.innerHTML = "<option value=''>apri…</option>";
   for (const nome of Object.keys(elenco)) {
     const o = document.createElement("option");

@@ -130,6 +130,15 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(render_doc(doc, name, self.directory, self.repo_root,
                               render=body.get("render", True)))
 
+    def end_headers(self):
+        # La pagina e l'elenco cambiano a ogni `graph` e a ogni salvataggio, e
+        # il browser che ne tiene una copia mostra un laboratorio vecchio senza
+        # dirlo: la tendina dei progetti resta quella di ieri. L'audio no: ha
+        # un nome nuovo o un `?t=`, e ricaricarlo a ogni seek sarebbe uno spreco.
+        if self.path.split("?")[0].endswith((".html", ".json")):
+            self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def do_GET(self):                       # noqa: N802  (nome dell'API stdlib)
         if self.path.rstrip("/") == "/live.json":
             self._json(elenco(self.directory))
