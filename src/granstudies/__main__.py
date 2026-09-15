@@ -22,6 +22,7 @@ sentirne una.
 from __future__ import annotations
 
 import argparse
+import errno
 import glob
 import json
 import os
@@ -640,16 +641,91 @@ def cmd_graph(study: str) -> int:
     la pagina, non file diversi, e ``COMBO`` ha gia' fatto il suo filtro a
     monte decidendo cosa renderizzare.
     """
-    from .graph import write_graph
+    from .graph import lab_data, write_graph
 
     gen_root = os.path.join(REPO_ROOT, "generated", study)
     out = os.path.join(gen_root, "graph.html")
-    n_combos, n_nodes = write_graph(study, gen_root, out, _axis_orders(study))
-    if not n_combos:
-        print(f"[graph] nessun audio discrete in {gen_root}: esegui prima "
-              f"'render {study}' (serve sweep.mode: discrete).", file=sys.stderr)
+    # Il documento COSI' COM'E' SCRITTO: `_read_study` applica la combinazione
+    # e con essa consuma il blocco `for_each:`, che invece al laboratorio
+    # serve tutto — sono le tacche di ogni parametro, non i valori di una
+    # combinazione sola.
+    with open(os.path.join(study_dir(study), "study.yml")) as fh:
+        lab = lab_data(yaml.safe_load(fh))
+    lab["envelopes"] = _finestre()
+    os.makedirs(gen_root, exist_ok=True)
+    n_combos, n_nodes = write_graph(study, gen_root, out, _axis_orders(study), lab)
+    if not n_combos and not lab["params"]:
+        print(f"[graph] nessun audio discrete in {gen_root} e nessun parametro "
+              f"per il laboratorio: esegui prima 'render {study}'.", file=sys.stderr)
         return 1
+    if not n_combos:
+        print(f"[graph] {out}  (nessun audio: solo il laboratorio)")
+        return 0
     print(f"[graph] {out}  ({n_nodes} nodi in {n_combos} combinazioni)")
+    return 0
+
+
+# Quanti punti per disegnare una finestra: sotto i 10 campioni l'engine
+# restituisce una rettangolare (WINDOW_MIN_SHAPE_SAMPLES), e sopra i cinquanta
+# il disegno non guadagna niente ma la pagina si allunga.
+_PUNTI_FINESTRA = 48
+
+
+def _finestre() -> dict:
+    """nome -> profilo della finestra, preso dall'engine, non riscritto qui.
+
+    Il laboratorio offre TUTTE le finestre del catalogo, non solo quelle
+    rimaste nello ``study.yml``: e' una scelta per stream, non un asse, e non
+    c'e' ragione di limitarla a quelle di un esperimento. Il profilo serve a
+    disegnarle accanto al nome — `expodec` e `rexpodec` scendono tutte e due,
+    ma una tiene e poi crolla e l'altra crolla subito.
+
+    Se il submodule non c'e', la pagina resta senza disegni e con i soli nomi
+    dello studio: e' un di piu', non deve far fallire `graph`.
+    """
+    try:
+        from .engine_bridge import _ensure_engine_on_path
+        _ensure_engine_on_path()
+        from pge.controllers.window_registry import WindowRegistry
+        from pge.rendering.numpy_window_registry import NumpyWindowRegistry
+    except (ImportError, RuntimeError):
+        return {}
+    reg = NumpyWindowRegistry()
+    out = {}
+    for name in WindowRegistry.WINDOWS:
+        try:
+            out[name] = [round(float(v), 3) for v in reg.get(name, _PUNTI_FINESTRA)]
+        except Exception:      # noqa: BLE001 — una finestra rotta non ferma la pagina
+            continue
+    return out
+
+
+def cmd_serve(study: str, port: int = 8000) -> int:
+    """Serve la pagina dello studio, con il render on demand del laboratorio.
+
+    ``python -m http.server`` non basta piu': la pagina non si limita a
+    scegliere fra audio gia' pronti, compone uno stream e chiede di renderlo
+    (``POST /render``). Vedi ``granstudies.serve``.
+    """
+    from .serve import crea, porta_occupata
+
+    gen_root = os.path.join(REPO_ROOT, "generated", study)
+    if not os.path.isdir(gen_root):
+        print(f"[serve] {gen_root} non esiste: esegui prima 'sweep {study}'.",
+              file=sys.stderr)
+        return 1
+    try:
+        server = crea(gen_root, REPO_ROOT, port)
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        print(f"[serve] {porta_occupata(port)}", file=sys.stderr)
+        return 1
+    print(f"[serve] http://localhost:{port}/graph.html   (Ctrl-C per fermare)")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
     return 0
 
 
@@ -720,22 +796,28 @@ def cmd_prune(study: str, apply: bool = False, stems: bool = False) -> int:
 
 
 def _axis_orders(study: str) -> dict:
-    """label -> ordine degli assi dello spec, una voce per combinazione.
+    """label -> ordine degli assi dello spec, una voce per combinazione RESA.
 
     Con ``for_each:`` gli assi interni li dichiara la combinazione, quindi lo
     spec del documento base puo' non averne nessuno: si carica uno spec per
     label, impostando il contesto come fa ``_dispatch``. Le combinazioni che
     non caricano (studio a meta', spec invalido) si saltano — al massimo la
     griglia esce con gli assi in ordine alfabetico.
+
+    Solo le cartelle che esistono: le combinazioni dichiarate possono essere
+    un milione (001-41), e caricarne uno spec ciascuna per poi scoprire che
+    non sono mai state rese e' minuti di attesa per niente. La pagina disegna
+    cio' che sta su disco, e l'ordine degli assi serve solo a quello.
     """
     global _COMBO
     was = _COMBO
+    gen_root = os.path.join(REPO_ROOT, "generated", study)
+    su_disco = set(os.listdir(gen_root)) if os.path.isdir(gen_root) else set()
     orders = {}
     try:
-        # Senza filtro ``COMBO``: ``graph`` disegna tutto cio' che e' su disco,
-        # anche le combinazioni fuori dalla fetta che si sta renderizzando, e
-        # ognuna ha bisogno del suo ordine di assi.
         for c in _combos(study, filtra=False):
+            if c.label and c.label not in su_disco:
+                continue
             _COMBO = c
             try:
                 orders[c.label] = [ax.name for ax in _load_spec(study).axes]
@@ -812,6 +894,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     gp = sub.add_parser("graph", help="rete navigabile delle varianti discrete (HTML)")
     gp.add_argument("study")
+
+    sp = sub.add_parser("serve", help="serve la pagina dello studio (con render on demand)")
+    sp.add_argument("study")
+    sp.add_argument("--port", type=int, default=8000)
 
     pr = sub.add_parser("prune", help="elenca (o cancella) l'audio senza piu' uno YAML")
     pr.add_argument("study")
@@ -912,7 +998,7 @@ def _dispatch(args) -> int:
     global _COMBO
     # ``graph`` guarda tutto l'output dello studio in un colpo solo: girarlo per
     # combinazione riscriverebbe la stessa pagina N volte.
-    if args.command == "graph" or not getattr(args, "study", None):
+    if args.command in ("graph", "serve") or not getattr(args, "study", None):
         combos = [for_each.EMPTY]
     else:
         combos = _combos(args.study)
@@ -950,6 +1036,8 @@ def _run(args) -> int:
         return cmd_render_final(args.study)
     if args.command == "graph":
         return cmd_graph(args.study)
+    if args.command == "serve":
+        return cmd_serve(args.study, args.port)
     if args.command == "prune":
         return cmd_prune(args.study, args.apply, args.stems)
     if args.command == "where":

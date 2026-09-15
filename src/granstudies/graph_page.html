@@ -64,12 +64,92 @@
                padding:0 6px; margin-right:3px; cursor:pointer; }
  #ctl button.on { border-color:var(--fg); background:var(--fg); color:var(--bg); }
  #ctl #res { margin-right:14px; }
+
+ /* --- laboratorio del singolo stream ------------------------------------- */
+ #tabs { margin-bottom:14px; }
+ #tabs button { font:inherit; color:var(--dim); background:none; border:none;
+                border-bottom:2px solid transparent; padding:2px 0; margin-right:16px;
+                cursor:pointer; }
+ #tabs button.on { color:var(--fg); border-bottom-color:var(--on); }
+ #lab .row { display:grid; grid-template-columns:max-content 1fr; gap:4px 10px;
+             align-items:center; margin-bottom:4px; }
+ #lab .row .k { color:var(--dim); text-align:right; white-space:nowrap; }
+ #lab select, #lab input { font:inherit; color:inherit; background:var(--panel);
+                           border:1px solid var(--line); padding:1px 4px; }
+ #lab input[type=text], #lab input[type=number] { width:9em; }
+ #lab h2 { font-size:12px; font-weight:600; color:var(--dim); margin:16px 0 6px;
+           text-transform:lowercase; }
+ #lab .bar { margin:10px 0; }
+ #lab #fBar { margin:0 0 14px; padding-bottom:10px; border-bottom:1px solid var(--line); }
+ #lab .bar button { font:inherit; color:inherit; background:none;
+                    border:1px solid var(--line); padding:2px 10px; margin-right:6px;
+                    cursor:pointer; }
+ #lab .bar button:hover { border-color:var(--fg); }
+ #lab .bar button:disabled { opacity:.35; cursor:default; border-color:var(--line); }
+ /* La linea dei breakpoint: una dimensione sola, il tempo. Il punto si
+    trascina, e cliccandolo i select tornano ai valori di quel preset. */
+ #tl { position:relative; height:38px; margin:14px 0 6px; border-bottom:1px solid var(--line);
+       touch-action:none; }
+ #tl .bp { position:absolute; bottom:-6px; width:11px; height:11px; margin-left:-6px;
+           border:1px solid var(--fg); background:var(--bg); border-radius:50%;
+           cursor:grab; }
+ #tl .bp.on { background:var(--on); border-color:var(--on); }
+ #tl .bp .t { position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+              font-size:10px; color:var(--dim); white-space:nowrap; }
+ /* Le finestre: il nome da solo non dice niente, la forma si'. */
+ #envs { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 4px; }
+ #envs button { font:inherit; color:inherit; background:none; border:1px solid var(--line);
+                padding:3px 5px 1px; cursor:pointer; line-height:1; }
+ #envs button:hover { border-color:var(--fg); }
+ #envs button.on { border-color:var(--on); }
+ #envs button.on svg { stroke:var(--on); }
+ #envs svg { display:block; stroke:var(--fg); fill:none; stroke-width:1.2; }
+ #envs .n { font-size:9px; color:var(--dim); display:block; margin-top:2px;
+            text-align:center; }
+ #envs button.on .n { color:var(--fg); }
+ #fFile { color:var(--dim); font-size:11px; margin-left:6px; }
+ #fFile.dirty::after { content:" •  modificato"; color:var(--on); }
+ #labInfo { color:var(--dim); font-size:11px; min-height:1.4em; margin-top:4px; }
+ #labYaml { white-space:pre; font-size:11px; color:var(--dim); margin-top:10px;
+            max-height:12em; overflow:auto; }
 </style>
 
 <div id="left">
+  <div id="tabs">
+    <button id="tabGrid" class="on">griglia</button><button id="tabLab">laboratorio</button>
+  </div>
+  <div id="griglia">
   <h1 id="h"></h1>
   <div class="sel" id="sel"></div>
   <div id="grid"></div>
+  </div>
+
+  <!-- Il laboratorio: si compone UNO stream, breakpoint per breakpoint, e lo
+       si rende al volo. La griglia esplora combinazioni gia' rese; qui si
+       scrive il documento che poi va nella timeline di PGE-ui. -->
+  <div id="lab" hidden>
+    <div class="bar" id="fBar">
+      <button id="fNew">nuovo</button>
+      <button id="fOpen">apri…</button>
+      <button id="fSave">salva</button>
+      <button id="fSaveAs">salva con nome…</button>
+      <span id="fFile"></span>
+    </div>
+    <div id="labFixed"></div>
+    <h2>parametri</h2>
+    <div id="labParams"></div>
+    <div class="bar">
+      <button id="bpAdd">+ breakpoint</button>
+      <button id="bpSave">salva modifica</button>
+      <button id="bpAll" title="scrive i soli valori che hai appena cambiato su tutti i breakpoint">applica a tutti</button>
+      <button id="bpDel">togli</button>
+      <button id="labRender">rendi e ascolta</button>
+    </div>
+    <div id="tl"></div>
+    <div id="labInfo"></div>
+    <div id="labYaml"></div>
+  </div>
+
   <div id="now"></div>
   <audio id="a" controls></audio>
   <div id="transport">
@@ -113,8 +193,11 @@ const D = __DATA__;
 const byLabel = {};
 for (const c of D.combos) byLabel[c.label] = c;
 
-let sel = Object.assign({}, D.combos[0].sel);
-let cur = D.combos[0];
+// Senza audio su disco (studio appena ripulito) la griglia e' vuota e la
+// pagina resta utile lo stesso: c'e' il laboratorio.
+const VUOTA = {label:"", sel:{}, axX:"", axY:"", xs:[], ys:[0], nodes:[], at:{}};
+let sel = Object.assign({}, (D.combos[0] || VUOTA).sel);
+let cur = D.combos[0] || VUOTA;
 let cx = 0, cy = 0;
 
 function match(s) {
@@ -150,6 +233,7 @@ function key(x, y) { return x + "|" + y; }
 // fonte di verita'. Sotto i cinque decimali si passa all'esponenziale invece
 // di mostrare uno zero che sarebbe falso.
 function fmt(v) {
+  if (typeof v === "string") return v;   // asse categoriale (grain.envelope)
   if (v === 0) return "0";
   const r = Number(v.toFixed(5));
   return r === 0 ? v.toExponential(1) : String(r);
@@ -204,6 +288,7 @@ const audio = document.getElementById("a");
 const status = document.getElementById("status");
 
 function go(i, j, play) {
+  if (!cur.xs.length) return;
   const n = cur.at[key(cur.xs[i], cur.ys[j])];
   cx = i; cy = j;
   // Posizione e stato del trasporto PRIMA di cambiare file: con "continua"
@@ -260,6 +345,498 @@ addEventListener("keydown", e => {
   go(Math.min(cur.xs.length - 1, Math.max(0, cx + d[0])),
      Math.min(cur.ys.length - 1, Math.max(0, cy + d[1])));
 });
+
+
+// ===========================================================================
+// Laboratorio: comporre UNO stream e sentirlo, invece di scegliere fra audio
+// gia' resi. Ogni breakpoint e' uno snapshot di tutti i parametri a un tempo;
+// il documento YAML lo ricava da se', mettendo una lista di punti solo dove
+// il valore cambia davvero (vedi `serie`).
+const L = D.lab || {base:{}, params:[]};
+const NUM = L.params.filter(p => p.kind === "num");
+const CAT = L.params.filter(p => p.kind !== "num");
+
+let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
+let curBp = -1;
+
+function labInit() {
+  if (!L.params.length) {
+    document.getElementById("lab").innerHTML =
+      "<p>lo study.yml non dichiara parametri con <code>values</code>.</p>";
+    return;
+  }
+  const mk = (p, box) => {
+    const r = document.createElement("div"); r.className = "row";
+    const k = document.createElement("div"); k.className = "k"; k.textContent = p.path;
+    const s = document.createElement("select");
+    s.id = "P:" + p.path;
+    for (const v of p.values) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = fmt(v);
+      s.appendChild(o);
+    }
+    r.appendChild(k); r.appendChild(s); box.appendChild(r);
+  };
+  const fixed = document.getElementById("labFixed");
+  // `grain.envelope`: tutte le finestre dell'engine, non solo quelle rimaste
+  // nello study.yml — non e' un asse, e' una scelta per stream — e ognuna col
+  // suo profilo disegnato, che e' l'unica cosa che le distingue davvero.
+  const ENV = L.envelopes || {};
+  // I categoriali non sono automatizzabili (l'engine vuole UNA finestra per
+  // stream): stanno fuori dai breakpoint, con la durata e il nome.
+  fixed.innerHTML = "<h2>fissi per lo stream</h2>";
+  for (const p of CAT) {
+    if (p.path === "grain.envelope" && Object.keys(ENV).length) mkEnv(p, fixed, ENV);
+    else mk(p, fixed);
+  }
+  for (const [id, lab, val, type] of [["labDur", "durata (s)", 8, "number"],
+                                      ["labName", "nome", "lab", "text"]]) {
+    const r = document.createElement("div"); r.className = "row";
+    const k = document.createElement("div"); k.className = "k"; k.textContent = lab;
+    const i = document.createElement("input");
+    i.id = id; i.type = type; i.value = val;
+    r.appendChild(k); r.appendChild(i); fixed.appendChild(r);
+  }
+  const box = document.getElementById("labParams");
+  for (const p of NUM) mk(p, box);
+  document.getElementById("bpAdd").onclick = bpAdd;
+  document.getElementById("bpSave").onclick = bpSave;
+  document.getElementById("bpAll").onclick = bpAll;
+  document.getElementById("bpDel").onclick = bpDel;
+  // Cambiare un select su un breakpoint selezionato non lo modifica da solo:
+  // finche' non si salva, i valori a schermo e quelli del punto divergono, e
+  // e' l'unica cosa che si puo' guardare senza accorgersene. Lo dice l'info.
+  for (const p of NUM) document.getElementById("P:" + p.path).onchange = labInfo;
+  document.getElementById("labRender").onclick = labRender;
+  document.getElementById("fNew").onclick = fNew;
+  document.getElementById("fOpen").onclick = fOpen;
+  document.getElementById("fSave").onclick = () => fSave(false);
+  document.getElementById("fSaveAs").onclick = () => fSave(true);
+  ripristina();
+  segna();
+}
+
+// Una finestra disegnata: polilinea del profilo vero, quello che l'engine
+// moltiplica per il grano.
+function envSvg(pts) {
+  const w = 46, h = 20;
+  const d = pts.map((v, i) =>
+    (i ? "L" : "M") + (i / (pts.length - 1) * w).toFixed(1) + " " +
+    ((1 - v) * (h - 2) + 1).toFixed(1)).join(" ");
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><path d="${d}"/></svg>`;
+}
+
+function mkEnv(p, box, ENV) {
+  const r = document.createElement("div"); r.className = "row";
+  const k = document.createElement("div"); k.className = "k"; k.textContent = p.path;
+  // Il valore vive in un campo nascosto: labDoc legge "P:<path>" come per
+  // ogni altro parametro, e la galleria e' solo il modo di sceglierlo.
+  const hid = document.createElement("input");
+  hid.type = "hidden"; hid.id = "P:" + p.path;
+  hid.value = p.values.includes("hanning") ? "hanning" : Object.keys(ENV)[0];
+  const box2 = document.createElement("div"); box2.id = "envs";
+  for (const [name, pts] of Object.entries(ENV)) {
+    const b = document.createElement("button");
+    b.innerHTML = envSvg(pts) + "<span class='n'>" + name + "</span>";
+    b.title = name;
+    if (name === hid.value) b.classList.add("on");
+    b.onclick = () => {
+      hid.value = name;
+      for (const o of box2.querySelectorAll("button")) o.classList.toggle("on", o === b);
+    };
+    box2.appendChild(b);
+  }
+  r.appendChild(k); r.appendChild(box2);
+  box.appendChild(r); box.appendChild(hid);
+}
+
+function snapshot() {
+  const v = {};
+  for (const p of NUM) v[p.path] = Number(document.getElementById("P:" + p.path).value);
+  return v;
+}
+
+function bpAdd() {
+  // Il primo breakpoint sta a 0, gli altri in fondo: da li' si trascinano.
+  const t = bps.length ? 1 : 0;
+  bps.push({t, vals: snapshot()});
+  bps.sort((a, b) => a.t - b.t);
+  curBp = bps.findIndex(b => b.t === t);
+  drawTl();
+}
+
+function bpSave() {
+  if (curBp < 0) return;
+  bps[curBp].vals = snapshot();
+  drawTl();
+}
+
+// I parametri che i select mostrano diversi dal breakpoint selezionato: sono
+// quelli che hai appena cambiato, e l'unica cosa che `applica a tutti` deve
+// toccare.
+function cambiati() {
+  if (curBp < 0) return [];
+  const ora = snapshot();
+  return NUM.map(p => p.path).filter(k => ora[k] !== bps[curBp].vals[k]);
+}
+
+// Scrive SOLO quei parametri su ogni breakpoint. Gli altri restano come
+// sono, ognuno col suo valore: un inviluppo che avevi disegnato non va
+// appiattito perche' stavi cambiando un'altra manopola.
+function bpAll() {
+  const ks = cambiati();
+  if (!ks.length) return;
+  const ora = snapshot();
+  for (const b of bps) for (const k of ks) b.vals[k] = ora[k];
+  drawTl();
+  document.getElementById("labInfo").textContent =
+    "applicato a tutti i " + bps.length + " breakpoint: " + ks.join(", ");
+}
+
+function bpDel() {
+  if (curBp < 0) return;
+  bps.splice(curBp, 1);
+  curBp = Math.min(curBp, bps.length - 1);
+  drawTl();
+}
+
+function bpLoad(i) {
+  curBp = i;
+  for (const [path, v] of Object.entries(bps[i].vals)) {
+    const s = document.getElementById("P:" + path);
+    if (s) s.value = v;
+  }
+  drawTl();
+}
+
+function drawTl() {
+  bozzaSalva();
+  if (typeof segna === "function") segna();
+  const tl = document.getElementById("tl");
+  tl.innerHTML = "";
+  bps.forEach((b, i) => {
+    const d = document.createElement("div");
+    d.className = "bp" + (i === curBp ? " on" : "");
+    d.style.left = (b.t * 100) + "%";
+    d.innerHTML = "<span class='t'>" + b.t.toFixed(2) + "</span>";
+    d.onpointerdown = e => {
+      e.preventDefault();
+      bpLoad(i);
+      const box = tl.getBoundingClientRect();
+      const move = ev => {
+        b.t = Math.min(1, Math.max(0, (ev.clientX - box.left) / box.width));
+        drawTl();
+      };
+      const up = () => {
+        removeEventListener("pointermove", move);
+        removeEventListener("pointerup", up);
+        // L'ordine dei punti e' il tempo: dopo il trascinamento la lista va
+        // riordinata, o `serie` produrrebbe un inviluppo che torna indietro.
+        const b0 = bps[curBp];
+        bps.sort((x, y) => x.t - y.t);
+        curBp = bps.indexOf(b0);
+        drawTl();
+      };
+      addEventListener("pointermove", move);
+      addEventListener("pointerup", up);
+    };
+    tl.appendChild(d);
+  });
+  labInfo();
+}
+
+// Un parametro diventa una lista di breakpoint solo dove cambia: i punti in
+// cui il valore e' uguale sia a prima che a dopo non dicono niente che
+// l'interpolazione non dica gia', e un inviluppo con dodici punti identici
+// e' illeggibile. Se non cambia mai, resta lo scalare che era.
+function serie(path) {
+  const pts = bps.map(b => [b.t, b.vals[path]]);
+  if (!pts.length || pts.some(p => !Number.isFinite(p[1]))) return null;
+  if (pts.every(p => p[1] === pts[0][1])) return pts[0][1];
+  return pts.filter((p, i) =>
+    i === 0 || i === pts.length - 1 ||
+    !(pts[i - 1][1] === p[1] && pts[i + 1][1] === p[1]));
+}
+
+function labDoc() {
+  const dur = Number(document.getElementById("labDur").value) || 8;
+  // stream_id/onset/duration in testa, come nei documenti scritti a mano.
+  const st = Object.assign({stream_id: "lab", onset: 0, duration: dur},
+                           JSON.parse(JSON.stringify(L.base)));
+  st.onset = 0;
+  st.duration = dur;
+  for (const p of CAT) setPath(st, p.path, document.getElementById("P:" + p.path).value);
+  for (const p of NUM) {
+    const v = serie(p.path);
+    if (v !== null) setPath(st, p.path, v);
+  }
+  return {duration: dur, bpm: 120, streams: [st]};
+}
+
+function setPath(obj, path, v) {
+  const parts = path.split(".");
+  let o = obj;
+  for (const k of parts.slice(0, -1)) o = (o[k] = o[k] || {});
+  o[parts[parts.length - 1]] = v;
+}
+
+function labInfo() {
+  const mossi = NUM.filter(p => Array.isArray(serie(p.path)));
+  // Quali select non corrispondono piu' al breakpoint selezionato.
+  const diversi = cambiati();
+  document.getElementById("bpSave").disabled = !diversi.length;
+  document.getElementById("bpAll").disabled = !diversi.length;
+  document.getElementById("labInfo").textContent =
+    bps.length + " breakpoint · " + mossi.length + " parametri mossi" +
+    (mossi.length ? ": " + mossi.map(p => p.path).join(", ") : "") +
+    (diversi.length ? "  |  non salvati sul breakpoint " + (curBp + 1) + ": "
+                      + diversi.join(", ") : "");
+  document.getElementById("labYaml").textContent = bps.length ? preview() : "";
+}
+
+// Anteprima: solo i parametri mossi, nella forma che finisce nello YAML.
+function preview() {
+  return NUM.map(p => [p.path, serie(p.path)])
+            .filter(([, v]) => Array.isArray(v))
+            .map(([k, v]) => k + ": [" + v.map(pt => "[" + pt[0].toFixed(3) + ", " + pt[1] + "]").join(", ") + "]")
+            .join("\n");
+}
+
+
+// --- il file su cui si lavora ---------------------------------------------
+// Semantica normale: nuovo / apri / salva / salva con nome, e l'avviso se ci
+// sono modifiche non salvate. I pannelli sono quelli di macOS, aperti dal
+// server (POST /pick): la pagina da sola non sa dove sta un file sul disco.
+//
+// Il file di progetto e' lo YAML: un documento engine puro, che si riapre
+// qui, si incolla nel brano o si apre in PGE-ui. I breakpoint non si salvano
+// a parte perche' non sono un'informazione in piu': sono i tempi che
+// compaiono negli inviluppi.
+
+let FILE = "";        // path assoluto del file aperto; "" = mai salvato
+let SALVATO = "";     // com'era il documento all'ultimo salvataggio
+
+// Rete di sicurezza per il refresh accidentale: il lavoro in corso torna da
+// solo. Non e' un salvataggio — quello e' il file.
+const BOZZA = "lab:" + D.study;
+
+function statoOra() { return JSON.stringify(bps.length ? labDoc() : null); }
+function sporco() { return statoOra() !== SALVATO; }
+
+function segna() {
+  const el = document.getElementById("fFile");
+  el.textContent = FILE ? FILE.split("/").pop() : "(non salvato)";
+  el.title = FILE || "";
+  el.classList.toggle("dirty", sporco());
+  document.getElementById("fSave").disabled = !bps.length || !sporco();
+}
+
+function bozzaSalva() {
+  try {
+    localStorage.setItem(BOZZA, JSON.stringify({
+      bps, file: FILE, salvato: SALVATO,
+      name: document.getElementById("labName").value,
+      dur: document.getElementById("labDur").value,
+      cat: Object.fromEntries(CAT.map(p => [p.path, document.getElementById("P:" + p.path).value])),
+    }));
+  } catch (e) { /* private browsing: pazienza, il file resta la verita' */ }
+}
+
+function ripristina() {
+  let b = null;
+  try { b = JSON.parse(localStorage.getItem(BOZZA) || "null"); } catch (e) { return; }
+  if (!b || !b.bps || !b.bps.length) return;
+  bps = b.bps;
+  FILE = b.file || "";
+  SALVATO = b.salvato || "";
+  document.getElementById("labName").value = b.name || "lab";
+  document.getElementById("labDur").value = b.dur || 8;
+  for (const [path, v] of Object.entries(b.cat || {})) setSel(path, v);
+  bpLoad(0);
+  document.getElementById("labInfo").textContent =
+    "ripreso il lavoro in corso (" + bps.length + " breakpoint)";
+}
+
+// Il valore di un parametro fisso: select o galleria delle finestre.
+function setSel(path, v) {
+  const el = document.getElementById("P:" + path);
+  if (!el || v === undefined || v === null) return;
+  el.value = v;
+  const box = document.getElementById("envs");
+  if (box && path === "grain.envelope")
+    for (const b of box.querySelectorAll("button"))
+      b.classList.toggle("on", b.title === v);
+}
+
+async function post(rotta, body) {
+  const info = document.getElementById("labInfo");
+  let r;
+  try {
+    r = await fetch(rotta, {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  } catch (e) {
+    info.textContent = "server non raggiungibile: serve `make serve` (non file://).";
+    return {ok: false, error: info.textContent};
+  }
+  if (!r.ok) {
+    // Il caso vero: un `make serve` avviato prima che questa rotta esistesse.
+    // Senza questo messaggio il bottone semplicemente non reagisce.
+    info.textContent = r.status === 404
+      ? "il server non conosce /" + rotta + ": e' una versione vecchia, "
+        + "fermalo (Ctrl-C) e rilancia `make serve`."
+      : "il server ha risposto " + r.status + ".";
+    return {ok: false, error: info.textContent};
+  }
+  try {
+    return await r.json();
+  } catch (e) {
+    info.textContent = "risposta non leggibile dal server: " + e;
+    return {ok: false, error: info.textContent};
+  }
+}
+
+// Se c'e' del lavoro non salvato, chiedere prima di buttarlo: e' l'unica
+// azione della pagina che perde qualcosa per sempre.
+function confermaPerdita(cosa) {
+  if (!bps.length || !sporco()) return true;
+  return confirm("Ci sono modifiche non salvate" + (FILE ? " a " + FILE.split("/").pop() : "")
+                 + ".\nVuoi " + cosa + " comunque? (Annulla per tornare indietro e salvare)");
+}
+
+function fNew() {
+  if (!confermaPerdita("creare un nuovo stream")) return;
+  bps = [];
+  curBp = -1;
+  FILE = "";
+  SALVATO = statoOra();
+  document.getElementById("labName").value = "lab";
+  document.getElementById("labInfo").textContent = "nuovo stream.";
+  drawTl();
+}
+
+async function fOpen() {
+  if (!confermaPerdita("aprire un altro file")) return;
+  const info = document.getElementById("labInfo");
+  const sc = await post("pick", {mode: "open", start: FILE ? dir(FILE) : ""});
+  if (sc.error) { info.textContent = sc.error; return; }
+  if (!sc.path) return;                       // annullato nel pannello
+  const out = await post("open", {path: sc.path});
+  if (!out.ok) { info.textContent = out.error; return; }
+  carica(out.doc, sc.path);
+}
+
+function dir(p) { return p.slice(0, p.lastIndexOf("/")); }
+
+async function fSave(chiediDove) {
+  if (!bps.length) { document.getElementById("labInfo").textContent = "niente da salvare."; return; }
+  let path = FILE;
+  if (chiediDove || !path) {
+    const nome = (document.getElementById("labName").value || "stream") + ".yml";
+    const sc = await post("pick", {mode: "save", name: nome, start: FILE ? dir(FILE) : ""});
+    if (sc.error) { document.getElementById("labInfo").textContent = sc.error; return; }
+    if (!sc.path) return;
+    path = sc.path;
+  }
+  await labPost(false, path);
+}
+
+// Carica un documento nel laboratorio: i breakpoint sono i tempi che
+// compaiono negli inviluppi, e ogni parametro vale li' quanto vale il suo.
+function carica(doc, path) {
+  if (!doc || !doc.streams || !doc.streams[0]) {
+    document.getElementById("labInfo").textContent = "non e' un documento con stream.";
+    return;
+  }
+  const st = doc.streams[0];
+  const ts = new Set([0]);
+  for (const p of NUM) {
+    const v = leggiPath(st, p.path);
+    if (Array.isArray(v)) for (const [t] of v) ts.add(t);
+  }
+  bps = [...ts].sort((a, b) => a - b).map(t => ({
+    t, vals: Object.fromEntries(NUM.map(p => {
+      // Il documento puo' non avere affatto la chiave (un parametro lasciato
+      // al default dell'engine): li' vale quello che dice il select, non NaN.
+      const v = leggiPath(st, p.path);
+      return [p.path, v === undefined || v === null
+        ? Number(document.getElementById("P:" + p.path).value)
+        : Number(valoreA(v, t))];
+    })),
+  }));
+  for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
+  FILE = path || "";
+  document.getElementById("labName").value =
+    (path || "lab").split("/").pop().replace(/\.ya?ml$/, "");
+  document.getElementById("labDur").value = doc.duration || st.duration || 8;
+  bpLoad(0);
+  SALVATO = statoOra();
+  segna();
+  document.getElementById("labInfo").textContent =
+    (path || "documento") + " — " + bps.length + " breakpoint";
+}
+
+// Il valore di un parametro al tempo t: il punto se c'e', altrimenti quello
+// che l'inviluppo vale li' — INTERPOLATO, non il piu' vicino a sinistra.
+// Riaprendo, un parametro prende un punto a ogni tempo della griglia: col
+// valore a sinistra una rampa 0.2 -> 0.75 diventerebbe un plateau a 0.2 e poi
+// una rampa piu' ripida, e il file risalvato suonerebbe diverso da quello
+// aperto. Un gradino dichiarato (terzo elemento `step`) invece tiene.
+function valoreA(v, t) {
+  if (!Array.isArray(v)) return v;
+  let prev = v[0];
+  for (const pt of v) {
+    if (pt[0] >= t - 1e-9) {
+      if (pt[0] - prev[0] < 1e-9 || prev[2] === "step") return prev[1];
+      const k = (t - prev[0]) / (pt[0] - prev[0]);
+      return prev[1] + (pt[1] - prev[1]) * k;
+    }
+    prev = pt;
+  }
+  return prev[1];
+}
+
+function leggiPath(st, path) {
+  let o = st;
+  for (const k of path.split(".")) { if (o == null) return undefined; o = o[k]; }
+  return o;
+}
+
+function labRender() { return labPost(true); }
+
+async function labPost(render, path) {
+  if (!bps.length) { document.getElementById("labInfo").textContent = "nessun breakpoint."; return; }
+  const name = document.getElementById("labName").value || "lab";
+  const info = document.getElementById("labInfo");
+  info.textContent = render ? "render in corso…" : "salvo…";
+  try {
+    const out = await post("render", {name, doc: labDoc(), render, path: path || FILE});
+    if (!out.ok) { info.textContent = out.error; return; }
+    FILE = out.path || FILE;
+    SALVATO = statoOra();
+    segna();
+    info.textContent = out.yaml + (render ? "" : "  (salvato)");
+    if (!render) return;
+    // `?t=` perche' rirendendo con lo stesso nome il browser servirebbe il
+    // file vecchio dalla cache.
+    const src = out.src + "?t=" + Date.now();
+    audio.src = src;
+    audio.play();
+    analyse(src);
+  } catch (e) {
+    info.textContent = "server non raggiungibile: serve `make serve` (non file://). " + e;
+  }
+}
+
+for (const [id, on] of [["tabGrid", false], ["tabLab", true]]) {
+  document.getElementById(id).onclick = () => {
+    document.getElementById("lab").hidden = !on;
+    document.getElementById("griglia").hidden = on;
+    document.getElementById("tabGrid").classList.toggle("on", !on);
+    document.getElementById("tabLab").classList.toggle("on", on);
+  };
+}
+labInit();
+if (!D.combos.length) document.getElementById("tabLab").click();
 
 // ===========================================================================
 // Analisi. Due strade diverse, per due domande diverse:

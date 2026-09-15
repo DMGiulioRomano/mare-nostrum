@@ -84,3 +84,137 @@ console.log(s.db[0].toFixed(1), s.db[50].toFixed(1));
     dc_db, far_db = (float(v) for v in got.split())
     assert abs(dc_db) < 0.5
     assert far_db == -96
+
+
+@node
+def test_il_breakpoint_va_solo_dove_il_valore_cambia(tmp_path):
+    """Un punto uguale a quello prima e a quello dopo non dice niente in piu'.
+
+    Ed e' la regola che tiene leggibile lo YAML del laboratorio: dodici
+    parametri per breakpoint, ma nell'inviluppo di ognuno solo i punti dove
+    quel parametro si muove davvero.
+    """
+    js = _script()
+    js = js[js.index("function serie"):js.index("function labDoc")]
+    p = tmp_path / "s.js"
+    p.write_text("let bps = [\n"
+                 " {t:0,   vals:{a:1, b:5, c:9}},\n"
+                 " {t:0.5, vals:{a:1, b:7, c:9}},\n"
+                 " {t:1,   vals:{a:2, b:7, c:9}}];\n"
+                 + js +
+                 "console.log(JSON.stringify([serie('a'), serie('b'), serie('c')]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    a, b, c = __import__("json").loads(out.stdout)
+    # a: il punto di mezzo e' uguale al precedente ma non al successivo -> resta
+    # (senza, la rampa partirebbe da t=0 invece che da meta').
+    assert a == [[0, 1], [0.5, 1], [1, 2]]
+    assert b == [[0, 5], [0.5, 7], [1, 7]]
+    assert c == 9          # mai mosso: scalare, non un inviluppo piatto
+
+
+@node
+def test_salva_modifica_riscrive_solo_il_breakpoint_selezionato(tmp_path):
+    """Cambiare i select non tocca il punto finche' non si salva."""
+    js = _script()
+    frag = (js[js.index("function snapshot"):js.index("function bpAdd")]
+            + js[js.index("function bpSave"):js.index("function bpDel")]
+            + js[js.index("function serie"):js.index("function labDoc")])
+    p = tmp_path / "s.js"
+    p.write_text(
+        "const NUM = [{path:'a'}, {path:'b'}];\n"
+        "const SCHERMO = {a: 9, b: 5};\n"
+        "const document = {getElementById: id => ({value: SCHERMO[id.slice(2)]})};\n"
+        "let bps = [{t:0, vals:{a:1, b:5}}, {t:1, vals:{a:2, b:5}}];\n"
+        "let curBp = 1;\n"
+        "function drawTl() {}\n"
+        + frag +
+        "const prima = serie('a');\n"
+        "bpSave();\n"
+        "console.log(JSON.stringify([prima, serie('a'), serie('b'), bps[0].vals.a]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    prima, dopo, b, primo = __import__("json").loads(out.stdout)
+    assert prima == [[0, 1], [1, 2]]
+    assert dopo == [[0, 1], [1, 9]]     # salvato sul secondo punto
+    assert primo == 1                   # il primo non e' stato toccato
+    assert b == 5                       # invariato: resta scalare
+
+
+@node
+def test_il_profilo_disegnato_parte_e_finisce_dove_deve(tmp_path):
+    """La polilinea e' il profilo vero: y invertita (1 = in alto) e x distesa."""
+    js = _script()
+    frag = js[js.index("function envSvg"):js.index("function mkEnv")]
+    p = tmp_path / "e.js"
+    p.write_text(frag + "console.log(envSvg([0, 1, 0]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    # x: 0 -> 23 -> 46 (la larghezza); y: 19 (fondo) -> 1 (cima) -> 19
+    assert 'd="M0.0 19.0 L23.0 1.0 L46.0 19.0"' in out.stdout
+
+
+@node
+def test_riaprire_un_progetto_ricostruisce_i_breakpoint(tmp_path):
+    """I breakpoint sono i tempi degli inviluppi: un progetto si riapre da li'."""
+    js = _script()
+    frag = js[js.index("function valoreA"):js.index("async function labPost")]
+    doc = {"duration": 5, "streams": [{
+        "grain": {"duration": [[0, 0.001], [0.4, 0.001], [1, 0.032]]},
+        "pitch": {"ratio": [[0, 0.2], [1, 0.75]]},
+        "fill_factor": 2}]}
+    p = tmp_path / "o.js"
+    p.write_text(
+        "const NUM = [{path:'grain.duration'}, {path:'pitch.ratio'}, {path:'fill_factor'}];\n"
+        "const st = " + __import__("json").dumps(doc["streams"][0]) + ";\n"
+        + frag +
+        "const ts = new Set([0]);\n"
+        "for (const p of NUM) { const v = leggiPath(st, p.path);"
+        "  if (Array.isArray(v)) for (const [t] of v) ts.add(t); }\n"
+        "const bps = [...ts].sort((a,b)=>a-b).map(t => ({t, vals:"
+        "  Object.fromEntries(NUM.map(p => [p.path, Number(valoreA(leggiPath(st, p.path), t))]))}));\n"
+        "console.log(JSON.stringify(bps));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    bps = __import__("json").loads(out.stdout)
+    assert [b["t"] for b in bps] == [0, 0.4, 1]
+    # A 0.4 pitch.ratio non ha un punto suo: vale quanto la rampa vale li'
+    # (0.2 -> 0.75 al 40%), non il valore a sinistra — altrimenti risalvando
+    # il file la rampa ripartirebbe da 0.4 e il suono cambierebbe.
+    assert bps[1]["vals"]["grain.duration"] == 0.001
+    assert bps[1]["vals"]["fill_factor"] == 2
+    assert abs(bps[1]["vals"]["pitch.ratio"] - 0.42) < 1e-9
+    assert bps[2]["vals"]["grain.duration"] == 0.032
+
+
+@node
+def test_applica_a_tutti_tocca_solo_i_valori_appena_cambiati(tmp_path):
+    """Gli altri parametri restano com'erano, anche se diversi fra loro.
+
+    E' il punto: se un parametro ha gia' un inviluppo disegnato, cambiarne un
+    altro e applicarlo a tutti non deve appiattire il primo.
+    """
+    js = _script()
+    frag = (js[js.index("function snapshot"):js.index("function bpAdd")]
+            + js[js.index("function cambiati"):js.index("function bpDel")])
+    p = tmp_path / "a.js"
+    p.write_text(
+        "const NUM = [{path:'a'}, {path:'b'}, {path:'c'}];\n"
+        # i select mostrano a=9 (cambiato); b e c restano come nel punto corrente
+        "const SCHERMO = {a: 9, b: 5, c: 1};\n"
+        "const document = {getElementById: id => ({value: SCHERMO[id.slice(2)],"
+        "                  set textContent(v) {}, get textContent() { return ''; }})};\n"
+        "let bps = [{t:0, vals:{a:1, b:5, c:0}},"
+        "           {t:0.5, vals:{a:2, b:5, c:1}},"
+        "           {t:1, vals:{a:3, b:7, c:2}}];\n"
+        "let curBp = 1;\n"
+        "function drawTl() {}\n"
+        + frag +
+        "console.log(JSON.stringify([cambiati(), (bpAll(), bps)]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    ks, bps = __import__("json").loads(out.stdout)
+    assert ks == ["a"]                       # solo quello toccato sullo schermo
+    assert [b["vals"]["a"] for b in bps] == [9, 9, 9]
+    assert [b["vals"]["b"] for b in bps] == [5, 5, 7]    # intatti, anche se diversi
+    assert [b["vals"]["c"] for b in bps] == [0, 1, 2]

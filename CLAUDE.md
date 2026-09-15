@@ -58,6 +58,58 @@ giustapposizione — `distribution` a 0 / 0.5 / 1 sullo stesso sweep, cinque
 `COMBO=<label>` restringe generazione e apertura a una sola combinazione.
 La modalità take non esiste più: vedi `docs/plans/done/for-each.md`.
 
+## Il laboratorio (`make serve`)
+
+`make serve STUDY=<scala>` non e' piu' `http.server`: e' `granstudies serve`,
+che serve la pagina e accetta `POST /render`. La pagina ha due schede.
+
+- **griglia** — quello che c'era: si sceglie fra audio gia' renderizzati.
+- **laboratorio** — si compone UN solo stream e lo si sente subito. Ogni
+  `+ breakpoint` salva uno snapshot di tutti i parametri a un tempo; i punti
+  si trascinano sulla linea, e cliccarne uno riporta i select ai suoi valori.
+  Il documento esce in `generated/<study>/live/<nome>.yml` e viene reso
+  accanto in `.aif`. Un parametro diventa una lista `[[t, v], ...]` **solo
+  dove cambia davvero**; se non si muove mai resta scalare.
+
+### Il file di progetto
+
+Non c'e' un formato di sessione a parte: **il progetto e' lo YAML stesso**.
+E' un documento engine puro — si riapre nel laboratorio, si incolla nel brano,
+si apre in PGE-ui — e sta dove vuoi tu sul disco, non per forza nello studio.
+
+La barra file e' quella di sempre: **nuovo · apri… · salva · salva con nome…**,
+col nome del file e un `•  modificato` quando ci sono modifiche non salvate.
+`nuovo` e `apri` chiedono conferma se c'e' del lavoro non salvato.
+
+I pannelli Apri/Salva sono **quelli nativi di macOS**: li apre il server con
+`osascript` (`POST /pick`), perche' la pagina da sola non sa dove sta un file
+sul disco — Safari non ha le File System Access API, e un `<input type=file>`
+darebbe il contenuto ma non il percorso su cui risalvare. Solo i percorsi
+usciti da un pannello di quella sessione si possono leggere e scrivere: il
+dialogo **e'** l'autorizzazione dell'utente. L'audio nasce accanto allo YAML,
+stesso nome: due file che si spostano insieme.
+
+I breakpoint non si salvano a parte perche' **non sono un'informazione in
+piu'**: sono i tempi che compaiono negli inviluppi. Riaprendo si prende
+l'unione di quei tempi, e ogni parametro vale li' quanto vale il suo
+inviluppo — **interpolato**, non il punto a sinistra, altrimenti risalvando
+una rampa ripartirebbe piu' tardi e il file suonerebbe diverso da quello
+aperto. Round-trip verificato. Un preset che non cambiava nulla rispetto al
+precedente non torna: non cambiava il suono.
+
+Il lavoro non salvato sopravvive a un refresh (localStorage, per studio): e'
+una rete di sicurezza, non un salvataggio. La verita' e' il file.
+
+Divisione dei ruoli con PGE-ui: la GUI e' la timeline, dove gli stream si
+sentono insieme; il laboratorio e' il banco del singolo stream. I valori fra
+cui si sceglie sono le tacche gia' dichiarate nello `study.yml` (assi interni
+e `for_each: base.*`).
+
+**`grain.envelope` non e' automatizzabile**: l'engine vuole una finestra per
+stream ("Window non trovata" se ci trova dei breakpoint). Nel laboratorio sta
+fra i "fissi per lo stream". Tutti i parametri numerici invece reggono gli
+inviluppi — verificati uno per uno.
+
 ## Diario di ascolto
 
 Il diario è unico per lo studio e vive in `studies/ascolto/`:

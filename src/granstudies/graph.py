@@ -23,15 +23,19 @@ from typing import Any, Dict, List, Tuple
 DISCRETE = os.path.join("audio", "sweep", "discrete")
 
 
-def parse_coords(basename: str) -> Dict[str, float]:
+def parse_coords(basename: str) -> Dict[str, Any]:
     """Coordinate lette dal nome del file. Ignora prefissi (studio, stream).
 
     Il separatore fra coppie e' ``__`` (``sweep._name``); i nomi degli assi
     contengono sia punti che underscore singoli (``pointer.speed_ratio``),
     quindi si divide sul separatore e non su un pattern del nome. I segmenti
     senza ``=`` — il prefisso ``001-41_o2`` — cadono da soli.
+
+    Il valore e' un float quando e' un numero e la stringa cosi' com'e'
+    altrimenti: ``grain.envelope=hanning`` e' un asse categoriale a tutti gli
+    effetti, scartarlo faceva collassare la griglia su un envelope solo.
     """
-    out: Dict[str, float] = {}
+    out: Dict[str, Any] = {}
     for part in basename.split("__"):
         if "=" not in part:
             continue
@@ -39,7 +43,7 @@ def parse_coords(basename: str) -> Dict[str, float]:
         try:
             out[name] = float(raw)
         except ValueError:
-            continue
+            out[name] = raw
     return out
 
 
@@ -109,7 +113,11 @@ def _grid(nodes: List[Dict[str, Any]], order: List[str] | None) -> Dict[str, Any
     axes = axes_of(nodes, order)
     ax_x = axes[0] if axes else ""
     ax_y = axes[1] if len(axes) > 1 else ""
-    vals = {a: sorted({n["coords"][a] for n in nodes}) for a in (ax_x, ax_y) if a}
+    # ``key=str`` perche' un asse categoriale ordina alfabeticamente e
+    # ``sorted`` su valori misti numero/stringa alzerebbe TypeError.
+    vals = {a: sorted({n["coords"][a] for n in nodes},
+                      key=lambda v: v if isinstance(v, float) else str(v))
+            for a in (ax_x, ax_y) if a}
     # L'asse piu' lungo va in verticale: una colonna che scorre si legge,
     # una riga che sborda orizzontalmente no. A pari lunghezza vince
     # l'ordine dichiarato nello study.yml.
@@ -156,6 +164,36 @@ def collect_combos(gen_root: str,
     return combos
 
 
+def lab_data(raw: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Il corredo del laboratorio: lo stream a riposo e le tacche di ogni parametro.
+
+    Le liste sono quelle gia' scelte nello ``study.yml`` — gli assi interni e
+    gli assi esterni ``base.*`` sono, dal punto di vista di uno stream solo, la
+    stessa cosa: valori di quel parametro che vale la pena sentire. Il
+    laboratorio non li moltiplica in una griglia, li usa come tacche fra cui
+    scegliere il valore di un breakpoint.
+    """
+    raw = raw or {}
+    params: List[Dict[str, Any]] = []
+    def add(path: str, values: List[Any]) -> None:
+        # Categoriale = non automatizzabile: `grain.envelope` e' una finestra
+        # scelta una volta per stream, l'engine rifiuta i breakpoint li' sopra
+        # ("Window non trovata"). Nel laboratorio sono manopole fisse, non
+        # punti di un inviluppo.
+        kind = "num" if all(isinstance(v, (int, float)) for v in values) else "cat"
+        params.append({"path": path, "values": values, "kind": kind})
+
+    for name, node in (raw.get("axes") or {}).items():
+        if isinstance(node, dict) and node.get("values"):
+            add(name, node["values"])
+    for key, node in (raw.get("for_each") or {}).items():
+        # Solo le patch su `base.`: `stack.seed` o `percorso.arco` non sono
+        # parametri di uno stream e nel laboratorio non hanno posto.
+        if key.startswith("base.") and isinstance(node, dict) and node.get("values"):
+            add(key[len("base."):], node["values"])
+    return {"base": raw.get("base") or {}, "params": params}
+
+
 def _sel_keys(combos: List[Dict[str, Any]]) -> List[str]:
     keys: List[str] = []
     for c in combos:
@@ -176,20 +214,23 @@ def _sel_values(combos: List[Dict[str, Any]], keys: List[str]) -> Dict[str, List
             for k in keys}
 
 
-def build_html(study: str, combos: List[Dict[str, Any]]) -> str:
+def build_html(study: str, combos: List[Dict[str, Any]],
+               lab: Dict[str, Any] | None = None) -> str:
     keys = _sel_keys(combos)
     data = {
         "study": study,
         "keys": keys,
         "values": _sel_values(combos, keys),
         "combos": combos,
+        "lab": lab or {"base": {}, "params": []},
     }
     return _template().replace("__TITLE__", html.escape(f"{study} — rete")) \
                     .replace("__DATA__", json.dumps(data))
 
 
 def write_graph(study: str, gen_root: str, out_path: str,
-                orders: Dict[str, List[str]] | None = None) -> Tuple[int, int]:
+                orders: Dict[str, List[str]] | None = None,
+                lab: Dict[str, Any] | None = None) -> Tuple[int, int]:
     """Scrive ``out_path``. Ritorna ``(combinazioni, nodi)``; (0, 0) = niente audio.
 
     L'HTML sta alla radice dell'output (``generated/<study>/graph.html``)
@@ -197,11 +238,14 @@ def write_graph(study: str, gen_root: str, out_path: str,
     tutte le combinazioni.
     """
     combos = collect_combos(gen_root, orders)
-    if not combos:
+    # Senza audio la pagina si scrive lo stesso: il laboratorio compone da zero
+    # e non ha bisogno di niente su disco — anzi, e' il caso normale su uno
+    # studio appena ripulito. E' la griglia che resta vuota.
+    if not combos and not (lab or {}).get("params"):
         return (0, 0)
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w") as fh:
-        fh.write(build_html(study, combos))
+        fh.write(build_html(study, combos, lab))
     return (len(combos), sum(len(c["nodes"]) for c in combos))
 
 
