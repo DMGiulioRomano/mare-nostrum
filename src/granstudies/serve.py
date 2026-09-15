@@ -67,11 +67,19 @@ def pannello(mode: str, name: str = "stream.yml", start: str = "") -> Tuple[str,
     """
     loc = f' default location POSIX file "{start}"' if os.path.isdir(start) else ""
     if mode == "save":
-        script = (f'POSIX path of (choose file name with prompt "Salva lo stream"'
-                  f' default name "{name}"{loc})')
+        scelta = (f'choose file name with prompt "Salva lo stream"'
+                  f' default name "{name}"{loc}')
     else:
-        script = (f'POSIX path of (choose file with prompt "Apri uno stream"'
-                  f' of type {{"yml", "yaml"}}{loc})')
+        scelta = (f'choose file with prompt "Apri uno stream"'
+                  f' of type {{"yml", "yaml"}}{loc}')
+    # `tell me to activate` porta il pannello davanti a Safari: il server non
+    # e' un'applicazione in primo piano e il dialogo si aprirebbe dietro,
+    # indistinguibile da un bottone che non fa niente.
+    #
+    # NON passare da `tell application "System Events"`: senza il permesso di
+    # Automazione quello risponde "User cancelled (-128)" dopo due secondi
+    # senza aver mostrato niente, che e' esattamente il silenzio da evitare.
+    script = 'tell me to activate\n' + f'POSIX path of ({scelta})'
     try:
         p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
     except (OSError, subprocess.SubprocessError) as e:
