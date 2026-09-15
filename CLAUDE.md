@@ -105,10 +105,16 @@ sentono insieme; il laboratorio e' il banco del singolo stream. I valori fra
 cui si sceglie sono le tacche gia' dichiarate nello `study.yml` (assi interni
 e `for_each: base.*`).
 
-**Interpolazione.** Ogni parametro ha a destra il suo menu — `linear` |
-`cubic` | `step`, i tre che l'engine conosce — e sopra tutti c'e' quello
-globale, che muovendosi li muove tutti (poi si fa l'eccezione sulla singola
-riga). La scelta e' **per breakpoint**: il tipo sta sul punto e governa il
+**Interpolazione.** Tre livelli, dal piu' largo al piu' stretto:
+
+1. `interpolazione (tutti)` — scrive su **tutti i breakpoint**, subito: e' la
+   decisione che azzera le eccezioni fatte finora;
+2. `interpolazione (questo bp)` — muove i menu del breakpoint corrente (si
+   conferma con `salva modifica`, come i valori);
+3. il menu a destra di **ogni parametro**, per l'eccezione singola.
+
+I tipi sono `linear` | `cubic` | `step`, i tre che l'engine conosce. La
+scelta e' **per breakpoint**: il tipo sta sul punto e governa il
 segmento che PARTE da li', quindi l'ultimo punto non ne ha uno. `linear` e'
 il default e non viene scritto nello YAML; gli altri diventano il terzo
 elemento del punto, `[[0, 0.001, cubic], [1, 0.016]]`.

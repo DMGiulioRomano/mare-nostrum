@@ -78,6 +78,11 @@
  #labParams .row, #labParams .row.capo { grid-template-columns:max-content 1fr 7.5em; }
  #labParams .row.capo select { border-color:var(--fg); }
  #labParams .capo .k { color:var(--fg); }
+ /* Il livello piu' largo: scrive su tutti i punti, quindi si vede che e'
+    un'altra cosa rispetto ai due sotto. */
+ #labParams .capo2 select { border-color:var(--on); }
+ #labParams .capo2 .k { color:var(--on); }
+ #labParams .capo2 { margin-bottom:8px; }
  #lab .row .k { color:var(--dim); text-align:right; white-space:nowrap; }
  #lab select, #lab input { font:inherit; color:inherit; background:var(--panel);
                            border:1px solid var(--line); padding:1px 4px; }
@@ -406,19 +411,30 @@ function labInit() {
     r.appendChild(k); r.appendChild(i); fixed.appendChild(r);
   }
   const box = document.getElementById("labParams");
-  // Il capofila: muovendo questo si muovono tutti. Sta sopra perche' e' quello
-  // che si tocca per primo — di solito l'interpolazione la si decide in blocco
-  // e poi si fa l'eccezione su un parametro solo.
-  const capo = document.createElement("div");
-  capo.className = "row capo";
-  capo.innerHTML = "<div class='k'>interpolazione</div><div></div>";
+  // Tre livelli, dal piu' largo al piu' stretto: tutti i breakpoint -> questo
+  // breakpoint -> il singolo parametro. Si decide in blocco e poi si fanno le
+  // eccezioni, che e' l'ordine in cui si lavora davvero.
+  const ovunque = mkInterp("**");
+  ovunque.onchange = () => {
+    // Questo scrive subito su TUTTI i punti: non e' una proposta da salvare,
+    // e' la decisione che azzera le eccezioni fatte finora.
+    for (const b of bps) {
+      b.ints = b.ints || {};
+      for (const p of NUM) b.ints[p.path] = ovunque.value;
+    }
+    for (const p of NUM) document.getElementById("I:" + p.path).value = ovunque.value;
+    drawTl();
+    document.getElementById("labInfo").textContent =
+      "interpolazione " + ovunque.value + " su tutti i " + bps.length + " breakpoint";
+  };
+  box.appendChild(riga("interpolazione (tutti)", ovunque, "capo capo2"));
+
   const tutti = mkInterp("*");
   tutti.onchange = () => {
     for (const p of NUM) document.getElementById("I:" + p.path).value = tutti.value;
     labInfo();
   };
-  capo.appendChild(tutti);
-  box.appendChild(capo);
+  box.appendChild(riga("interpolazione (questo bp)", tutti, "capo"));
   for (const p of NUM) { mk(p, box); box.lastChild.appendChild(mkInterp(p.path)); }
   document.getElementById("bpAdd").onclick = bpAdd;
   document.getElementById("bpSave").onclick = bpSave;
@@ -469,6 +485,16 @@ function mkEnv(p, box, ENV) {
   }
   r.appendChild(k); r.appendChild(box2);
   box.appendChild(r); box.appendChild(hid);
+}
+
+// Una riga della griglia dei parametri: etichetta a sinistra, il menu nella
+// terza colonna (la seconda, quella del valore, qui resta vuota).
+function riga(testo, el, cls) {
+  const r = document.createElement("div");
+  r.className = "row " + cls;
+  r.innerHTML = "<div class='k'>" + testo + "</div><div></div>";
+  r.appendChild(el);
+  return r;
 }
 
 function mkInterp(path) {
