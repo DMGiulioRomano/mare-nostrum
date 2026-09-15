@@ -71,6 +71,26 @@ che serve la pagina e accetta `POST /render`. La pagina ha due schede.
   accanto in `.aif`. Un parametro diventa una lista `[[t, v], ...]` **solo
   dove cambia davvero**; se non si muove mai resta scalare.
 
+### Il file di progetto
+
+Non c'e' un formato di sessione a parte: **il progetto e' lo YAML stesso**,
+in `generated/<study>/live/<nome>.yml`. E' un documento engine puro — si
+riapre nel laboratorio, si incolla nel brano, si apre in PGE-ui.
+
+- **salva** scrive lo YAML senza rendere (immediato).
+- **apri…** elenca i progetti (`GET /live.json`: il server traduce lo YAML in
+  JSON, la pagina non ha un parser) e li ricarica.
+- I breakpoint non sono salvati a parte perche' **non sono un'informazione in
+  piu'**: sono i tempi che compaiono negli inviluppi. Riaprendo si prende
+  l'unione di quei tempi, e ogni parametro vale li' quanto vale il suo
+  inviluppo — **interpolato**, non il punto a sinistra, altrimenti risalvando
+  una rampa ripartirebbe piu' tardi e il file suonerebbe diverso da quello
+  aperto. Round-trip verificato.
+- Un preset che non cambiava nulla rispetto al precedente non torna: non
+  cambiava il suono.
+- Il lavoro non salvato sopravvive a un refresh (localStorage, per studio).
+  E' una rete di sicurezza, non un salvataggio: la verita' e' il file.
+
 Divisione dei ruoli con PGE-ui: la GUI e' la timeline, dove gli stream si
 sentono insieme; il laboratorio e' il banco del singolo stream. I valori fra
 cui si sceglie sono le tacche gia' dichiarate nello `study.yml` (assi interni

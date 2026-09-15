@@ -152,3 +152,36 @@ def test_il_profilo_disegnato_parte_e_finisce_dove_deve(tmp_path):
     assert out.returncode == 0, out.stderr
     # x: 0 -> 23 -> 46 (la larghezza); y: 19 (fondo) -> 1 (cima) -> 19
     assert 'd="M0.0 19.0 L23.0 1.0 L46.0 19.0"' in out.stdout
+
+
+@node
+def test_riaprire_un_progetto_ricostruisce_i_breakpoint(tmp_path):
+    """I breakpoint sono i tempi degli inviluppi: un progetto si riapre da li'."""
+    js = _script()
+    frag = js[js.index("function valoreA"):js.index("function labOpen")]
+    doc = {"duration": 5, "streams": [{
+        "grain": {"duration": [[0, 0.001], [0.4, 0.001], [1, 0.032]]},
+        "pitch": {"ratio": [[0, 0.2], [1, 0.75]]},
+        "fill_factor": 2}]}
+    p = tmp_path / "o.js"
+    p.write_text(
+        "const NUM = [{path:'grain.duration'}, {path:'pitch.ratio'}, {path:'fill_factor'}];\n"
+        "const st = " + __import__("json").dumps(doc["streams"][0]) + ";\n"
+        + frag +
+        "const ts = new Set([0]);\n"
+        "for (const p of NUM) { const v = leggiPath(st, p.path);"
+        "  if (Array.isArray(v)) for (const [t] of v) ts.add(t); }\n"
+        "const bps = [...ts].sort((a,b)=>a-b).map(t => ({t, vals:"
+        "  Object.fromEntries(NUM.map(p => [p.path, Number(valoreA(leggiPath(st, p.path), t))]))}));\n"
+        "console.log(JSON.stringify(bps));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    bps = __import__("json").loads(out.stdout)
+    assert [b["t"] for b in bps] == [0, 0.4, 1]
+    # A 0.4 pitch.ratio non ha un punto suo: vale quanto la rampa vale li'
+    # (0.2 -> 0.75 al 40%), non il valore a sinistra — altrimenti risalvando
+    # il file la rampa ripartirebbe da 0.4 e il suono cambierebbe.
+    assert bps[1]["vals"]["grain.duration"] == 0.001
+    assert bps[1]["vals"]["fill_factor"] == 2
+    assert abs(bps[1]["vals"]["pitch.ratio"] - 0.42) < 1e-9
+    assert bps[2]["vals"]["grain.duration"] == 0.032

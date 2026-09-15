@@ -12,8 +12,14 @@ come JSON, lo scrive in YAML e chiama l'engine. Tutta la conoscenza del
 dominio resta nella pagina, che e' dove si compone, e qui non c'e' un secondo
 posto dove la sintassi puo' divergere.
 
-    POST /render  {"name": "prova1", "doc": {...}}
+    POST /render  {"name": "prova1", "doc": {...}, "render": true}
     -> {"src": "live/prova1.aif", "yaml": "live/prova1.yml"}
+    GET  /live.json
+    -> {"prova1": {...}, ...}   i progetti gia' salvati, YAML tradotto in JSON
+
+Il "file di progetto" e' lo YAML stesso: un documento engine puro, che si
+riapre qui, si incolla nel brano o si apre in PGE-ui. Un secondo formato per
+ricordare i breakpoint non serve — i breakpoint SONO gli inviluppi.
 
 Solo su 127.0.0.1: scrive file ed esegue un processo, non e' roba da esporre.
 """
@@ -25,6 +31,7 @@ import re
 import subprocess
 import sys
 from functools import partial
+from typing import Any, Dict
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import yaml
@@ -52,9 +59,28 @@ def _flow_if_flat(dumper, data):
 _Dumper.add_representer(list, _flow_if_flat)
 
 
+def elenco(gen_root: str) -> Dict[str, Any]:
+    """I progetti salvati: nome -> documento.
+
+    Tradotti in JSON qui: la pagina non ha un parser YAML e non e' il caso di
+    scaricargliene uno solo per riaprire un file che il server ha gia' in mano.
+    """
+    live = os.path.join(gen_root, LIVE)
+    out: Dict[str, Any] = {}
+    for f in sorted(os.listdir(live)) if os.path.isdir(live) else []:
+        if not f.endswith(".yml"):
+            continue
+        try:
+            with open(os.path.join(live, f)) as fh:
+                out[f[:-4]] = yaml.safe_load(fh)
+        except (OSError, yaml.YAMLError):
+            continue
+    return out
+
+
 def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
-               renderer: str = "numpy") -> dict:
-    """Scrive ``<gen_root>/live/<name>.yml`` e lo rende accanto, in .aif.
+               renderer: str = "numpy", render: bool = True) -> dict:
+    """Scrive ``<gen_root>/live/<name>.yml`` e (se ``render``) lo rende in .aif.
 
     Il percorso dell'engine e dei sample e' relativo alla radice del repo:
     ``main.py`` risolve ``samples-dir`` da dove gira, non da dove sta lo YAML.
@@ -66,6 +92,9 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
     out_path = os.path.join(live, stem + ".aif")
     with open(doc_path, "w") as fh:
         yaml.dump(doc, fh, Dumper=_Dumper, sort_keys=False, allow_unicode=True)
+    # Salvare e' immediato, rendere no: si tiene il lavoro senza aspettare.
+    if not render:
+        return {"ok": True, "src": None, "yaml": f"{LIVE}/{stem}.yml"}
     cmd = [sys.executable, os.path.join(repo_root, "engine", "src", "main.py"),
            doc_path, out_path,
            "--renderer", renderer,
@@ -98,7 +127,14 @@ class Handler(SimpleHTTPRequestHandler):
         except (ValueError, KeyError) as e:
             self._json({"ok": False, "error": f"richiesta non valida: {e}"}, 400)
             return
-        self._json(render_doc(doc, name, self.directory, self.repo_root))
+        self._json(render_doc(doc, name, self.directory, self.repo_root,
+                              render=body.get("render", True)))
+
+    def do_GET(self):                       # noqa: N802  (nome dell'API stdlib)
+        if self.path.rstrip("/") == "/live.json":
+            self._json(elenco(self.directory))
+            return
+        super().do_GET()
 
     def _json(self, payload: dict, code: int = 200):
         raw = json.dumps(payload).encode()

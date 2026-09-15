@@ -133,6 +133,8 @@
       <button id="bpSave">salva modifica</button>
       <button id="bpDel">togli</button>
       <button id="labRender">rendi e ascolta</button>
+      <button id="labSave">salva</button>
+      <select id="labOpen" title="riapri un progetto salvato"></select>
     </div>
     <div id="tl"></div>
     <div id="labInfo"></div>
@@ -396,6 +398,10 @@ function labInit() {
   // e' l'unica cosa che si puo' guardare senza accorgersene. Lo dice l'info.
   for (const p of NUM) document.getElementById("P:" + p.path).onchange = labInfo;
   document.getElementById("labRender").onclick = labRender;
+  document.getElementById("labSave").onclick = () => labPost(false);
+  document.getElementById("labOpen").onchange = e => { if (e.target.value) labOpen(e.target.value); };
+  labList();
+  ripristina();
 }
 
 // Una finestra disegnata: polilinea del profilo vero, quello che l'engine
@@ -470,6 +476,7 @@ function bpLoad(i) {
 }
 
 function drawTl() {
+  bozzaSalva();
   const tl = document.getElementById("tl");
   tl.innerHTML = "";
   bps.forEach((b, i) => {
@@ -509,7 +516,7 @@ function drawTl() {
 // e' illeggibile. Se non cambia mai, resta lo scalare che era.
 function serie(path) {
   const pts = bps.map(b => [b.t, b.vals[path]]);
-  if (!pts.length) return null;
+  if (!pts.length || pts.some(p => !Number.isFinite(p[1]))) return null;
   if (pts.every(p => p[1] === pts[0][1])) return pts[0][1];
   return pts.filter((p, i) =>
     i === 0 || i === pts.length - 1 ||
@@ -561,20 +568,138 @@ function preview() {
             .join("\n");
 }
 
-async function labRender() {
+
+// --- tenere il lavoro ------------------------------------------------------
+// Il file di progetto e' lo YAML stesso: `salva` lo scrive senza rendere,
+// `apri` lo rilegge. I breakpoint non si salvano a parte perche' NON sono
+// un'informazione in piu': sono i tempi che compaiono negli inviluppi.
+
+// Rete di sicurezza per il caso banale (ricarico la pagina e ho perso tutto):
+// il lavoro in corso torna da solo. Non e' un salvataggio — quello e' il file.
+const BOZZA = "lab:" + D.study;
+
+function bozzaSalva() {
+  try {
+    localStorage.setItem(BOZZA, JSON.stringify({
+      bps, name: document.getElementById("labName").value,
+      dur: document.getElementById("labDur").value,
+      cat: Object.fromEntries(CAT.map(p => [p.path, document.getElementById("P:" + p.path).value])),
+    }));
+  } catch (e) { /* private browsing: pazienza, il file resta la verita' */ }
+}
+
+function ripristina() {
+  let b = null;
+  try { b = JSON.parse(localStorage.getItem(BOZZA) || "null"); } catch (e) { return; }
+  if (!b || !b.bps || !b.bps.length) return;
+  bps = b.bps;
+  document.getElementById("labName").value = b.name || "lab";
+  document.getElementById("labDur").value = b.dur || 8;
+  for (const [path, v] of Object.entries(b.cat || {})) setSel(path, v);
+  bpLoad(0);
+  document.getElementById("labInfo").textContent =
+    "ripreso il lavoro non salvato (" + bps.length + " breakpoint)";
+}
+
+// Il valore di un parametro fisso: select o galleria delle finestre.
+function setSel(path, v) {
+  const el = document.getElementById("P:" + path);
+  if (!el) return;
+  el.value = v;
+  const box = document.getElementById("envs");
+  if (box && path === "grain.envelope")
+    for (const b of box.querySelectorAll("button"))
+      b.classList.toggle("on", b.title === v);
+}
+
+async function labList() {
+  const sel = document.getElementById("labOpen");
+  let elenco = {};
+  try { elenco = await (await fetch("live.json")).json(); } catch (e) { return; }
+  sel.innerHTML = "<option value=''>apri…</option>";
+  for (const nome of Object.keys(elenco)) {
+    const o = document.createElement("option");
+    o.value = nome; o.textContent = nome;
+    sel.appendChild(o);
+  }
+  sel.dataset.n = Object.keys(elenco).length;
+  window.PROGETTI = elenco;
+}
+
+// Il valore di un parametro al tempo t: il punto se c'e', altrimenti quello
+// che l'inviluppo vale li' — INTERPOLATO, non il piu' vicino a sinistra.
+// Riaprendo, un parametro prende un punto a ogni tempo della griglia: col
+// valore a sinistra una rampa 0.2 -> 0.75 diventerebbe un plateau a 0.2 e poi
+// una rampa piu' ripida, e il file risalvato suonerebbe diverso da quello
+// aperto. Un gradino dichiarato (terzo elemento `step`) invece tiene.
+function valoreA(v, t) {
+  if (!Array.isArray(v)) return v;
+  let prev = v[0];
+  for (const pt of v) {
+    if (pt[0] >= t - 1e-9) {
+      if (pt[0] - prev[0] < 1e-9 || prev[2] === "step") return prev[1];
+      const k = (t - prev[0]) / (pt[0] - prev[0]);
+      return prev[1] + (pt[1] - prev[1]) * k;
+    }
+    prev = pt;
+  }
+  return prev[1];
+}
+
+function leggiPath(st, path) {
+  let o = st;
+  for (const k of path.split(".")) { if (o == null) return undefined; o = o[k]; }
+  return o;
+}
+
+// Ricostruisce i breakpoint da un documento: i tempi sono l'unione di quelli
+// che compaiono negli inviluppi, piu' lo zero. Un preset che non cambiava
+// niente rispetto al precedente non torna — e non serve: non cambiava il suono.
+function labOpen(nome) {
+  const doc = (window.PROGETTI || {})[nome];
+  if (!doc || !doc.streams || !doc.streams[0]) return;
+  const st = doc.streams[0];
+  const ts = new Set([0]);
+  for (const p of NUM) {
+    const v = leggiPath(st, p.path);
+    if (Array.isArray(v)) for (const [t] of v) ts.add(t);
+  }
+  bps = [...ts].sort((a, b) => a - b).map(t => ({
+    t, vals: Object.fromEntries(NUM.map(p => {
+      // Il documento puo' non avere affatto la chiave (un parametro lasciato
+      // al default dell'engine): li' vale quello che dice il select, non NaN.
+      const v = leggiPath(st, p.path);
+      return [p.path, v === undefined || v === null
+        ? Number(document.getElementById("P:" + p.path).value)
+        : Number(valoreA(v, t))];
+    })),
+  }));
+  for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
+  document.getElementById("labName").value = nome;
+  document.getElementById("labDur").value = doc.duration || st.duration || 8;
+  bpLoad(0);
+  document.getElementById("labInfo").textContent =
+    nome + " — " + bps.length + " breakpoint";
+}
+
+function labRender() { return labPost(true); }
+
+async function labPost(render) {
   if (!bps.length) { document.getElementById("labInfo").textContent = "nessun breakpoint."; return; }
   const name = document.getElementById("labName").value || "lab";
   const info = document.getElementById("labInfo");
-  info.textContent = "render in corso…";
+  info.textContent = render ? "render in corso…" : "salvo…";
   try {
     const r = await fetch("render", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, doc: labDoc()}),
+      body: JSON.stringify({name, doc: labDoc(), render}),
     });
     const out = await r.json();
     if (!out.ok) { info.textContent = "errore dell'engine:\n" + out.error; return; }
-    info.textContent = out.yaml;
+    info.textContent = out.yaml + (render ? "" : "  (salvato, non reso)");
+    labList();
+    if (!render) return;
     // `?t=` perche' rirendendo con lo stesso nome il browser servirebbe il
     // file vecchio dalla cache.
     const src = out.src + "?t=" + Date.now();
