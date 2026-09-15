@@ -185,3 +185,36 @@ def test_riaprire_un_progetto_ricostruisce_i_breakpoint(tmp_path):
     assert bps[1]["vals"]["fill_factor"] == 2
     assert abs(bps[1]["vals"]["pitch.ratio"] - 0.42) < 1e-9
     assert bps[2]["vals"]["grain.duration"] == 0.032
+
+
+@node
+def test_applica_a_tutti_tocca_solo_i_valori_appena_cambiati(tmp_path):
+    """Gli altri parametri restano com'erano, anche se diversi fra loro.
+
+    E' il punto: se un parametro ha gia' un inviluppo disegnato, cambiarne un
+    altro e applicarlo a tutti non deve appiattire il primo.
+    """
+    js = _script()
+    frag = (js[js.index("function snapshot"):js.index("function bpAdd")]
+            + js[js.index("function cambiati"):js.index("function bpDel")])
+    p = tmp_path / "a.js"
+    p.write_text(
+        "const NUM = [{path:'a'}, {path:'b'}, {path:'c'}];\n"
+        # i select mostrano a=9 (cambiato); b e c restano come nel punto corrente
+        "const SCHERMO = {a: 9, b: 5, c: 1};\n"
+        "const document = {getElementById: id => ({value: SCHERMO[id.slice(2)],"
+        "                  set textContent(v) {}, get textContent() { return ''; }})};\n"
+        "let bps = [{t:0, vals:{a:1, b:5, c:0}},"
+        "           {t:0.5, vals:{a:2, b:5, c:1}},"
+        "           {t:1, vals:{a:3, b:7, c:2}}];\n"
+        "let curBp = 1;\n"
+        "function drawTl() {}\n"
+        + frag +
+        "console.log(JSON.stringify([cambiati(), (bpAll(), bps)]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    ks, bps = __import__("json").loads(out.stdout)
+    assert ks == ["a"]                       # solo quello toccato sullo schermo
+    assert [b["vals"]["a"] for b in bps] == [9, 9, 9]
+    assert [b["vals"]["b"] for b in bps] == [5, 5, 7]    # intatti, anche se diversi
+    assert [b["vals"]["c"] for b in bps] == [0, 1, 2]

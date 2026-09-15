@@ -141,6 +141,7 @@
     <div class="bar">
       <button id="bpAdd">+ breakpoint</button>
       <button id="bpSave">salva modifica</button>
+      <button id="bpAll" title="scrive i soli valori che hai appena cambiato su tutti i breakpoint">applica a tutti</button>
       <button id="bpDel">togli</button>
       <button id="labRender">rendi e ascolta</button>
     </div>
@@ -400,6 +401,7 @@ function labInit() {
   for (const p of NUM) mk(p, box);
   document.getElementById("bpAdd").onclick = bpAdd;
   document.getElementById("bpSave").onclick = bpSave;
+  document.getElementById("bpAll").onclick = bpAll;
   document.getElementById("bpDel").onclick = bpDel;
   // Cambiare un select su un breakpoint selezionato non lo modifica da solo:
   // finche' non si salva, i valori a schermo e quelli del punto divergono, e
@@ -467,6 +469,28 @@ function bpSave() {
   if (curBp < 0) return;
   bps[curBp].vals = snapshot();
   drawTl();
+}
+
+// I parametri che i select mostrano diversi dal breakpoint selezionato: sono
+// quelli che hai appena cambiato, e l'unica cosa che `applica a tutti` deve
+// toccare.
+function cambiati() {
+  if (curBp < 0) return [];
+  const ora = snapshot();
+  return NUM.map(p => p.path).filter(k => ora[k] !== bps[curBp].vals[k]);
+}
+
+// Scrive SOLO quei parametri su ogni breakpoint. Gli altri restano come
+// sono, ognuno col suo valore: un inviluppo che avevi disegnato non va
+// appiattito perche' stavi cambiando un'altra manopola.
+function bpAll() {
+  const ks = cambiati();
+  if (!ks.length) return;
+  const ora = snapshot();
+  for (const b of bps) for (const k of ks) b.vals[k] = ora[k];
+  drawTl();
+  document.getElementById("labInfo").textContent =
+    "applicato a tutti i " + bps.length + " breakpoint: " + ks.join(", ");
 }
 
 function bpDel() {
@@ -559,10 +583,9 @@ function setPath(obj, path, v) {
 function labInfo() {
   const mossi = NUM.filter(p => Array.isArray(serie(p.path)));
   // Quali select non corrispondono piu' al breakpoint selezionato.
-  const now = snapshot();
-  const diversi = curBp < 0 ? []
-    : NUM.filter(p => now[p.path] !== bps[curBp].vals[p.path]).map(p => p.path);
+  const diversi = cambiati();
   document.getElementById("bpSave").disabled = !diversi.length;
+  document.getElementById("bpAll").disabled = !diversi.length;
   document.getElementById("labInfo").textContent =
     bps.length + " breakpoint · " + mossi.length + " parametri mossi" +
     (mossi.length ? ": " + mossi.map(p => p.path).join(", ") : "") +
