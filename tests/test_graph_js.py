@@ -95,7 +95,8 @@ def test_il_breakpoint_va_solo_dove_il_valore_cambia(tmp_path):
     quel parametro si muove davvero.
     """
     js = _script()
-    js = js[js.index("function serie"):js.index("function labDoc")]
+    js = (js[js.index("function tipoDi"):js.index("function bpAdd")]
+          + js[js.index("function serie"):js.index("function labDoc")])
     p = tmp_path / "s.js"
     p.write_text("let bps = [\n"
                  " {t:0,   vals:{a:1, b:5, c:9}},\n"
@@ -124,7 +125,8 @@ def test_salva_modifica_riscrive_solo_il_breakpoint_selezionato(tmp_path):
     p.write_text(
         "const NUM = [{path:'a'}, {path:'b'}];\n"
         "const SCHERMO = {a: 9, b: 5};\n"
-        "const document = {getElementById: id => ({value: SCHERMO[id.slice(2)]})};\n"
+        "const document = {getElementById: id => ({value: id[0] === 'I'"
+        "  ? 'linear' : SCHERMO[id.slice(2)]})};\n"
         "let bps = [{t:0, vals:{a:1, b:5}}, {t:1, vals:{a:2, b:5}}];\n"
         "let curBp = 1;\n"
         "function drawTl() {}\n"
@@ -202,7 +204,8 @@ def test_applica_a_tutti_tocca_solo_i_valori_appena_cambiati(tmp_path):
         "const NUM = [{path:'a'}, {path:'b'}, {path:'c'}];\n"
         # i select mostrano a=9 (cambiato); b e c restano come nel punto corrente
         "const SCHERMO = {a: 9, b: 5, c: 1};\n"
-        "const document = {getElementById: id => ({value: SCHERMO[id.slice(2)],"
+        "const document = {getElementById: id => ({value: id[0] === 'I'"
+        "  ? 'linear' : SCHERMO[id.slice(2)],"
         "                  set textContent(v) {}, get textContent() { return ''; }})};\n"
         "let bps = [{t:0, vals:{a:1, b:5, c:0}},"
         "           {t:0.5, vals:{a:2, b:5, c:1}},"
@@ -218,3 +221,48 @@ def test_applica_a_tutti_tocca_solo_i_valori_appena_cambiati(tmp_path):
     assert [b["vals"]["a"] for b in bps] == [9, 9, 9]
     assert [b["vals"]["b"] for b in bps] == [5, 5, 7]    # intatti, anche se diversi
     assert [b["vals"]["c"] for b in bps] == [0, 1, 2]
+
+
+@node
+def test_il_tipo_di_interpolazione_finisce_sul_punto_giusto(tmp_path):
+    """`linear` non si scrive (e' il default), e l'ultimo punto non ha tipo:
+    il tipo governa il segmento che PARTE dal punto."""
+    js = _script()
+    frag = (js[js.index("function tipoDi"):js.index("function bpAdd")]
+            + js[js.index("function serie"):js.index("function labDoc")])
+    p = tmp_path / "i.js"
+    p.write_text(
+        "const NUM = [{path:'a'}, {path:'b'}, {path:'c'}];\n"
+        "const document = {getElementById: () => null};\n"
+        "let bps = ["
+        " {t:0,   vals:{a:1, b:5, c:2}, ints:{a:'cubic', b:'linear', c:'step'}},"
+        " {t:0.5, vals:{a:2, b:5, c:2}, ints:{a:'cubic', b:'linear', c:'step'}},"
+        " {t:1,   vals:{a:3, b:9, c:2}, ints:{a:'cubic', b:'linear', c:'step'}}];\n"
+        + frag +
+        "console.log(JSON.stringify([serie('a'), serie('b'), serie('c')]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    a, b, c = __import__("json").loads(out.stdout)
+    assert a == [[0, 1, "cubic"], [0.5, 2, "cubic"], [1, 3]]
+    assert b == [[0, 5], [0.5, 5], [1, 9]]          # linear: nessun tipo scritto
+    # c non si muove mai, ma e' `step`: resta un envelope e non diventa uno
+    # scalare, che perderebbe il tipo. Il punto di mezzo invece cade: fermo,
+    # stesso tipo del precedente, non dice niente di nuovo.
+    assert c == [[0, 2, "step"], [1, 2]]
+
+
+@node
+def test_riaprendo_ogni_punto_ritrova_il_suo_tipo(tmp_path):
+    js = _script()
+    frag = js[js.index("function tipoA"):js.index("async function labPost")]
+    p = tmp_path / "t.js"
+    p.write_text(frag +
+        "const v = [[0, 1, 'cubic'], [0.5, 2], [1, 3, 'step']];\n"
+        "console.log(JSON.stringify([tipoA(v, 0), tipoA(v, 0.25), tipoA(v, 0.5),"
+        " tipoA(v, 1), tipoA(7, 0.5)]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    # dentro il primo segmento: cubic; dal secondo punto in poi: linear (non
+    # scritto); uno scalare non ha segmenti, quindi linear.
+    assert __import__("json").loads(out.stdout) == \
+        ["cubic", "cubic", "linear", "step", "linear"]

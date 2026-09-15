@@ -105,6 +105,14 @@ sentono insieme; il laboratorio e' il banco del singolo stream. I valori fra
 cui si sceglie sono le tacche gia' dichiarate nello `study.yml` (assi interni
 e `for_each: base.*`).
 
+**Interpolazione.** Ogni parametro ha a destra il suo menu — `linear` |
+`cubic` | `step`, i tre che l'engine conosce — e sopra tutti c'e' quello
+globale, che muovendosi li muove tutti (poi si fa l'eccezione sulla singola
+riga). La scelta e' **per breakpoint**: il tipo sta sul punto e governa il
+segmento che PARTE da li', quindi l'ultimo punto non ne ha uno. `linear` e'
+il default e non viene scritto nello YAML; gli altri diventano il terzo
+elemento del punto, `[[0, 0.001, cubic], [1, 0.016]]`.
+
 **`grain.envelope` non e' automatizzabile**: l'engine vuole una finestra per
 stream ("Window non trovata" se ci trova dei breakpoint). Nel laboratorio sta
 fra i "fissi per lo stream". Tutti i parametri numerici invece reggono gli

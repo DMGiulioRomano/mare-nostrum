@@ -73,6 +73,11 @@
  #tabs button.on { color:var(--fg); border-bottom-color:var(--on); }
  #lab .row { display:grid; grid-template-columns:max-content 1fr; gap:4px 10px;
              align-items:center; margin-bottom:4px; }
+ /* Terza colonna: il tipo di interpolazione, largo uguale per tutti cosi' i
+    menu restano incolonnati riga dopo riga. */
+ #labParams .row, #labParams .row.capo { grid-template-columns:max-content 1fr 7.5em; }
+ #labParams .row.capo select { border-color:var(--fg); }
+ #labParams .capo .k { color:var(--fg); }
  #lab .row .k { color:var(--dim); text-align:right; white-space:nowrap; }
  #lab select, #lab input { font:inherit; color:inherit; background:var(--panel);
                            border:1px solid var(--line); padding:1px 4px; }
@@ -353,6 +358,9 @@ addEventListener("keydown", e => {
 // il documento YAML lo ricava da se', mettendo una lista di punti solo dove
 // il valore cambia davvero (vedi `serie`).
 const L = D.lab || {base:{}, params:[]};
+// I tre tipi che l'engine conosce (InterpolationStrategyFactory). Il tipo sta
+// sul punto e vale per il segmento che PARTE da li'; l'ultimo non ne ha uno.
+const INTERP = ["linear", "cubic", "step"];
 const NUM = L.params.filter(p => p.kind === "num");
 const CAT = L.params.filter(p => p.kind !== "num");
 
@@ -398,7 +406,20 @@ function labInit() {
     r.appendChild(k); r.appendChild(i); fixed.appendChild(r);
   }
   const box = document.getElementById("labParams");
-  for (const p of NUM) mk(p, box);
+  // Il capofila: muovendo questo si muovono tutti. Sta sopra perche' e' quello
+  // che si tocca per primo — di solito l'interpolazione la si decide in blocco
+  // e poi si fa l'eccezione su un parametro solo.
+  const capo = document.createElement("div");
+  capo.className = "row capo";
+  capo.innerHTML = "<div class='k'>interpolazione</div><div></div>";
+  const tutti = mkInterp("*");
+  tutti.onchange = () => {
+    for (const p of NUM) document.getElementById("I:" + p.path).value = tutti.value;
+    labInfo();
+  };
+  capo.appendChild(tutti);
+  box.appendChild(capo);
+  for (const p of NUM) { mk(p, box); box.lastChild.appendChild(mkInterp(p.path)); }
   document.getElementById("bpAdd").onclick = bpAdd;
   document.getElementById("bpSave").onclick = bpSave;
   document.getElementById("bpAll").onclick = bpAll;
@@ -450,16 +471,40 @@ function mkEnv(p, box, ENV) {
   box.appendChild(r); box.appendChild(hid);
 }
 
+function mkInterp(path) {
+  const s = document.createElement("select");
+  s.id = "I:" + path;
+  for (const t of INTERP) {
+    const o = document.createElement("option");
+    o.value = o.textContent = t;
+    s.appendChild(o);
+  }
+  s.value = "linear";
+  if (path !== "*") s.onchange = labInfo;
+  return s;
+}
+
 function snapshot() {
   const v = {};
   for (const p of NUM) v[p.path] = Number(document.getElementById("P:" + p.path).value);
   return v;
 }
 
+// Il tipo di interpolazione scelto ora, parametro per parametro.
+function snapInterp() {
+  const v = {};
+  for (const p of NUM) v[p.path] = document.getElementById("I:" + p.path).value;
+  return v;
+}
+
+// Il tipo di un parametro in un breakpoint. I punti salvati prima che i tipi
+// esistessero non ce l'hanno: valgono linear, che e' cio' che facevano.
+function tipoDi(b, path) { return (b.ints || {})[path] || "linear"; }
+
 function bpAdd() {
   // Il primo breakpoint sta a 0, gli altri in fondo: da li' si trascinano.
   const t = bps.length ? 1 : 0;
-  bps.push({t, vals: snapshot()});
+  bps.push({t, vals: snapshot(), ints: snapInterp()});
   bps.sort((a, b) => a.t - b.t);
   curBp = bps.findIndex(b => b.t === t);
   drawTl();
@@ -468,6 +513,7 @@ function bpAdd() {
 function bpSave() {
   if (curBp < 0) return;
   bps[curBp].vals = snapshot();
+  bps[curBp].ints = snapInterp();
   drawTl();
 }
 
@@ -476,8 +522,9 @@ function bpSave() {
 // toccare.
 function cambiati() {
   if (curBp < 0) return [];
-  const ora = snapshot();
-  return NUM.map(p => p.path).filter(k => ora[k] !== bps[curBp].vals[k]);
+  const ora = snapshot(), ori = snapInterp();
+  return NUM.map(p => p.path).filter(
+    k => ora[k] !== bps[curBp].vals[k] || ori[k] !== tipoDi(bps[curBp], k));
 }
 
 // Scrive SOLO quei parametri su ogni breakpoint. Gli altri restano come
@@ -486,8 +533,11 @@ function cambiati() {
 function bpAll() {
   const ks = cambiati();
   if (!ks.length) return;
-  const ora = snapshot();
-  for (const b of bps) for (const k of ks) b.vals[k] = ora[k];
+  const ora = snapshot(), ori = snapInterp();
+  for (const b of bps) for (const k of ks) {
+    b.vals[k] = ora[k];
+    (b.ints = b.ints || {})[k] = ori[k];
+  }
   drawTl();
   document.getElementById("labInfo").textContent =
     "applicato a tutti i " + bps.length + " breakpoint: " + ks.join(", ");
@@ -505,6 +555,10 @@ function bpLoad(i) {
   for (const [path, v] of Object.entries(bps[i].vals)) {
     const s = document.getElementById("P:" + path);
     if (s) s.value = v;
+  }
+  for (const p of NUM) {
+    const s = document.getElementById("I:" + p.path);
+    if (s) s.value = tipoDi(bps[i], p.path);
   }
   drawTl();
 }
@@ -549,13 +603,24 @@ function drawTl() {
 // cui il valore e' uguale sia a prima che a dopo non dicono niente che
 // l'interpolazione non dica gia', e un inviluppo con dodici punti identici
 // e' illeggibile. Se non cambia mai, resta lo scalare che era.
+//
+// Il tipo va sul punto da cui parte il segmento, e solo se non e' `linear`
+// (che e' il default dell'engine): scriverlo ovunque raddoppierebbe la
+// lunghezza di ogni riga per dire quello che gia' si sa. Un punto che cambia
+// il tipo non e' ridondante nemmeno a valore fermo — decide come si arriva
+// al prossimo — quindi resta.
 function serie(path) {
-  const pts = bps.map(b => [b.t, b.vals[path]]);
+  const pts = bps.map(b => [b.t, b.vals[path], tipoDi(b, path)]);
   if (!pts.length || pts.some(p => !Number.isFinite(p[1]))) return null;
-  if (pts.every(p => p[1] === pts[0][1])) return pts[0][1];
-  return pts.filter((p, i) =>
+  if (pts.every(p => p[1] === pts[0][1]) && pts.every(p => p[2] === "linear"))
+    return pts[0][1];
+  const tenuti = pts.filter((p, i) =>
     i === 0 || i === pts.length - 1 ||
-    !(pts[i - 1][1] === p[1] && pts[i + 1][1] === p[1]));
+    !(pts[i - 1][1] === p[1] && pts[i + 1][1] === p[1]) ||
+    p[2] !== pts[i - 1][2]);
+  return tenuti.map((p, i) =>
+    // L'ultimo punto non ha un segmento dopo di se': niente tipo.
+    (p[2] === "linear" || i === tenuti.length - 1) ? [p[0], p[1]] : [p[0], p[1], p[2]]);
 }
 
 function labDoc() {
@@ -754,7 +819,11 @@ function carica(doc, path) {
     if (Array.isArray(v)) for (const [t] of v) ts.add(t);
   }
   bps = [...ts].sort((a, b) => a - b).map(t => ({
-    t, vals: Object.fromEntries(NUM.map(p => {
+    t,
+    // Il tipo del segmento in cui t cade: e' quello che decide come si arriva
+    // al punto dopo, ed e' cio' che il menu di quella riga deve mostrare.
+    ints: Object.fromEntries(NUM.map(p => [p.path, tipoA(leggiPath(st, p.path), t)])),
+    vals: Object.fromEntries(NUM.map(p => {
       // Il documento puo' non avere affatto la chiave (un parametro lasciato
       // al default dell'engine): li' vale quello che dice il select, non NaN.
       const v = leggiPath(st, p.path);
@@ -793,6 +862,17 @@ function valoreA(v, t) {
     prev = pt;
   }
   return prev[1];
+}
+
+// Il tipo del segmento che contiene t (l'ultimo punto non ne ha: vale linear).
+function tipoA(v, t) {
+  if (!Array.isArray(v)) return "linear";
+  let tipo = "linear";
+  for (const pt of v) {
+    if (pt[0] > t + 1e-9) break;
+    tipo = pt[2] || "linear";
+  }
+  return tipo;
 }
 
 function leggiPath(st, path) {
