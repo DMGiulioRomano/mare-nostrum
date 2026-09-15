@@ -84,3 +84,30 @@ console.log(s.db[0].toFixed(1), s.db[50].toFixed(1));
     dc_db, far_db = (float(v) for v in got.split())
     assert abs(dc_db) < 0.5
     assert far_db == -96
+
+
+@node
+def test_il_breakpoint_va_solo_dove_il_valore_cambia(tmp_path):
+    """Un punto uguale a quello prima e a quello dopo non dice niente in piu'.
+
+    Ed e' la regola che tiene leggibile lo YAML del laboratorio: dodici
+    parametri per breakpoint, ma nell'inviluppo di ognuno solo i punti dove
+    quel parametro si muove davvero.
+    """
+    js = _script()
+    js = js[js.index("function serie"):js.index("function labDoc")]
+    p = tmp_path / "s.js"
+    p.write_text("let bps = [\n"
+                 " {t:0,   vals:{a:1, b:5, c:9}},\n"
+                 " {t:0.5, vals:{a:1, b:7, c:9}},\n"
+                 " {t:1,   vals:{a:2, b:7, c:9}}];\n"
+                 + js +
+                 "console.log(JSON.stringify([serie('a'), serie('b'), serie('c')]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    a, b, c = __import__("json").loads(out.stdout)
+    # a: il punto di mezzo e' uguale al precedente ma non al successivo -> resta
+    # (senza, la rampa partirebbe da t=0 invece che da meta').
+    assert a == [[0, 1], [0.5, 1], [1, 2]]
+    assert b == [[0, 5], [0.5, 7], [1, 7]]
+    assert c == 9          # mai mosso: scalare, non un inviluppo piatto

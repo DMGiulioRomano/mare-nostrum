@@ -64,12 +64,68 @@
                padding:0 6px; margin-right:3px; cursor:pointer; }
  #ctl button.on { border-color:var(--fg); background:var(--fg); color:var(--bg); }
  #ctl #res { margin-right:14px; }
+
+ /* --- laboratorio del singolo stream ------------------------------------- */
+ #tabs { margin-bottom:14px; }
+ #tabs button { font:inherit; color:var(--dim); background:none; border:none;
+                border-bottom:2px solid transparent; padding:2px 0; margin-right:16px;
+                cursor:pointer; }
+ #tabs button.on { color:var(--fg); border-bottom-color:var(--on); }
+ #lab .row { display:grid; grid-template-columns:max-content 1fr; gap:4px 10px;
+             align-items:center; margin-bottom:4px; }
+ #lab .row .k { color:var(--dim); text-align:right; white-space:nowrap; }
+ #lab select, #lab input { font:inherit; color:inherit; background:var(--panel);
+                           border:1px solid var(--line); padding:1px 4px; }
+ #lab input[type=text], #lab input[type=number] { width:9em; }
+ #lab h2 { font-size:12px; font-weight:600; color:var(--dim); margin:16px 0 6px;
+           text-transform:lowercase; }
+ #lab .bar { margin:10px 0; }
+ #lab .bar button { font:inherit; color:inherit; background:none;
+                    border:1px solid var(--line); padding:2px 10px; margin-right:6px;
+                    cursor:pointer; }
+ #lab .bar button:hover { border-color:var(--fg); }
+ /* La linea dei breakpoint: una dimensione sola, il tempo. Il punto si
+    trascina, e cliccandolo i select tornano ai valori di quel preset. */
+ #tl { position:relative; height:38px; margin:14px 0 6px; border-bottom:1px solid var(--line);
+       touch-action:none; }
+ #tl .bp { position:absolute; bottom:-6px; width:11px; height:11px; margin-left:-6px;
+           border:1px solid var(--fg); background:var(--bg); border-radius:50%;
+           cursor:grab; }
+ #tl .bp.on { background:var(--on); border-color:var(--on); }
+ #tl .bp .t { position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+              font-size:10px; color:var(--dim); white-space:nowrap; }
+ #labInfo { color:var(--dim); font-size:11px; min-height:1.4em; margin-top:4px; }
+ #labYaml { white-space:pre; font-size:11px; color:var(--dim); margin-top:10px;
+            max-height:12em; overflow:auto; }
 </style>
 
 <div id="left">
+  <div id="tabs">
+    <button id="tabGrid" class="on">griglia</button><button id="tabLab">laboratorio</button>
+  </div>
+  <div id="griglia">
   <h1 id="h"></h1>
   <div class="sel" id="sel"></div>
   <div id="grid"></div>
+  </div>
+
+  <!-- Il laboratorio: si compone UNO stream, breakpoint per breakpoint, e lo
+       si rende al volo. La griglia esplora combinazioni gia' rese; qui si
+       scrive il documento che poi va nella timeline di PGE-ui. -->
+  <div id="lab" hidden>
+    <div id="labFixed"></div>
+    <h2>parametri</h2>
+    <div id="labParams"></div>
+    <div class="bar">
+      <button id="bpAdd">+ breakpoint</button>
+      <button id="bpDel">togli</button>
+      <button id="labRender">rendi e ascolta</button>
+    </div>
+    <div id="tl"></div>
+    <div id="labInfo"></div>
+    <div id="labYaml"></div>
+  </div>
+
   <div id="now"></div>
   <audio id="a" controls></audio>
   <div id="transport">
@@ -113,8 +169,11 @@ const D = __DATA__;
 const byLabel = {};
 for (const c of D.combos) byLabel[c.label] = c;
 
-let sel = Object.assign({}, D.combos[0].sel);
-let cur = D.combos[0];
+// Senza audio su disco (studio appena ripulito) la griglia e' vuota e la
+// pagina resta utile lo stesso: c'e' il laboratorio.
+const VUOTA = {label:"", sel:{}, axX:"", axY:"", xs:[], ys:[0], nodes:[], at:{}};
+let sel = Object.assign({}, (D.combos[0] || VUOTA).sel);
+let cur = D.combos[0] || VUOTA;
 let cx = 0, cy = 0;
 
 function match(s) {
@@ -205,6 +264,7 @@ const audio = document.getElementById("a");
 const status = document.getElementById("status");
 
 function go(i, j, play) {
+  if (!cur.xs.length) return;
   const n = cur.at[key(cur.xs[i], cur.ys[j])];
   cx = i; cy = j;
   // Posizione e stato del trasporto PRIMA di cambiare file: con "continua"
@@ -261,6 +321,209 @@ addEventListener("keydown", e => {
   go(Math.min(cur.xs.length - 1, Math.max(0, cx + d[0])),
      Math.min(cur.ys.length - 1, Math.max(0, cy + d[1])));
 });
+
+
+// ===========================================================================
+// Laboratorio: comporre UNO stream e sentirlo, invece di scegliere fra audio
+// gia' resi. Ogni breakpoint e' uno snapshot di tutti i parametri a un tempo;
+// il documento YAML lo ricava da se', mettendo una lista di punti solo dove
+// il valore cambia davvero (vedi `serie`).
+const L = D.lab || {base:{}, params:[]};
+const NUM = L.params.filter(p => p.kind === "num");
+const CAT = L.params.filter(p => p.kind !== "num");
+
+let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
+let curBp = -1;
+
+function labInit() {
+  if (!L.params.length) {
+    document.getElementById("lab").innerHTML =
+      "<p>lo study.yml non dichiara parametri con <code>values</code>.</p>";
+    return;
+  }
+  const mk = (p, box) => {
+    const r = document.createElement("div"); r.className = "row";
+    const k = document.createElement("div"); k.className = "k"; k.textContent = p.path;
+    const s = document.createElement("select");
+    s.id = "P:" + p.path;
+    for (const v of p.values) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = fmt(v);
+      s.appendChild(o);
+    }
+    r.appendChild(k); r.appendChild(s); box.appendChild(r);
+  };
+  const fixed = document.getElementById("labFixed");
+  // I categoriali non sono automatizzabili (l'engine vuole UNA finestra per
+  // stream): stanno fuori dai breakpoint, con la durata e il nome.
+  fixed.innerHTML = "<h2>fissi per lo stream</h2>";
+  for (const p of CAT) mk(p, fixed);
+  for (const [id, lab, val, type] of [["labDur", "durata (s)", 8, "number"],
+                                      ["labName", "nome", "lab", "text"]]) {
+    const r = document.createElement("div"); r.className = "row";
+    const k = document.createElement("div"); k.className = "k"; k.textContent = lab;
+    const i = document.createElement("input");
+    i.id = id; i.type = type; i.value = val;
+    r.appendChild(k); r.appendChild(i); fixed.appendChild(r);
+  }
+  const box = document.getElementById("labParams");
+  for (const p of NUM) mk(p, box);
+  document.getElementById("bpAdd").onclick = bpAdd;
+  document.getElementById("bpDel").onclick = bpDel;
+  document.getElementById("labRender").onclick = labRender;
+}
+
+function snapshot() {
+  const v = {};
+  for (const p of NUM) v[p.path] = Number(document.getElementById("P:" + p.path).value);
+  return v;
+}
+
+function bpAdd() {
+  // Il primo breakpoint sta a 0, gli altri in fondo: da li' si trascinano.
+  const t = bps.length ? 1 : 0;
+  bps.push({t, vals: snapshot()});
+  bps.sort((a, b) => a.t - b.t);
+  curBp = bps.findIndex(b => b.t === t);
+  drawTl();
+}
+
+function bpDel() {
+  if (curBp < 0) return;
+  bps.splice(curBp, 1);
+  curBp = Math.min(curBp, bps.length - 1);
+  drawTl();
+}
+
+function bpLoad(i) {
+  curBp = i;
+  for (const [path, v] of Object.entries(bps[i].vals)) {
+    const s = document.getElementById("P:" + path);
+    if (s) s.value = v;
+  }
+  drawTl();
+}
+
+function drawTl() {
+  const tl = document.getElementById("tl");
+  tl.innerHTML = "";
+  bps.forEach((b, i) => {
+    const d = document.createElement("div");
+    d.className = "bp" + (i === curBp ? " on" : "");
+    d.style.left = (b.t * 100) + "%";
+    d.innerHTML = "<span class='t'>" + b.t.toFixed(2) + "</span>";
+    d.onpointerdown = e => {
+      e.preventDefault();
+      bpLoad(i);
+      const box = tl.getBoundingClientRect();
+      const move = ev => {
+        b.t = Math.min(1, Math.max(0, (ev.clientX - box.left) / box.width));
+        drawTl();
+      };
+      const up = () => {
+        removeEventListener("pointermove", move);
+        removeEventListener("pointerup", up);
+        // L'ordine dei punti e' il tempo: dopo il trascinamento la lista va
+        // riordinata, o `serie` produrrebbe un inviluppo che torna indietro.
+        const b0 = bps[curBp];
+        bps.sort((x, y) => x.t - y.t);
+        curBp = bps.indexOf(b0);
+        drawTl();
+      };
+      addEventListener("pointermove", move);
+      addEventListener("pointerup", up);
+    };
+    tl.appendChild(d);
+  });
+  labInfo();
+}
+
+// Un parametro diventa una lista di breakpoint solo dove cambia: i punti in
+// cui il valore e' uguale sia a prima che a dopo non dicono niente che
+// l'interpolazione non dica gia', e un inviluppo con dodici punti identici
+// e' illeggibile. Se non cambia mai, resta lo scalare che era.
+function serie(path) {
+  const pts = bps.map(b => [b.t, b.vals[path]]);
+  if (!pts.length) return null;
+  if (pts.every(p => p[1] === pts[0][1])) return pts[0][1];
+  return pts.filter((p, i) =>
+    i === 0 || i === pts.length - 1 ||
+    !(pts[i - 1][1] === p[1] && pts[i + 1][1] === p[1]));
+}
+
+function labDoc() {
+  const dur = Number(document.getElementById("labDur").value) || 8;
+  // stream_id/onset/duration in testa, come nei documenti scritti a mano.
+  const st = Object.assign({stream_id: "lab", onset: 0, duration: dur},
+                           JSON.parse(JSON.stringify(L.base)));
+  st.onset = 0;
+  st.duration = dur;
+  for (const p of CAT) setPath(st, p.path, document.getElementById("P:" + p.path).value);
+  for (const p of NUM) {
+    const v = serie(p.path);
+    if (v !== null) setPath(st, p.path, v);
+  }
+  return {duration: dur, bpm: 120, streams: [st]};
+}
+
+function setPath(obj, path, v) {
+  const parts = path.split(".");
+  let o = obj;
+  for (const k of parts.slice(0, -1)) o = (o[k] = o[k] || {});
+  o[parts[parts.length - 1]] = v;
+}
+
+function labInfo() {
+  const mossi = NUM.filter(p => Array.isArray(serie(p.path)));
+  document.getElementById("labInfo").textContent =
+    bps.length + " breakpoint · " + mossi.length + " parametri mossi" +
+    (mossi.length ? ": " + mossi.map(p => p.path).join(", ") : "");
+  document.getElementById("labYaml").textContent = bps.length ? preview() : "";
+}
+
+// Anteprima: solo i parametri mossi, nella forma che finisce nello YAML.
+function preview() {
+  return NUM.map(p => [p.path, serie(p.path)])
+            .filter(([, v]) => Array.isArray(v))
+            .map(([k, v]) => k + ": [" + v.map(pt => "[" + pt[0].toFixed(3) + ", " + pt[1] + "]").join(", ") + "]")
+            .join("\n");
+}
+
+async function labRender() {
+  if (!bps.length) { document.getElementById("labInfo").textContent = "nessun breakpoint."; return; }
+  const name = document.getElementById("labName").value || "lab";
+  const info = document.getElementById("labInfo");
+  info.textContent = "render in corso…";
+  try {
+    const r = await fetch("render", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name, doc: labDoc()}),
+    });
+    const out = await r.json();
+    if (!out.ok) { info.textContent = "errore dell'engine:\n" + out.error; return; }
+    info.textContent = out.yaml;
+    // `?t=` perche' rirendendo con lo stesso nome il browser servirebbe il
+    // file vecchio dalla cache.
+    const src = out.src + "?t=" + Date.now();
+    audio.src = src;
+    audio.play();
+    analyse(src);
+  } catch (e) {
+    info.textContent = "server non raggiungibile: serve `make serve` (non file://). " + e;
+  }
+}
+
+for (const [id, on] of [["tabGrid", false], ["tabLab", true]]) {
+  document.getElementById(id).onclick = () => {
+    document.getElementById("lab").hidden = !on;
+    document.getElementById("griglia").hidden = on;
+    document.getElementById("tabGrid").classList.toggle("on", !on);
+    document.getElementById("tabLab").classList.toggle("on", on);
+  };
+}
+labInit();
+if (!D.combos.length) document.getElementById("tabLab").click();
 
 // ===========================================================================
 // Analisi. Due strade diverse, per due domande diverse:
