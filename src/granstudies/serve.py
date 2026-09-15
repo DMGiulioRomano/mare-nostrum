@@ -12,14 +12,21 @@ come JSON, lo scrive in YAML e chiama l'engine. Tutta la conoscenza del
 dominio resta nella pagina, che e' dove si compone, e qui non c'e' un secondo
 posto dove la sintassi puo' divergere.
 
-    POST /render  {"name": "prova1", "doc": {...}, "render": true}
-    -> {"src": "live/prova1.aif", "yaml": "live/prova1.yml"}
-    GET  /live.json
-    -> {"prova1": {...}, ...}   i progetti gia' salvati, YAML tradotto in JSON
+    POST /pick    {"mode": "open"|"save", "name": "..."}
+    -> {"path": "/Users/.../stream.yml"}   pannello nativo del Finder
+    POST /open    {"path": "..."}   -> {"doc": {...}}
+    POST /render  {"doc": {...}, "path": "...", "render": true}
+    -> {"yaml": "...", "src": "..."}   path assoluti o relativi alla pagina
 
 Il "file di progetto" e' lo YAML stesso: un documento engine puro, che si
 riapre qui, si incolla nel brano o si apre in PGE-ui. Un secondo formato per
 ricordare i breakpoint non serve — i breakpoint SONO gli inviluppi.
+
+I pannelli Apri/Salva sono quelli veri di macOS: il server gira sulla stessa
+macchina e li chiede a ``osascript``, cosa che la pagina da sola non puo'
+fare (Safari non ha le File System Access API, e un ``<input type=file>``
+darebbe il contenuto ma non il percorso su cui risalvare). Il file si sceglie
+dove si vuole: lo studio non e' piu' l'unico posto dove puo' stare uno stream.
 
 Solo su 127.0.0.1: scrive file ed esegue un processo, non e' roba da esporre.
 """
@@ -31,13 +38,58 @@ import re
 import subprocess
 import sys
 from functools import partial
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import yaml
 
 LIVE = "live"          # sottocartella degli stream composti a mano
 _SAFE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+# Solo i percorsi usciti da un pannello di questa sessione si possono leggere
+# e scrivere: il dialogo nativo E' l'autorizzazione dell'utente, e senza questo
+# vincolo un POST basterebbe a scrivere ovunque sul disco.
+_AUTORIZZATI: set = set()
+
+
+def pannello(mode: str, name: str = "stream.yml", start: str = "") -> Tuple[str, str]:
+    """Il pannello Apri/Salva di macOS. Ritorna ``(path, errore)``.
+
+    Path vuoto ed errore vuoto = annullato: l'utente ha cambiato idea, non e'
+    successo niente. Path vuoto con un errore = il pannello non si e' aperto
+    (non siamo su macOS, o osascript non ha il permesso di mostrare dialoghi),
+    ed e' una cosa che la pagina deve dire invece di non reagire — sono due
+    silenzi identici a schermo e cause opposte.
+
+    ``osascript`` blocca finche' l'utente non risponde: gira in un thread del
+    server (ThreadingHTTPServer), quindi la pagina resta viva nel frattempo.
+    """
+    loc = f' default location POSIX file "{start}"' if os.path.isdir(start) else ""
+    if mode == "save":
+        script = (f'POSIX path of (choose file name with prompt "Salva lo stream"'
+                  f' default name "{name}"{loc})')
+    else:
+        script = (f'POSIX path of (choose file with prompt "Apri uno stream"'
+                  f' of type {{"yml", "yaml"}}{loc})')
+    try:
+        p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError) as e:
+        return "", f"non riesco ad aprire il pannello: {e}"
+    if p.returncode != 0:
+        err = (p.stderr or "").strip()
+        # -128 e' "User canceled": l'unico non-errore fra i codici di osascript.
+        if "-128" in err or "canceled" in err.lower():
+            return "", ""
+        return "", err or "il pannello non si e' aperto"
+    path = p.stdout.strip()
+    if path:
+        _AUTORIZZATI.add(os.path.abspath(path))
+    return path, ""
+
+
+def autorizzato(path: str) -> bool:
+    return os.path.abspath(path) in _AUTORIZZATI
 
 
 class _Dumper(yaml.SafeDumper):
@@ -59,42 +111,45 @@ def _flow_if_flat(dumper, data):
 _Dumper.add_representer(list, _flow_if_flat)
 
 
-def elenco(gen_root: str) -> Dict[str, Any]:
-    """I progetti salvati: nome -> documento.
-
-    Tradotti in JSON qui: la pagina non ha un parser YAML e non e' il caso di
-    scaricargliene uno solo per riaprire un file che il server ha gia' in mano.
-    """
-    live = os.path.join(gen_root, LIVE)
-    out: Dict[str, Any] = {}
-    for f in sorted(os.listdir(live)) if os.path.isdir(live) else []:
-        if not f.endswith(".yml"):
-            continue
-        try:
-            with open(os.path.join(live, f)) as fh:
-                out[f[:-4]] = yaml.safe_load(fh)
-        except (OSError, yaml.YAMLError):
-            continue
-    return out
-
-
 def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
-               renderer: str = "numpy", render: bool = True) -> dict:
-    """Scrive ``<gen_root>/live/<name>.yml`` e (se ``render``) lo rende in .aif.
+               renderer: str = "numpy", render: bool = True,
+               path: str = "") -> dict:
+    """Scrive lo YAML e (se ``render``) lo rende accanto, in .aif.
+
+    Con ``path`` scrive dove l'utente ha detto nel pannello di salvataggio;
+    senza, in ``<gen_root>/live/<name>.yml`` come prima. L'audio nasce sempre
+    accanto allo YAML, con lo stesso nome: due file che si spostano insieme.
 
     Il percorso dell'engine e dei sample e' relativo alla radice del repo:
     ``main.py`` risolve ``samples-dir`` da dove gira, non da dove sta lo YAML.
     """
-    stem = _SAFE.sub("_", name) or "senza-nome"
-    live = os.path.join(gen_root, LIVE)
-    os.makedirs(os.path.join(live, "logs"), exist_ok=True)
-    doc_path = os.path.join(live, stem + ".yml")
-    out_path = os.path.join(live, stem + ".aif")
+    if path:
+        if not autorizzato(path):
+            return {"ok": False, "error": "percorso non scelto da un pannello: "
+                                          "usa 'salva con nome'."}
+        doc_path = path if path.endswith((".yml", ".yaml")) else path + ".yml"
+        base = os.path.dirname(doc_path)
+        out_path = os.path.splitext(doc_path)[0] + ".aif"
+        os.makedirs(os.path.join(base, "logs"), exist_ok=True)
+        live = base
+    else:
+        stem = _SAFE.sub("_", name) or "senza-nome"
+        live = os.path.join(gen_root, LIVE)
+        os.makedirs(os.path.join(live, "logs"), exist_ok=True)
+        doc_path = os.path.join(live, stem + ".yml")
+        out_path = os.path.join(live, stem + ".aif")
     with open(doc_path, "w") as fh:
         yaml.dump(doc, fh, Dumper=_Dumper, sort_keys=False, allow_unicode=True)
+    def _rel(p: str) -> str:
+        """Il path come lo usa la pagina: relativo se sta sotto lo studio
+        (l'audio va caricato via HTTP), assoluto se l'utente l'ha messo
+        altrove — e li' la pagina lo mostra e basta."""
+        r = os.path.relpath(p, gen_root)
+        return r if not r.startswith("..") else p
+
     # Salvare e' immediato, rendere no: si tiene il lavoro senza aspettare.
     if not render:
-        return {"ok": True, "src": None, "yaml": f"{LIVE}/{stem}.yml"}
+        return {"ok": True, "src": None, "yaml": _rel(doc_path), "path": doc_path}
     cmd = [sys.executable, os.path.join(repo_root, "engine", "src", "main.py"),
            doc_path, out_path,
            "--renderer", renderer,
@@ -106,9 +161,8 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
         # mostra in una riga di stato, non in un pannello.
         tail = (p.stderr or p.stdout).strip().splitlines()[-12:]
         return {"ok": False, "error": "\n".join(tail)}
-    return {"ok": True,
-            "src": f"{LIVE}/{stem}.aif",
-            "yaml": f"{LIVE}/{stem}.yml"}
+    return {"ok": True, "src": _rel(out_path), "yaml": _rel(doc_path),
+            "path": doc_path}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -117,33 +171,51 @@ class Handler(SimpleHTTPRequestHandler):
     repo_root = ""
 
     def do_POST(self):                      # noqa: N802  (nome dell'API stdlib)
-        if self.path.rstrip("/") != "/render":
+        rotta = self.path.rstrip("/")
+        if rotta not in ("/render", "/pick", "/open"):
             self.send_error(404)
             return
         n = int(self.headers.get("Content-Length") or 0)
         try:
             body = json.loads(self.rfile.read(n) or b"{}")
-            doc, name = body["doc"], body.get("name", "live")
-        except (ValueError, KeyError) as e:
+        except ValueError as e:
             self._json({"ok": False, "error": f"richiesta non valida: {e}"}, 400)
             return
-        self._json(render_doc(doc, name, self.directory, self.repo_root,
-                              render=body.get("render", True)))
+        if rotta == "/pick":
+            # Si parte dalla cartella del file aperto, o da quella dello studio.
+            start = body.get("start") or os.path.join(self.directory, LIVE)
+            path, err = pannello(body.get("mode", "open"),
+                                 body.get("name") or "stream.yml", start)
+            self._json({"ok": not err, "path": path, "error": err})
+            return
+        if rotta == "/open":
+            path = body.get("path", "")
+            if not autorizzato(path):
+                self._json({"ok": False, "error": "apri il file dal pannello."}, 403)
+                return
+            try:
+                with open(path) as fh:
+                    self._json({"ok": True, "doc": yaml.safe_load(fh), "path": path})
+            except (OSError, yaml.YAMLError) as e:
+                self._json({"ok": False, "error": f"non riesco a leggerlo: {e}"})
+            return
+        try:
+            doc = body["doc"]
+        except KeyError as e:
+            self._json({"ok": False, "error": f"richiesta non valida: {e}"}, 400)
+            return
+        self._json(render_doc(doc, body.get("name", "live"), self.directory,
+                              self.repo_root, render=body.get("render", True),
+                              path=body.get("path", "")))
 
     def end_headers(self):
         # La pagina e l'elenco cambiano a ogni `graph` e a ogni salvataggio, e
-        # il browser che ne tiene una copia mostra un laboratorio vecchio senza
-        # dirlo: la tendina dei progetti resta quella di ieri. L'audio no: ha
-        # un nome nuovo o un `?t=`, e ricaricarlo a ogni seek sarebbe uno spreco.
-        if self.path.split("?")[0].endswith((".html", ".json")):
+        # La pagina si riscrive a ogni `graph`, e il browser che ne tiene una
+        # copia mostra un laboratorio vecchio senza dirlo. L'audio no: ha un
+        # nome nuovo o un `?t=`, e ricaricarlo a ogni seek sarebbe uno spreco.
+        if self.path.split("?")[0].endswith(".html"):
             self.send_header("Cache-Control", "no-store")
         super().end_headers()
-
-    def do_GET(self):                       # noqa: N802  (nome dell'API stdlib)
-        if self.path.rstrip("/") == "/live.json":
-            self._json(elenco(self.directory))
-            return
-        super().do_GET()
 
     def _json(self, payload: dict, code: int = 200):
         raw = json.dumps(payload).encode()

@@ -158,7 +158,7 @@ def test_il_profilo_disegnato_parte_e_finisce_dove_deve(tmp_path):
 def test_riaprire_un_progetto_ricostruisce_i_breakpoint(tmp_path):
     """I breakpoint sono i tempi degli inviluppi: un progetto si riapre da li'."""
     js = _script()
-    frag = js[js.index("function valoreA"):js.index("function labOpen")]
+    frag = js[js.index("function valoreA"):js.index("async function labPost")]
     doc = {"duration": 5, "streams": [{
         "grain": {"duration": [[0, 0.001], [0.4, 0.001], [1, 0.032]]},
         "pitch": {"ratio": [[0, 0.2], [1, 0.75]]},

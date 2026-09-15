@@ -106,6 +106,8 @@
  #envs .n { font-size:9px; color:var(--dim); display:block; margin-top:2px;
             text-align:center; }
  #envs button.on .n { color:var(--fg); }
+ #fFile { color:var(--dim); font-size:11px; margin-left:6px; }
+ #fFile.dirty::after { content:" •  modificato"; color:var(--on); }
  #labInfo { color:var(--dim); font-size:11px; min-height:1.4em; margin-top:4px; }
  #labYaml { white-space:pre; font-size:11px; color:var(--dim); margin-top:10px;
             max-height:12em; overflow:auto; }
@@ -133,8 +135,13 @@
       <button id="bpSave">salva modifica</button>
       <button id="bpDel">togli</button>
       <button id="labRender">rendi e ascolta</button>
-      <button id="labSave">salva</button>
-      <select id="labOpen" title="riapri un progetto salvato"></select>
+    </div>
+    <div class="bar">
+      <button id="fNew">nuovo</button>
+      <button id="fOpen">apri…</button>
+      <button id="fSave">salva</button>
+      <button id="fSaveAs">salva con nome…</button>
+      <span id="fFile"></span>
     </div>
     <div id="tl"></div>
     <div id="labInfo"></div>
@@ -398,17 +405,12 @@ function labInit() {
   // e' l'unica cosa che si puo' guardare senza accorgersene. Lo dice l'info.
   for (const p of NUM) document.getElementById("P:" + p.path).onchange = labInfo;
   document.getElementById("labRender").onclick = labRender;
-  document.getElementById("labSave").onclick = () => labPost(false);
-  document.getElementById("labOpen").onchange = e => {
-    if (!e.target.value) return;
-    labOpen(e.target.value);
-    // Torna su "apri…": restando sul nome scelto, riselezionare lo stesso
-    // file non emetterebbe `change` e il menu sembrerebbe rotto. Quale
-    // progetto e' aperto lo dicono il campo nome e la riga di stato.
-    e.target.value = "";
-  };
-  labList();
+  document.getElementById("fNew").onclick = fNew;
+  document.getElementById("fOpen").onclick = fOpen;
+  document.getElementById("fSave").onclick = () => fSave(false);
+  document.getElementById("fSaveAs").onclick = () => fSave(true);
   ripristina();
+  segna();
 }
 
 // Una finestra disegnata: polilinea del profilo vero, quello che l'engine
@@ -484,6 +486,7 @@ function bpLoad(i) {
 
 function drawTl() {
   bozzaSalva();
+  if (typeof segna === "function") segna();
   const tl = document.getElementById("tl");
   tl.innerHTML = "";
   bps.forEach((b, i) => {
@@ -576,19 +579,39 @@ function preview() {
 }
 
 
-// --- tenere il lavoro ------------------------------------------------------
-// Il file di progetto e' lo YAML stesso: `salva` lo scrive senza rendere,
-// `apri` lo rilegge. I breakpoint non si salvano a parte perche' NON sono
-// un'informazione in piu': sono i tempi che compaiono negli inviluppi.
+// --- il file su cui si lavora ---------------------------------------------
+// Semantica normale: nuovo / apri / salva / salva con nome, e l'avviso se ci
+// sono modifiche non salvate. I pannelli sono quelli di macOS, aperti dal
+// server (POST /pick): la pagina da sola non sa dove sta un file sul disco.
+//
+// Il file di progetto e' lo YAML: un documento engine puro, che si riapre
+// qui, si incolla nel brano o si apre in PGE-ui. I breakpoint non si salvano
+// a parte perche' non sono un'informazione in piu': sono i tempi che
+// compaiono negli inviluppi.
 
-// Rete di sicurezza per il caso banale (ricarico la pagina e ho perso tutto):
-// il lavoro in corso torna da solo. Non e' un salvataggio — quello e' il file.
+let FILE = "";        // path assoluto del file aperto; "" = mai salvato
+let SALVATO = "";     // com'era il documento all'ultimo salvataggio
+
+// Rete di sicurezza per il refresh accidentale: il lavoro in corso torna da
+// solo. Non e' un salvataggio — quello e' il file.
 const BOZZA = "lab:" + D.study;
+
+function statoOra() { return JSON.stringify(bps.length ? labDoc() : null); }
+function sporco() { return statoOra() !== SALVATO; }
+
+function segna() {
+  const el = document.getElementById("fFile");
+  el.textContent = FILE ? FILE.split("/").pop() : "(non salvato)";
+  el.title = FILE || "";
+  el.classList.toggle("dirty", sporco());
+  document.getElementById("fSave").disabled = !bps.length || !sporco();
+}
 
 function bozzaSalva() {
   try {
     localStorage.setItem(BOZZA, JSON.stringify({
-      bps, name: document.getElementById("labName").value,
+      bps, file: FILE, salvato: SALVATO,
+      name: document.getElementById("labName").value,
       dur: document.getElementById("labDur").value,
       cat: Object.fromEntries(CAT.map(p => [p.path, document.getElementById("P:" + p.path).value])),
     }));
@@ -600,18 +623,20 @@ function ripristina() {
   try { b = JSON.parse(localStorage.getItem(BOZZA) || "null"); } catch (e) { return; }
   if (!b || !b.bps || !b.bps.length) return;
   bps = b.bps;
+  FILE = b.file || "";
+  SALVATO = b.salvato || "";
   document.getElementById("labName").value = b.name || "lab";
   document.getElementById("labDur").value = b.dur || 8;
   for (const [path, v] of Object.entries(b.cat || {})) setSel(path, v);
   bpLoad(0);
   document.getElementById("labInfo").textContent =
-    "ripreso il lavoro non salvato (" + bps.length + " breakpoint)";
+    "ripreso il lavoro in corso (" + bps.length + " breakpoint)";
 }
 
 // Il valore di un parametro fisso: select o galleria delle finestre.
 function setSel(path, v) {
   const el = document.getElementById("P:" + path);
-  if (!el) return;
+  if (!el || v === undefined || v === null) return;
   el.value = v;
   const box = document.getElementById("envs");
   if (box && path === "grain.envelope")
@@ -619,25 +644,90 @@ function setSel(path, v) {
       b.classList.toggle("on", b.title === v);
 }
 
-async function labList() {
-  const sel = document.getElementById("labOpen");
-  let elenco = {};
-  try {
-    elenco = await (await fetch("live.json")).json();
-  } catch (e) {
-    // Senza elenco la tendina resta vuota e sembra rotta: dillo.
-    document.getElementById("labInfo").textContent =
-      "non riesco a leggere i progetti (live.json): " + e;
+async function post(rotta, body) {
+  const r = await fetch(rotta, {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return r.json();
+}
+
+// Se c'e' del lavoro non salvato, chiedere prima di buttarlo: e' l'unica
+// azione della pagina che perde qualcosa per sempre.
+function confermaPerdita(cosa) {
+  if (!bps.length || !sporco()) return true;
+  return confirm("Ci sono modifiche non salvate" + (FILE ? " a " + FILE.split("/").pop() : "")
+                 + ".\nVuoi " + cosa + " comunque? (Annulla per tornare indietro e salvare)");
+}
+
+function fNew() {
+  if (!confermaPerdita("creare un nuovo stream")) return;
+  bps = [];
+  curBp = -1;
+  FILE = "";
+  SALVATO = statoOra();
+  document.getElementById("labName").value = "lab";
+  document.getElementById("labInfo").textContent = "nuovo stream.";
+  drawTl();
+}
+
+async function fOpen() {
+  if (!confermaPerdita("aprire un altro file")) return;
+  const info = document.getElementById("labInfo");
+  const sc = await post("pick", {mode: "open", start: FILE ? dir(FILE) : ""});
+  if (sc.error) { info.textContent = sc.error; return; }
+  if (!sc.path) return;                       // annullato nel pannello
+  const out = await post("open", {path: sc.path});
+  if (!out.ok) { info.textContent = out.error; return; }
+  carica(out.doc, sc.path);
+}
+
+function dir(p) { return p.slice(0, p.lastIndexOf("/")); }
+
+async function fSave(chiediDove) {
+  if (!bps.length) { document.getElementById("labInfo").textContent = "niente da salvare."; return; }
+  let path = FILE;
+  if (chiediDove || !path) {
+    const nome = (document.getElementById("labName").value || "stream") + ".yml";
+    const sc = await post("pick", {mode: "save", name: nome, start: FILE ? dir(FILE) : ""});
+    if (sc.error) { document.getElementById("labInfo").textContent = sc.error; return; }
+    if (!sc.path) return;
+    path = sc.path;
+  }
+  await labPost(false, path);
+}
+
+// Carica un documento nel laboratorio: i breakpoint sono i tempi che
+// compaiono negli inviluppi, e ogni parametro vale li' quanto vale il suo.
+function carica(doc, path) {
+  if (!doc || !doc.streams || !doc.streams[0]) {
+    document.getElementById("labInfo").textContent = "non e' un documento con stream.";
     return;
   }
-  sel.innerHTML = "<option value=''>apri…</option>";
-  for (const nome of Object.keys(elenco)) {
-    const o = document.createElement("option");
-    o.value = nome; o.textContent = nome;
-    sel.appendChild(o);
+  const st = doc.streams[0];
+  const ts = new Set([0]);
+  for (const p of NUM) {
+    const v = leggiPath(st, p.path);
+    if (Array.isArray(v)) for (const [t] of v) ts.add(t);
   }
-  sel.dataset.n = Object.keys(elenco).length;
-  window.PROGETTI = elenco;
+  bps = [...ts].sort((a, b) => a - b).map(t => ({
+    t, vals: Object.fromEntries(NUM.map(p => {
+      // Il documento puo' non avere affatto la chiave (un parametro lasciato
+      // al default dell'engine): li' vale quello che dice il select, non NaN.
+      const v = leggiPath(st, p.path);
+      return [p.path, v === undefined || v === null
+        ? Number(document.getElementById("P:" + p.path).value)
+        : Number(valoreA(v, t))];
+    })),
+  }));
+  for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
+  FILE = path || "";
+  document.getElementById("labName").value =
+    (path || "lab").split("/").pop().replace(/\.ya?ml$/, "");
+  document.getElementById("labDur").value = doc.duration || st.duration || 8;
+  bpLoad(0);
+  SALVATO = statoOra();
+  segna();
+  document.getElementById("labInfo").textContent =
+    (path || "documento") + " — " + bps.length + " breakpoint";
 }
 
 // Il valore di un parametro al tempo t: il punto se c'e', altrimenti quello
@@ -666,53 +756,20 @@ function leggiPath(st, path) {
   return o;
 }
 
-// Ricostruisce i breakpoint da un documento: i tempi sono l'unione di quelli
-// che compaiono negli inviluppi, piu' lo zero. Un preset che non cambiava
-// niente rispetto al precedente non torna — e non serve: non cambiava il suono.
-function labOpen(nome) {
-  const doc = (window.PROGETTI || {})[nome];
-  if (!doc || !doc.streams || !doc.streams[0]) return;
-  const st = doc.streams[0];
-  const ts = new Set([0]);
-  for (const p of NUM) {
-    const v = leggiPath(st, p.path);
-    if (Array.isArray(v)) for (const [t] of v) ts.add(t);
-  }
-  bps = [...ts].sort((a, b) => a - b).map(t => ({
-    t, vals: Object.fromEntries(NUM.map(p => {
-      // Il documento puo' non avere affatto la chiave (un parametro lasciato
-      // al default dell'engine): li' vale quello che dice il select, non NaN.
-      const v = leggiPath(st, p.path);
-      return [p.path, v === undefined || v === null
-        ? Number(document.getElementById("P:" + p.path).value)
-        : Number(valoreA(v, t))];
-    })),
-  }));
-  for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
-  document.getElementById("labName").value = nome;
-  document.getElementById("labDur").value = doc.duration || st.duration || 8;
-  bpLoad(0);
-  document.getElementById("labInfo").textContent =
-    nome + " — " + bps.length + " breakpoint";
-}
-
 function labRender() { return labPost(true); }
 
-async function labPost(render) {
+async function labPost(render, path) {
   if (!bps.length) { document.getElementById("labInfo").textContent = "nessun breakpoint."; return; }
   const name = document.getElementById("labName").value || "lab";
   const info = document.getElementById("labInfo");
   info.textContent = render ? "render in corso…" : "salvo…";
   try {
-    const r = await fetch("render", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, doc: labDoc(), render}),
-    });
-    const out = await r.json();
-    if (!out.ok) { info.textContent = "errore dell'engine:\n" + out.error; return; }
-    info.textContent = out.yaml + (render ? "" : "  (salvato, non reso)");
-    labList();
+    const out = await post("render", {name, doc: labDoc(), render, path: path || FILE});
+    if (!out.ok) { info.textContent = out.error; return; }
+    FILE = out.path || FILE;
+    SALVATO = statoOra();
+    segna();
+    info.textContent = out.yaml + (render ? "" : "  (salvato)");
     if (!render) return;
     // `?t=` perche' rirendendo con lo stesso nome il browser servirebbe il
     // file vecchio dalla cache.
