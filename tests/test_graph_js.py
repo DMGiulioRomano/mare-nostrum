@@ -266,3 +266,23 @@ def test_riaprendo_ogni_punto_ritrova_il_suo_tipo(tmp_path):
     # scritto); uno scalare non ha segmenti, quindi linear.
     assert __import__("json").loads(out.stdout) == \
         ["cubic", "cubic", "linear", "step", "linear"]
+
+
+@node
+def test_l_anteprima_mostra_anche_il_tipo(tmp_path):
+    """Due inviluppi che suonano diverso non devono leggersi identici."""
+    js = _script()
+    frag = (js[js.index("function tipoDi"):js.index("function bpAdd")]
+            + js[js.index("function serie"):js.index("function labDoc")]
+            + js[js.index("function preview"):js.index("// --- il file")])
+    p = tmp_path / "p.js"
+    p.write_text(
+        "const NUM = [{path:'a'}, {path:'b'}];\n"
+        "let bps = [{t:0, vals:{a:1, b:1}, ints:{a:'cubic', b:'linear'}},"
+        "           {t:1, vals:{a:2, b:2}, ints:{a:'cubic', b:'linear'}}];\n"
+        + frag + "console.log(preview());")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    righe = out.stdout.strip().splitlines()
+    assert righe[0] == "a: [[0.000, 1, cubic], [1.000, 2]]"
+    assert righe[1] == "b: [[0.000, 1], [1.000, 2]]"

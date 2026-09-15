@@ -659,11 +659,16 @@ function labInfo() {
   document.getElementById("labYaml").textContent = bps.length ? preview() : "";
 }
 
-// Anteprima: solo i parametri mossi, nella forma che finisce nello YAML.
+// Anteprima: solo i parametri mossi, nella forma che finisce nello YAML —
+// terzo elemento compreso, altrimenti due inviluppi che suonano diverso si
+// leggono identici e la scelta dell'interpolazione sembra non aver fatto
+// niente.
 function preview() {
+  const punto = pt => "[" + pt[0].toFixed(3) + ", " + pt[1] +
+                      (pt[2] ? ", " + pt[2] : "") + "]";
   return NUM.map(p => [p.path, serie(p.path)])
             .filter(([, v]) => Array.isArray(v))
-            .map(([k, v]) => k + ": [" + v.map(pt => "[" + pt[0].toFixed(3) + ", " + pt[1] + "]").join(", ") + "]")
+            .map(([k, v]) => k + ": [" + v.map(punto).join(", ") + "]")
             .join("\n");
 }
 
