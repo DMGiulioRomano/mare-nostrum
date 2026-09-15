@@ -84,6 +84,7 @@
                     border:1px solid var(--line); padding:2px 10px; margin-right:6px;
                     cursor:pointer; }
  #lab .bar button:hover { border-color:var(--fg); }
+ #lab .bar button:disabled { opacity:.35; cursor:default; border-color:var(--line); }
  /* La linea dei breakpoint: una dimensione sola, il tempo. Il punto si
     trascina, e cliccandolo i select tornano ai valori di quel preset. */
  #tl { position:relative; height:38px; margin:14px 0 6px; border-bottom:1px solid var(--line);
@@ -118,6 +119,7 @@
     <div id="labParams"></div>
     <div class="bar">
       <button id="bpAdd">+ breakpoint</button>
+      <button id="bpSave">salva modifica</button>
       <button id="bpDel">togli</button>
       <button id="labRender">rendi e ascolta</button>
     </div>
@@ -369,7 +371,12 @@ function labInit() {
   const box = document.getElementById("labParams");
   for (const p of NUM) mk(p, box);
   document.getElementById("bpAdd").onclick = bpAdd;
+  document.getElementById("bpSave").onclick = bpSave;
   document.getElementById("bpDel").onclick = bpDel;
+  // Cambiare un select su un breakpoint selezionato non lo modifica da solo:
+  // finche' non si salva, i valori a schermo e quelli del punto divergono, e
+  // e' l'unica cosa che si puo' guardare senza accorgersene. Lo dice l'info.
+  for (const p of NUM) document.getElementById("P:" + p.path).onchange = labInfo;
   document.getElementById("labRender").onclick = labRender;
 }
 
@@ -385,6 +392,12 @@ function bpAdd() {
   bps.push({t, vals: snapshot()});
   bps.sort((a, b) => a.t - b.t);
   curBp = bps.findIndex(b => b.t === t);
+  drawTl();
+}
+
+function bpSave() {
+  if (curBp < 0) return;
+  bps[curBp].vals = snapshot();
   drawTl();
 }
 
@@ -475,9 +488,16 @@ function setPath(obj, path, v) {
 
 function labInfo() {
   const mossi = NUM.filter(p => Array.isArray(serie(p.path)));
+  // Quali select non corrispondono piu' al breakpoint selezionato.
+  const now = snapshot();
+  const diversi = curBp < 0 ? []
+    : NUM.filter(p => now[p.path] !== bps[curBp].vals[p.path]).map(p => p.path);
+  document.getElementById("bpSave").disabled = !diversi.length;
   document.getElementById("labInfo").textContent =
     bps.length + " breakpoint · " + mossi.length + " parametri mossi" +
-    (mossi.length ? ": " + mossi.map(p => p.path).join(", ") : "");
+    (mossi.length ? ": " + mossi.map(p => p.path).join(", ") : "") +
+    (diversi.length ? "  |  non salvati sul breakpoint " + (curBp + 1) + ": "
+                      + diversi.join(", ") : "");
   document.getElementById("labYaml").textContent = bps.length ? preview() : "";
 }
 

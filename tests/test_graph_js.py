@@ -111,3 +111,31 @@ def test_il_breakpoint_va_solo_dove_il_valore_cambia(tmp_path):
     assert a == [[0, 1], [0.5, 1], [1, 2]]
     assert b == [[0, 5], [0.5, 7], [1, 7]]
     assert c == 9          # mai mosso: scalare, non un inviluppo piatto
+
+
+@node
+def test_salva_modifica_riscrive_solo_il_breakpoint_selezionato(tmp_path):
+    """Cambiare i select non tocca il punto finche' non si salva."""
+    js = _script()
+    frag = (js[js.index("function snapshot"):js.index("function bpAdd")]
+            + js[js.index("function bpSave"):js.index("function bpDel")]
+            + js[js.index("function serie"):js.index("function labDoc")])
+    p = tmp_path / "s.js"
+    p.write_text(
+        "const NUM = [{path:'a'}, {path:'b'}];\n"
+        "const SCHERMO = {a: 9, b: 5};\n"
+        "const document = {getElementById: id => ({value: SCHERMO[id.slice(2)]})};\n"
+        "let bps = [{t:0, vals:{a:1, b:5}}, {t:1, vals:{a:2, b:5}}];\n"
+        "let curBp = 1;\n"
+        "function drawTl() {}\n"
+        + frag +
+        "const prima = serie('a');\n"
+        "bpSave();\n"
+        "console.log(JSON.stringify([prima, serie('a'), serie('b'), bps[0].vals.a]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    prima, dopo, b, primo = __import__("json").loads(out.stdout)
+    assert prima == [[0, 1], [1, 2]]
+    assert dopo == [[0, 1], [1, 9]]     # salvato sul secondo punto
+    assert primo == 1                   # il primo non e' stato toccato
+    assert b == 5                       # invariato: resta scalare
