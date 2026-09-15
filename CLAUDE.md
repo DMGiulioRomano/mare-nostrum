@@ -119,6 +119,11 @@ segmento che PARTE da li', quindi l'ultimo punto non ne ha uno. `linear` e'
 il default e non viene scritto nello YAML; gli altri diventano il terzo
 elemento del punto, `[[0, 0.001, cubic], [1, 0.016]]`.
 
+**I breakpoint sul suono.** Dopo un render del laboratorio i punti compaiono
+anche sopra sonogramma e forma d'onda, in giallo e numerati (il cursore di
+riproduzione resta rosso), e si muovono mentre trascini. Spariscono appena
+suona un file della griglia: li' indicherebbero punti a caso.
+
 **`grain.envelope` non e' automatizzabile**: l'engine vuole una finestra per
 stream ("Window non trovata" se ci trova dei breakpoint). Nel laboratorio sta
 fra i "fissi per lo stream". Tutti i parametri numerici invece reggono gli
