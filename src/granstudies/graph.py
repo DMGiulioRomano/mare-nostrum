@@ -23,15 +23,19 @@ from typing import Any, Dict, List, Tuple
 DISCRETE = os.path.join("audio", "sweep", "discrete")
 
 
-def parse_coords(basename: str) -> Dict[str, float]:
+def parse_coords(basename: str) -> Dict[str, Any]:
     """Coordinate lette dal nome del file. Ignora prefissi (studio, stream).
 
     Il separatore fra coppie e' ``__`` (``sweep._name``); i nomi degli assi
     contengono sia punti che underscore singoli (``pointer.speed_ratio``),
     quindi si divide sul separatore e non su un pattern del nome. I segmenti
     senza ``=`` — il prefisso ``001-41_o2`` — cadono da soli.
+
+    Il valore e' un float quando e' un numero e la stringa cosi' com'e'
+    altrimenti: ``grain.envelope=hanning`` e' un asse categoriale a tutti gli
+    effetti, scartarlo faceva collassare la griglia su un envelope solo.
     """
-    out: Dict[str, float] = {}
+    out: Dict[str, Any] = {}
     for part in basename.split("__"):
         if "=" not in part:
             continue
@@ -39,7 +43,7 @@ def parse_coords(basename: str) -> Dict[str, float]:
         try:
             out[name] = float(raw)
         except ValueError:
-            continue
+            out[name] = raw
     return out
 
 
@@ -109,7 +113,11 @@ def _grid(nodes: List[Dict[str, Any]], order: List[str] | None) -> Dict[str, Any
     axes = axes_of(nodes, order)
     ax_x = axes[0] if axes else ""
     ax_y = axes[1] if len(axes) > 1 else ""
-    vals = {a: sorted({n["coords"][a] for n in nodes}) for a in (ax_x, ax_y) if a}
+    # ``key=str`` perche' un asse categoriale ordina alfabeticamente e
+    # ``sorted`` su valori misti numero/stringa alzerebbe TypeError.
+    vals = {a: sorted({n["coords"][a] for n in nodes},
+                      key=lambda v: v if isinstance(v, float) else str(v))
+            for a in (ax_x, ax_y) if a}
     # L'asse piu' lungo va in verticale: una colonna che scorre si legge,
     # una riga che sborda orizzontalmente no. A pari lunghezza vince
     # l'ordine dichiarato nello study.yml.

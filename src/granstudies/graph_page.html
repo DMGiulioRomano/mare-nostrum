@@ -150,6 +150,7 @@ function key(x, y) { return x + "|" + y; }
 // fonte di verita'. Sotto i cinque decimali si passa all'esponenziale invece
 // di mostrare uno zero che sarebbe falso.
 function fmt(v) {
+  if (typeof v === "string") return v;   // asse categoriale (grain.envelope)
   if (v === 0) return "0";
   const r = Number(v.toFixed(5));
   return r === 0 ? v.toExponential(1) : String(r);

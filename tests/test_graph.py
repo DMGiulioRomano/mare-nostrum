@@ -161,3 +161,16 @@ def test_y_gia_piu_lungo_resta_dov_e():
     g = _grid(nodes, ["a", "b"])
     assert g["axX"] == "a" and g["xs"] == [1, 2]
     assert g["axY"] == "b" and g["ys"] == [3, 4, 5]
+
+
+def test_asse_categoriale_resta_una_coordinata(tmp_path):
+    """grain.envelope non e' un numero: prima cadeva e la griglia collassava."""
+    root = str(tmp_path)
+    _fake(root, "", ["o2__grain.duration=0.001__grain.envelope=hanning",
+                     "o2__grain.duration=0.001__grain.envelope=sinc",
+                     "o2__grain.duration=0.002__grain.envelope=hanning",
+                     "o2__grain.duration=0.002__grain.envelope=sinc"])
+    combo = collect_combos(root)[0]
+    assert len(combo["nodes"]) == 4
+    assert sorted([combo["axX"], combo["axY"]]) == ["grain.duration", "grain.envelope"]
+    assert combo["ys"] == ["hanning", "sinc"] or combo["xs"] == ["hanning", "sinc"]
