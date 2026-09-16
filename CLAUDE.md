@@ -124,10 +124,30 @@ anche sopra sonogramma e forma d'onda, in giallo e numerati (il cursore di
 riproduzione resta rosso), e si muovono mentre trascini. Spariscono appena
 suona un file della griglia: li' indicherebbero punti a caso.
 
-**`grain.envelope` non e' automatizzabile**: l'engine vuole una finestra per
-stream ("Window non trovata" se ci trova dei breakpoint). Nel laboratorio sta
-fra i "fissi per lo stream". Tutti i parametri numerici invece reggono gli
-inviluppi — verificati uno per uno.
+**`grain.envelope` si automatizza come gli altri**, ma per un'altra strada:
+l'engine non interpola fra due finestre, le **sceglie grano per grano**. Una
+lista di breakpoint li' sopra la rifiuta ("Window non trovata"); quello che
+conosce e' `{states, curve}` (`MultiStateWindowStrategy`), dove `states` mappa
+un valore in [0,1] su un nome di finestra e `curve` e' il cammino nel tempo
+dentro quello spazio.
+
+La galleria delle finestre e' percio' scesa fra i parametri automatizzabili, col
+suo menu di interpolazione come tutti gli altri, e li' i tre tipi vogliono dire
+una cosa sola ma udibile:
+
+- `step` — **cambio netto**: fino a quel tempo tutti i grani hanno la finestra
+  vecchia, da li' in poi tutti la nuova;
+- `linear` / `cubic` — **morphing**: nella transizione i grani si mescolano, la
+  proporzione segue la curva (a meta' strada e' 50/50).
+
+Gli stati sono le finestre nell'ordine in cui compaiono, non l'insieme: una
+finestra che torna (hanning -> bartlett -> hanning) ne apre uno nuovo, perche'
+l'engine pretende valori di stato crescenti. Se la finestra non cambia mai
+resta la stringa scalare di prima. Il round-trip e' verificato
+(`tests/test_graph_js.py`).
+
+Gli altri categoriali restano fissi per lo stream. Tutti i parametri numerici
+reggono gli inviluppi — verificati uno per uno.
 
 ## Diario di ascolto
 

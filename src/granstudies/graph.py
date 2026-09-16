@@ -176,10 +176,11 @@ def lab_data(raw: Dict[str, Any] | None) -> Dict[str, Any]:
     raw = raw or {}
     params: List[Dict[str, Any]] = []
     def add(path: str, values: List[Any]) -> None:
-        # Categoriale = non automatizzabile: `grain.envelope` e' una finestra
-        # scelta una volta per stream, l'engine rifiuta i breakpoint li' sopra
-        # ("Window non trovata"). Nel laboratorio sono manopole fisse, non
-        # punti di un inviluppo.
+        # Categoriale = il valore e' un nome, non un numero. Restano manopole
+        # fisse per lo stream, con un'eccezione: `grain.envelope`, che la
+        # pagina automatizza scrivendo {states, curve} invece di una lista di
+        # breakpoint — l'engine rifiuta la seconda ("Window non trovata") ma
+        # conosce la prima (MultiStateWindowStrategy).
         kind = "num" if all(isinstance(v, (int, float)) for v in values) else "cat"
         params.append({"path": path, "values": values, "kind": kind})
 
