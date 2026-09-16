@@ -1,5 +1,5 @@
-# project: prova
-# saved:   2026-08-21T21:14:18.926Z
+# project: mare-nostrum
+# saved:   2026-09-11T09:52:35.294Z
 # editor:  PGE-ui
 
 duration: 322.074
@@ -30,6 +30,7 @@ streams:
     pan_range: 360
     volume: -3
   - stream_id: stream2-norm
+    mute: true
     onset: 0
     duration: 173.524
     sample: 001-41_5-5_5_norm.flac
@@ -53,7 +54,6 @@ streams:
     pan: 0
     pan_range: 360
     volume: -3
-
   - stream_id: stream3
     onset: 0
     duration: 249.225
