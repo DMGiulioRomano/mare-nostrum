@@ -5,6 +5,7 @@ pagina, ed e' anche l'unico che puo' sbagliare in silenzio: uno spettrogramma
 storto si guarda senza accorgersene. Il resto (canvas, cursori) e' verificabile
 solo a occhio e resta fuori.
 """
+import json
 import os
 import shutil
 import subprocess
@@ -123,7 +124,9 @@ def test_salva_modifica_riscrive_solo_il_breakpoint_selezionato(tmp_path):
             + js[js.index("function serie"):js.index("function labDoc")])
     p = tmp_path / "s.js"
     p.write_text(
-        "const NUM = [{path:'a'}, {path:'b'}];\n"
+        "const NUM = [{path:'a', kind:'num'}, {path:'b', kind:'num'}];\n"
+        "const AUT = NUM;\n"
+        "const ENVP = null, EP = 'grain.envelope';\n"
         "const SCHERMO = {a: 9, b: 5};\n"
         "const document = {getElementById: id => ({value: id[0] === 'I'"
         "  ? 'linear' : SCHERMO[id.slice(2)]})};\n"
@@ -167,7 +170,9 @@ def test_riaprire_un_progetto_ricostruisce_i_breakpoint(tmp_path):
         "fill_factor": 2}]}
     p = tmp_path / "o.js"
     p.write_text(
-        "const NUM = [{path:'grain.duration'}, {path:'pitch.ratio'}, {path:'fill_factor'}];\n"
+        "const NUM = [{path:'grain.duration', kind:'num'}, {path:'pitch.ratio', kind:'num'}, {path:'fill_factor', kind:'num'}];\n"
+        "const AUT = NUM;\n"
+        "const ENVP = null, EP = 'grain.envelope';\n"
         "const st = " + __import__("json").dumps(doc["streams"][0]) + ";\n"
         + frag +
         "const ts = new Set([0]);\n"
@@ -201,7 +206,9 @@ def test_applica_a_tutti_tocca_solo_i_valori_appena_cambiati(tmp_path):
             + js[js.index("function cambiati"):js.index("function bpDel")])
     p = tmp_path / "a.js"
     p.write_text(
-        "const NUM = [{path:'a'}, {path:'b'}, {path:'c'}];\n"
+        "const NUM = [{path:'a', kind:'num'}, {path:'b', kind:'num'}, {path:'c', kind:'num'}];\n"
+        "const AUT = NUM;\n"
+        "const ENVP = null, EP = 'grain.envelope';\n"
         # i select mostrano a=9 (cambiato); b e c restano come nel punto corrente
         "const SCHERMO = {a: 9, b: 5, c: 1};\n"
         "const document = {getElementById: id => ({value: id[0] === 'I'"
@@ -232,7 +239,9 @@ def test_il_tipo_di_interpolazione_finisce_sul_punto_giusto(tmp_path):
             + js[js.index("function serie"):js.index("function labDoc")])
     p = tmp_path / "i.js"
     p.write_text(
-        "const NUM = [{path:'a'}, {path:'b'}, {path:'c'}];\n"
+        "const NUM = [{path:'a', kind:'num'}, {path:'b', kind:'num'}, {path:'c', kind:'num'}];\n"
+        "const AUT = NUM;\n"
+        "const ENVP = null, EP = 'grain.envelope';\n"
         "const document = {getElementById: () => null};\n"
         "let bps = ["
         " {t:0,   vals:{a:1, b:5, c:2}, ints:{a:'cubic', b:'linear', c:'step'}},"
@@ -277,7 +286,9 @@ def test_l_anteprima_mostra_anche_il_tipo(tmp_path):
             + js[js.index("function preview"):js.index("// --- il file")])
     p = tmp_path / "p.js"
     p.write_text(
-        "const NUM = [{path:'a'}, {path:'b'}];\n"
+        "const NUM = [{path:'a', kind:'num'}, {path:'b', kind:'num'}];\n"
+        "const AUT = NUM;\n"
+        "const ENVP = null, EP = 'grain.envelope';\n"
         "let bps = [{t:0, vals:{a:1, b:1}, ints:{a:'cubic', b:'linear'}},"
         "           {t:1, vals:{a:2, b:2}, ints:{a:'cubic', b:'linear'}}];\n"
         + frag + "console.log(preview());")
@@ -286,3 +297,92 @@ def test_l_anteprima_mostra_anche_il_tipo(tmp_path):
     righe = out.stdout.strip().splitlines()
     assert righe[0] == "a: [[0.000, 1, cubic], [1.000, 2]]"
     assert righe[1] == "b: [[0.000, 1], [1.000, 2]]"
+
+
+# --- le finestre sui breakpoint -------------------------------------------
+# serieEnv comprime la sequenza delle finestre in {states, curve} e envA la
+# rilegge: e' l'unico punto del laboratorio dove il valore non e' un numero,
+# quindi l'unico dove il round-trip puo' rompersi in silenzio.
+
+def _fn(js: str, nome: str) -> str:
+    i = js.index("function " + nome + "(")
+    j = js.index("\nfunction ", i + 1)
+    return js[i:j]
+
+
+def _env(bps: str, coda: str, tmp_path) -> str:
+    js = _script()
+    src = "\n".join([
+        'const EP = "grain.envelope";',
+        _fn(js, "serieEnv"), _fn(js, "envA"),
+        _fn(js, "valoreA"), _fn(js, "tipoDi"),
+        "let bps = " + bps + ";", coda,
+    ])
+    p = tmp_path / "env.js"
+    p.write_text(src)
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    return out.stdout.strip()
+
+
+def _bps(seq, tipi=None):
+    """Breakpoint equispaziati in [0,1], una finestra ciascuno."""
+    n = max(len(seq) - 1, 1)
+    return "[" + ",".join(
+        '{t:%s, vals:{"grain.envelope":"%s"}, ints:{"grain.envelope":"%s"}}'
+        % (i / n, w, (tipi or ["linear"] * len(seq))[i])
+        for i, w in enumerate(seq)) + "]"
+
+
+@node
+def test_una_finestra_sola_resta_una_stringa(tmp_path):
+    """Uno stream con un envelope solo non diventa un multistate."""
+    got = _env(_bps(["hanning", "hanning", "hanning"]),
+               "console.log(JSON.stringify(serieEnv()));", tmp_path)
+    assert got == '"hanning"'
+
+
+@node
+def test_la_sequenza_diventa_states_piu_curve(tmp_path):
+    got = _env(_bps(["hanning", "bartlett"], ["step", "linear"]),
+               "console.log(JSON.stringify(serieEnv()));", tmp_path)
+    assert json.loads(got) == {
+        "states": [[0, "hanning"], [1, "bartlett"]],
+        # `step` sul primo punto: il cambio e' netto. L'ultimo non ha tipo.
+        "curve": [[0, 0, "step"], [1, 1]],
+    }
+
+
+@node
+def test_una_finestra_che_torna_apre_un_terzo_stato(tmp_path):
+    """hanning -> bartlett -> hanning: tre stati, non due.
+
+    L'engine pretende valori di stato crescenti (InvalidStrategyConfigError
+    altrimenti): riusare lo stato 0 per l'ultimo punto farebbe tornare
+    indietro la curve, quindi la finestra ripetuta ne apre uno nuovo.
+    """
+    spec = json.loads(_env(_bps(["hanning", "bartlett", "hanning"]),
+                           "console.log(JSON.stringify(serieEnv()));", tmp_path))
+    assert [w for _, w in spec["states"]] == ["hanning", "bartlett", "hanning"]
+    vals = [v for v, _ in spec["states"]]
+    assert vals == sorted(vals)
+    assert [t for t, _ in spec["curve"]] == [0, 0.5, 1]
+
+
+@node
+@pytest.mark.parametrize("seq", [
+    ["hanning", "bartlett"],
+    ["hanning", "bartlett", "gaussian"],
+    ["hanning", "bartlett", "hanning"],
+    ["hanning", "hanning", "expodec", "expodec", "gaussian"],
+])
+def test_riaprendo_ogni_breakpoint_ritrova_la_sua_finestra(tmp_path, seq):
+    """Il round-trip: serieEnv scrive, envA rilegge, la sequenza e' la stessa."""
+    n = max(len(seq) - 1, 1)
+    got = _env(_bps(seq), """
+const spec = serieEnv();
+const ts = spec.curve.map(p => p[0]);
+console.log(JSON.stringify(ts.map(t => envA(spec, t))));
+""", tmp_path)
+    assert json.loads(got) == seq[:len(json.loads(got))]
+    assert json.loads(got) == seq

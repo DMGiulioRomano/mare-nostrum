@@ -382,7 +382,16 @@ const L = D.lab || {base:{}, params:[]};
 // sul punto e vale per il segmento che PARTE da li'; l'ultimo non ne ha uno.
 const INTERP = ["linear", "cubic", "step"];
 const NUM = L.params.filter(p => p.kind === "num");
-const CAT = L.params.filter(p => p.kind !== "num");
+// `grain.envelope` si automatizza come gli altri, ma il suo valore e' un nome
+// e non un numero: l'engine non interpola fra due finestre, le sceglie grano
+// per grano. Sul documento diventa {states, curve} — la MultiStateWindowStrategy
+// che l'engine gia' conosce — dove `step` da' il cambio netto e `linear` il
+// morphing progressivo. Gli altri categoriali restano fissi per lo stream.
+const EP = "grain.envelope";
+const ENVP = L.params.find(p => p.path === EP && p.kind !== "num") || null;
+const CAT = L.params.filter(p => p.kind !== "num" && p.path !== EP);
+// I parametri che stanno sui breakpoint: i numerici piu' l'envelope.
+const AUT = NUM.concat(ENVP ? [ENVP] : []);
 
 let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
 let curBp = -1;
@@ -410,13 +419,8 @@ function labInit() {
   // nello study.yml — non e' un asse, e' una scelta per stream — e ognuna col
   // suo profilo disegnato, che e' l'unica cosa che le distingue davvero.
   const ENV = L.envelopes || {};
-  // I categoriali non sono automatizzabili (l'engine vuole UNA finestra per
-  // stream): stanno fuori dai breakpoint, con la durata e il nome.
   fixed.innerHTML = "<h2>fissi per lo stream</h2>";
-  for (const p of CAT) {
-    if (p.path === "grain.envelope" && Object.keys(ENV).length) mkEnv(p, fixed, ENV);
-    else mk(p, fixed);
-  }
+  for (const p of CAT) mk(p, fixed);
   for (const [id, lab, val, type] of [["labDur", "durata (s)", 8, "number"],
                                       ["labName", "nome", "lab", "text"]]) {
     const r = document.createElement("div"); r.className = "row";
@@ -435,9 +439,9 @@ function labInit() {
     // e' la decisione che azzera le eccezioni fatte finora.
     for (const b of bps) {
       b.ints = b.ints || {};
-      for (const p of NUM) b.ints[p.path] = ovunque.value;
+      for (const p of AUT) b.ints[p.path] = ovunque.value;
     }
-    for (const p of NUM) document.getElementById("I:" + p.path).value = ovunque.value;
+    for (const p of AUT) document.getElementById("I:" + p.path).value = ovunque.value;
     drawTl();
     document.getElementById("labInfo").textContent =
       "interpolazione " + ovunque.value + " su tutti i " + bps.length + " breakpoint";
@@ -446,11 +450,15 @@ function labInit() {
 
   const tutti = mkInterp("*");
   tutti.onchange = () => {
-    for (const p of NUM) document.getElementById("I:" + p.path).value = tutti.value;
+    for (const p of AUT) document.getElementById("I:" + p.path).value = tutti.value;
     labInfo();
   };
   box.appendChild(riga("interpolazione (questo bp)", tutti, "capo"));
   for (const p of NUM) { mk(p, box); box.lastChild.appendChild(mkInterp(p.path)); }
+  if (ENVP) {
+    if (Object.keys(ENV).length) mkEnv(ENVP, box, ENV); else mk(ENVP, box);
+    box.lastChild.appendChild(mkInterp(EP));
+  }
   document.getElementById("bpAdd").onclick = bpAdd;
   document.getElementById("bpSave").onclick = bpSave;
   document.getElementById("bpAll").onclick = bpAll;
@@ -459,6 +467,7 @@ function labInit() {
   // finche' non si salva, i valori a schermo e quelli del punto divergono, e
   // e' l'unica cosa che si puo' guardare senza accorgersene. Lo dice l'info.
   for (const p of NUM) document.getElementById("P:" + p.path).onchange = labInfo;
+  if (ENVP) ENVCB = labInfo;
   document.getElementById("labRender").onclick = labRender;
   document.getElementById("fNew").onclick = fNew;
   document.getElementById("fOpen").onclick = fOpen;
@@ -478,6 +487,8 @@ function envSvg(pts) {
   return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><path d="${d}"/></svg>`;
 }
 
+let ENVCB = null;    // labInit lo aggancia a labInfo, come per i select
+
 function mkEnv(p, box, ENV) {
   const r = document.createElement("div"); r.className = "row";
   const k = document.createElement("div"); k.className = "k"; k.textContent = p.path;
@@ -495,11 +506,12 @@ function mkEnv(p, box, ENV) {
     b.onclick = () => {
       hid.value = name;
       for (const o of box2.querySelectorAll("button")) o.classList.toggle("on", o === b);
+      if (ENVCB) ENVCB();
     };
     box2.appendChild(b);
   }
-  r.appendChild(k); r.appendChild(box2);
-  box.appendChild(r); box.appendChild(hid);
+  r.appendChild(k); r.appendChild(box2); r.appendChild(hid);
+  box.appendChild(r);
 }
 
 // Una riga della griglia dei parametri: etichetta a sinistra, il menu nella
@@ -527,14 +539,17 @@ function mkInterp(path) {
 
 function snapshot() {
   const v = {};
-  for (const p of NUM) v[p.path] = Number(document.getElementById("P:" + p.path).value);
+  for (const p of AUT) {
+    const raw = document.getElementById("P:" + p.path).value;
+    v[p.path] = p.kind === "num" ? Number(raw) : raw;
+  }
   return v;
 }
 
 // Il tipo di interpolazione scelto ora, parametro per parametro.
 function snapInterp() {
   const v = {};
-  for (const p of NUM) v[p.path] = document.getElementById("I:" + p.path).value;
+  for (const p of AUT) v[p.path] = document.getElementById("I:" + p.path).value;
   return v;
 }
 
@@ -564,7 +579,7 @@ function bpSave() {
 function cambiati() {
   if (curBp < 0) return [];
   const ora = snapshot(), ori = snapInterp();
-  return NUM.map(p => p.path).filter(
+  return AUT.map(p => p.path).filter(
     k => ora[k] !== bps[curBp].vals[k] || ori[k] !== tipoDi(bps[curBp], k));
 }
 
@@ -593,11 +608,10 @@ function bpDel() {
 
 function bpLoad(i) {
   curBp = i;
-  for (const [path, v] of Object.entries(bps[i].vals)) {
-    const s = document.getElementById("P:" + path);
-    if (s) s.value = v;
-  }
-  for (const p of NUM) {
+  // setSel e non `s.value =`: la galleria delle finestre ha anche il bottone
+  // acceso da spostare, e il valore da solo lascerebbe indietro il disegno.
+  for (const [path, v] of Object.entries(bps[i].vals)) setSel(path, v);
+  for (const p of AUT) {
     const s = document.getElementById("I:" + p.path);
     if (s) s.value = tipoDi(bps[i], p.path);
   }
@@ -665,6 +679,49 @@ function serie(path) {
     (p[2] === "linear" || i === tenuti.length - 1) ? [p[0], p[1]] : [p[0], p[1], p[2]]);
 }
 
+// La sequenza delle finestre diventa {states, curve}: gli stati sono le
+// finestre nell'ordine in cui compaiono — una ripetizione consecutiva non ne
+// apre uno nuovo — spaziati uniformemente in [0,1], e la curve e' il cammino
+// nel tempo dentro quello spazio. Cosi' gli stati restano crescenti come
+// l'engine pretende anche quando la sequenza torna su una finestra gia' usata:
+// hanning -> bartlett -> hanning da' tre stati, non due.
+//
+// Se la finestra non cambia mai resta la stringa di prima: uno stream con un
+// envelope solo non ha motivo di diventare un multistate.
+function serieEnv() {
+  const seq = bps.map(b => b.vals[EP]);
+  if (!seq.length || seq.some(w => !w)) return null;
+  if (seq.every(w => w === seq[0])) return seq[0];
+  const W = [], idx = [];
+  for (const w of seq) {
+    if (!W.length || W[W.length - 1] !== w) W.push(w);
+    idx.push(W.length - 1);
+  }
+  const n = W.length - 1;
+  return {
+    states: W.map((w, i) => [i / n, w]),
+    // Il tipo sta sul punto e governa il segmento che parte di li'; l'ultimo
+    // non ne ha uno, e `linear` e' il default che non si scrive.
+    curve: bps.map((b, i) => {
+      const pt = [b.t, idx[i] / n], tipo = tipoDi(b, EP);
+      return (tipo === "linear" || i === bps.length - 1) ? pt : pt.concat(tipo);
+    }),
+  };
+}
+
+// L'inverso: la finestra al tempo t. La curve vale li' quanto dice il suo
+// inviluppo e lo stato e' quello col valore piu' vicino — sui tempi dei
+// breakpoint ci cade esattamente sopra, che e' cio' che chiude il round-trip.
+function envA(spec, t) {
+  if (typeof spec === "string") return spec;
+  if (!spec || !spec.states || !spec.states.length) return null;
+  const v = Number(valoreA(spec.curve, t));
+  let best = spec.states[0];
+  for (const st of spec.states)
+    if (Math.abs(st[0] - v) < Math.abs(best[0] - v)) best = st;
+  return best[1];
+}
+
 function labDoc() {
   const dur = Number(document.getElementById("labDur").value) || 8;
   // stream_id/onset/duration in testa, come nei documenti scritti a mano.
@@ -676,6 +733,10 @@ function labDoc() {
   for (const p of NUM) {
     const v = serie(p.path);
     if (v !== null) setPath(st, p.path, v);
+  }
+  if (ENVP) {
+    const v = serieEnv();
+    if (v !== null) setPath(st, EP, v);
   }
   return {duration: dur, bpm: 120, streams: [st]};
 }
@@ -689,6 +750,8 @@ function setPath(obj, path, v) {
 
 function labInfo() {
   const mossi = NUM.filter(p => Array.isArray(serie(p.path)));
+  if (ENVP && typeof serieEnv() === "object" && serieEnv() !== null)
+    mossi.push(ENVP);
   // Quali select non corrispondono piu' al breakpoint selezionato.
   const diversi = cambiati();
   document.getElementById("bpSave").disabled = !diversi.length;
@@ -731,10 +794,15 @@ function marcaAudio() {
 function preview() {
   const punto = pt => "[" + pt[0].toFixed(3) + ", " + pt[1] +
                       (pt[2] ? ", " + pt[2] : "") + "]";
-  return NUM.map(p => [p.path, serie(p.path)])
-            .filter(([, v]) => Array.isArray(v))
-            .map(([k, v]) => k + ": [" + v.map(punto).join(", ") + "]")
-            .join("\n");
+  const righe = NUM.map(p => [p.path, serie(p.path)])
+                   .filter(([, v]) => Array.isArray(v))
+                   .map(([k, v]) => k + ": [" + v.map(punto).join(", ") + "]");
+  const e = ENVP ? serieEnv() : null;
+  if (e && typeof e === "object")
+    righe.push(EP + ":\n  states: [" +
+               e.states.map(st => "[" + st[0].toFixed(3) + ", " + st[1] + "]").join(", ") +
+               "]\n  curve: [" + e.curve.map(punto).join(", ") + "]");
+  return righe.join("\n");
 }
 
 
@@ -888,12 +956,20 @@ function carica(doc, path) {
     const v = leggiPath(st, p.path);
     if (Array.isArray(v)) for (const [t] of v) ts.add(t);
   }
+  // I tempi della curve dell'envelope sono breakpoint come gli altri: e' la
+  // stessa unione, altrimenti riaprendo un cambio di finestra sparirebbe.
+  const espec = ENVP ? leggiPath(st, EP) : null;
+  if (espec && Array.isArray(espec.curve)) for (const [t] of espec.curve) ts.add(t);
+  const envOra = () => ENVP ? document.getElementById("P:" + EP).value : null;
   bps = [...ts].sort((a, b) => a - b).map(t => ({
     t,
     // Il tipo del segmento in cui t cade: e' quello che decide come si arriva
     // al punto dopo, ed e' cio' che il menu di quella riga deve mostrare.
-    ints: Object.fromEntries(NUM.map(p => [p.path, tipoA(leggiPath(st, p.path), t)])),
-    vals: Object.fromEntries(NUM.map(p => {
+    ints: Object.fromEntries(AUT.map(p => [p.path,
+      p.path === EP ? tipoA(espec && espec.curve, t)
+                    : tipoA(leggiPath(st, p.path), t)])),
+    vals: Object.fromEntries(AUT.map(p => {
+      if (p.path === EP) return [EP, (espec ? envA(espec, t) : null) || envOra()];
       // Il documento puo' non avere affatto la chiave (un parametro lasciato
       // al default dell'engine): li' vale quello che dice il select, non NaN.
       const v = leggiPath(st, p.path);
