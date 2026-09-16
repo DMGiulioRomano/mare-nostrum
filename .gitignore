@@ -27,3 +27,7 @@ htmlcov/
 # La riga resta finche' la cartella e' sul disco, per non riempire git status
 # di gigabyte di audio.
 /takes/
+
+# Artefatti di PGE-ui: audio/grains renderizzati e cache dei peaks
+/output/
+/cache/
