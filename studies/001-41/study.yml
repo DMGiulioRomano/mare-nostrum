@@ -18,45 +18,6 @@ title: "001-41 — matrice degli assi"
 seed: 1441
 samples_dir: samples
 
-# Catalogo dei valori: le liste stanno qui una volta sola e sotto le riusano
-# sia gli assi interni sia quelli esterni, per alias YAML (`*v_pitch`).
-# Non e' una chiave del linguaggio, e' un magazzino: la pipeline la ignora.
-_assi:
-  duration:
-    baseline: 0.05
-    # Da 1 campione (floor dinamico, 1/48000 s) a mezzo secondo. Passo x2
-    # (ottava) fuori dalla banda 500-5000 Hz; dentro quella banda passo piu'
-    # fitto (fino a ~x1.13) perche' li' la discriminazione di altezza
-    # dell'orecchio e' piu' fine e un salto di ottava si sente come un buco.
-    values: &v_duration [0.000020833333333333333, 0.00004, 0.00008, 0.00016,
-             0.00025, 0.00035, 0.0004, 0.00045, 0.0005, 0.0006, 0.0007, 0.0008,
-             0.0009, 0.001, 0.0014, 0.002,
-             0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512]
-  pitch:
-    baseline: 0.2
-    # 0.2 -> 1.0 in passi geometrici (ratio 5^(1/4) ~ 1.495): il pitch ratio
-    # e' esponenziale, passi uguali all'orecchio = passi uguali in rapporto.
-    values: &v_pitch [0.2, 0.447, 0.75, 1.0]
-  speed:
-    baseline: 0.1
-    # ponytail: placeholder geometrico x2 attorno al valore base (0.1), da
-    # correggere ascoltando.
-    values: &v_speed [0.025, 0.05, 0.1, 0.25, 0.5, 1]
-  fill_factor:
-    baseline: 2
-    # ponytail: placeholder geometrico x2, da correggere ascoltando.
-    values: &v_fill_factor [0.5, 0.7, 0.85, 1, 2]
-  envelope:
-    baseline: hanning
-    # Asse categoriale: tutte le finestre del catalogo dell'engine
-    # (WindowRegistry.WINDOWS) — 9 GEN20 simmetriche, half_sine (GEN09), 6
-    # asimmetriche GEN16. L'alias `triangle` non c'e': e' bartlett.
-    values: &v_envelope [hamming, hanning, bartlett, blackman, blackman_harris,
-             gaussian, kaiser, rectangle, sinc,
-             half_sine,
-             expodec, expodec_strong, exporise, exporise_strong,
-             rexpodec, rexporise]
-
 # Da mare-nostrum.yml, stream2. Escluso `grain.read_direction` (envelope
 # scritto sul brano: qui falserebbe l'ascolto, resta al default 1). I valori a
 # riposo dei parametri che sono assi stanno qui: quando un asse li muove, la
@@ -99,10 +60,17 @@ axes:
   interpolation: step
   grain.duration:
     baseline: 0.05
-    values: *v_duration
+    # Da 1 campione (floor dinamico, 1/48000 s) a mezzo secondo. Passo x2
+    # (ottava) fuori dalla banda 500-5000 Hz; dentro quella banda passo piu'
+    # fitto (fino a ~x1.13) perche' li' la discriminazione di altezza
+    # dell'orecchio e' piu' fine e un salto di ottava si sente come un buco.
+    values: [0.000020833333333333333, 0.00004, 0.00008, 0.00016,
+             0.00025, 0.00035, 0.0004, 0.00045, 0.0005, 0.0006, 0.0007, 0.0008,
+             0.0009, 0.001, 0.0014, 0.002,
+             0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512]
   fill_factor:
     baseline: 2
-    values: *v_fill_factor
+    values: [0.5, 0.7, 0.85, 1, 2]
 
 # --- assi esterni ----------------------------------------------------------
 # Le manopole. Ognuna e' un selettore in cima alla pagina: la cella resta la
@@ -110,14 +78,15 @@ axes:
 # stesso punto della griglia. I primi tre erano assi interni delle vecchie
 # coppie (duration-pitch, duration-speed, speed-pitch, duration-envelope).
 for_each:
-  base.grain.envelope: {values: *v_envelope}
-  base.pitch.ratio: {values: *v_pitch}
-  base.pointer.speed_ratio: {values: *v_speed}
-  base.distribution: {values: [0, 0.3, 1]}
+  base.grain.envelope:
+    values: [bartlett, gaussian, rectangle, expodec, exporise, rexpodec, rexporise]
+  base.pitch.ratio: {values: [0.2, 0.447, 0.75, 1.0]}
+  base.pointer.speed_ratio: {values: [0.025, 0.05, 0.1, 0.25, 0.5, 1]}
+  base.distribution: {values: [0, 0.3, .5, .75, 1]}
   # 0.0001 -> 0.01 in passi geometrici (~x3.16), infittiti a ~x1.33 sopra
   # 0.003: e' li' che si e' deciso di guardare da vicino.
   base.pointer.offset_range:
     values: [0, 0.0001, 0.000316, 0.001,
              0.00316, 0.0042, 0.0056, 0.0075, 0.01]
-  base.grain.duration_range: {values: [0, 0.01]}
-  base.pitch.range: {values: [0, 0.05]}
+  base.grain.duration_range: {values: [0, 0.0001, 0.0003, 0.0006, 0.0008, 0.001, 0.003, 0.005, 0.007, 0.0085, 0.01, 0.02]}
+  base.pitch.range: {values: [0, 0.05, 0.075, 0.09, 0.1]}
