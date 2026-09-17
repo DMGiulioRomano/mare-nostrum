@@ -1,6 +1,9 @@
 """Il render on demand: documento JSON -> YAML leggibile -> engine."""
 import os
+import socket
 import subprocess
+import sys
+import time
 
 from granstudies import serve as S
 
@@ -138,3 +141,50 @@ def test_i_sample_si_servono_ma_solo_quelli(tmp_path):
         assert get("/samples/manca.wav")[0] == 404
     finally:
         srv.shutdown()
+
+
+# --- la porta occupata: un nostro orfano si chiude, un estraneo no ---------
+
+def _serverino(port):
+    """Un server qualunque sulla porta: non e' un `granstudies serve`."""
+    p = subprocess.Popen([sys.executable, "-m", "http.server", str(port),
+                          "--bind", "127.0.0.1"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(50):
+        time.sleep(0.1)
+        if S.pid_sulla_porta(port) == p.pid:
+            return p
+    p.kill()
+    raise AssertionError("il serverino di prova non ha preso la porta")
+
+
+def _porta_libera():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_un_processo_non_nostro_non_si_chiude():
+    port = _porta_libera()
+    p = _serverino(port)
+    try:
+        assert S.libera_porta(port) is None      # non e' un granstudies serve
+        assert p.poll() is None                  # ed e' ancora vivo
+    finally:
+        p.kill(); p.wait()
+
+
+def test_un_nostro_serve_orfano_si_chiude_e_libera_la_porta(monkeypatch):
+    port = _porta_libera()
+    p = _serverino(port)
+    try:
+        # L'unica cosa che qui non si puo' avere davvero e' la riga di comando
+        # di un `granstudies serve`: il resto (kill, attesa, porta libera) e'
+        # quello vero.
+        monkeypatch.setattr(S, "_e_un_nostro_serve", lambda pid: True)
+        assert S.libera_porta(port) == p.pid
+        assert S.pid_sulla_porta(port) is None
+    finally:
+        if p.poll() is None:
+            p.kill()
+        p.wait()

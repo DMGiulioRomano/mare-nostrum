@@ -60,6 +60,13 @@ La modalità take non esiste più: vedi `docs/plans/done/for-each.md`.
 
 ## Il laboratorio (`make serve`)
 
+`make serve` chiude da solo il server di prima. Chiusa la pagina, il processo
+resta: se la porta e' tenuta da un altro `granstudies serve` lo si termina
+(SIGTERM, poi SIGKILL se non molla) e si riparte — e' il proprio lavoro di
+prima, non quello di qualcun altro. Se la porta e' di un processo estraneo non
+si tocca niente e si dice chi e' (`libera_porta` in `serve.py`, verificata in
+`tests/test_serve.py`).
+
 `make serve STUDY=<scala>` non e' piu' `http.server`: e' `granstudies serve`,
 che serve la pagina e accetta `POST /render`. La pagina ha due schede.
 

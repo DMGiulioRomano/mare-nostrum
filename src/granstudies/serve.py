@@ -36,8 +36,10 @@ import json
 import os
 import posixpath
 import re
+import signal
 import subprocess
 import sys
+import time
 from functools import partial
 from typing import Any, Dict, Tuple
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -277,21 +279,69 @@ def serve(gen_root: str, repo_root: str, port: int = 8000):
     crea(gen_root, repo_root, port).serve_forever()
 
 
-def porta_occupata(port: int) -> str:
-    """Chi tiene la porta, per dirlo invece di stampare uno stack trace.
-
-    Capita di continuo: un `make serve` di ieri e' ancora vivo in un terminale
-    chiuso. La domanda e' sempre "chi", e ``lsof`` ce l'ha.
-    """
+def pid_sulla_porta(port: int) -> int | None:
+    """Chi tiene la porta. ``lsof`` e' l'unico che lo sa, e c'e' ovunque."""
     try:
         out = subprocess.run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
                              capture_output=True, text=True, timeout=5).stdout
         righe = out.strip().splitlines()[1:]
         if righe:
-            pid = righe[0].split()[1]
-            return (f"la porta {port} e' gia' occupata dal processo {pid}: "
-                    f"chiudilo con 'kill {pid}', o usa 'make serve PORT=<altra>'.")
-    except (OSError, subprocess.SubprocessError):
+            return int(righe[0].split()[1])
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
         pass
+    return None
+
+
+def _e_un_nostro_serve(pid: int) -> bool:
+    """Se quel processo e' un ``granstudies serve``, e non qualcos'altro.
+
+    E' la domanda che autorizza il kill: un server nostro rimasto orfano si
+    chiude senza chiedere niente, ma sulla stessa porta puo' esserci il lavoro
+    di qualcun altro, e quello non si tocca.
+    """
+    try:
+        cmd = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "granstudies" in cmd and "serve" in cmd.split()
+
+
+def libera_porta(port: int) -> int | None:
+    """Chiude il ``granstudies serve`` orfano che tiene la porta, e dice chi era.
+
+    Capita di continuo: si chiude la finestra di Safari, il terminale se ne va,
+    e il server di ieri e' ancora li'. Non e' un altro lavoro, e' il proprio
+    lavoro di prima: chiederne conferma ogni volta sarebbe solo un passaggio in
+    piu'. Restituisce ``None`` se la porta e' di qualcun altro — quello non si
+    tocca, e chi chiama lo dice all'utente.
+    """
+    pid = pid_sulla_porta(port)
+    if pid is None or pid == os.getpid() or not _e_un_nostro_serve(pid):
+        return None
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return None
+    # Il tempo di mollare il socket. Se non molla (render in corso in un
+    # thread), SIGKILL: la porta serve adesso.
+    for _ in range(20):
+        time.sleep(0.1)
+        if pid_sulla_porta(port) != pid:
+            return pid
+    try:
+        os.kill(pid, signal.SIGKILL)
+        time.sleep(0.3)
+    except OSError:
+        pass
+    return pid
+
+
+def porta_occupata(port: int) -> str:
+    """Chi tiene la porta, per dirlo invece di stampare uno stack trace."""
+    pid = pid_sulla_porta(port)
+    if pid is not None:
+        return (f"la porta {port} e' gia' occupata dal processo {pid}: "
+                f"chiudilo con 'kill {pid}', o usa 'make serve PORT=<altra>'.")
     return (f"la porta {port} e' gia' occupata: chiudi l'altro server, "
             f"o usa 'make serve PORT=<altra>'.")
