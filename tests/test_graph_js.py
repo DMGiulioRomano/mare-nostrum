@@ -476,28 +476,37 @@ def test_un_numerico_si_puo_scrivere_a_mano(tmp_path):
 
 @node
 def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
-    """Un passo indietro e uno avanti: la storia e' lo stato del lavoro."""
+    """La storia e' tutto il lavoro: i punti e i valori a schermo non salvati."""
     js = _script()
-    frag = js[js.index("function istantanea"):js.index("addEventListener(\"keydown\", e => {\n  if (e.key.toLowerCase()")]
+    frag = (js[js.index("function istantanea"):js.index("addEventListener(\"keydown\", e => {\n  if (e.key.toLowerCase()")]
+            + _fn(js, "snapshot") + _fn(js, "snapInterp"))
     p = tmp_path / "u.js"
     p.write_text(
+        "const AUT = [{path:'a', kind:'num'}];\n"
         "let bps = [], LOOP = null, curBp = -1;\n"
         "let STORIA = [], ISTO = -1, GESTO = false;\n"
-        "const INFO = {textContent: ''};\n"
-        "const document = {getElementById: () => INFO};\n"
+        "const SCHERMO = {a: 1};\n"
+        "const document = {getElementById: id => ({\n"
+        "  get value() { return id[0] === 'I' ? 'linear' : SCHERMO[id.slice(2)]; },\n"
+        "  set value(v) { if (id[0] !== 'I') SCHERMO[id.slice(2)] = v; },\n"
+        "  textContent: '', classList: {toggle(){}}, querySelectorAll: () => []})};\n"
+        "function setSel(path, v) { SCHERMO[path] = v; }\n"
         "function drawTl() { if (!GESTO) storia(); }\n"
-        "function bpLoad(i) { curBp = i; drawTl(); }\n"
+        "function iniziale() { return 0; }\n"
         + frag +
-        "drawTl();\n"                       # stato iniziale: vuoto
+        "drawTl();\n"                        # stato iniziale: vuoto
         "bps.push({t:0, vals:{a:1}}); drawTl();\n"
-        "bps.push({t:1, vals:{a:2}}); drawTl();\n"
-        "const tre = bps.length;\n"
-        "vaiStoria(-1); const dopoUndo = bps.length;\n"
-        "vaiStoria(-1); const dueUndo = bps.length;\n"
-        "vaiStoria(1);  const dopoRedo = bps.length;\n"
-        "console.log(JSON.stringify([tre, dopoUndo, dueUndo, dopoRedo, STORIA.length]));")
+        "SCHERMO.a = 7; drawTl();\n"         # valore cambiato ma non salvato
+        "const prima = SCHERMO.a;\n"
+        "vaiStoria(-1); const dopoUndo = SCHERMO.a;\n"
+        "vaiStoria(-1); const punti = bps.length;\n"
+        "vaiStoria(1); vaiStoria(1); const dopoRedo = SCHERMO.a;\n"
+        "console.log(JSON.stringify([prima, dopoUndo, punti, dopoRedo, STORIA.length]));")
     out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
-    tre, uno, zero, due, n = __import__("json").loads(out.stdout)
-    assert [tre, uno, zero, due] == [2, 1, 0, 1]
-    assert n == 3          # vuoto, un punto, due punti: la selezione non conta
+    prima, dopoUndo, punti, dopoRedo, n = __import__("json").loads(out.stdout)
+    assert prima == 7
+    assert dopoUndo == 1      # l'undo riporta anche il valore non salvato
+    assert punti == 0         # un altro passo indietro: il breakpoint sparisce
+    assert dopoRedo == 7
+    assert n == 3

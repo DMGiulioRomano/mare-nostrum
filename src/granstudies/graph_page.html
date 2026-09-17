@@ -107,6 +107,10 @@
  #lab select, #lab input { font:inherit; color:inherit; background:var(--panel);
                            border:1px solid var(--line); padding:1px 4px; }
  #lab input[type=text], #lab input[type=number] { width:9em; }
+ /* campo scrivibile + menu delle tacche, sulla stessa riga */
+ #lab .campo { display:flex; gap:4px; align-items:center; }
+ #lab .campo input { flex:1; width:auto; min-width:0; }
+ #lab .campo select.tacche { width:4.2em; }
  #lab h2 { font-size:12px; font-weight:600; color:var(--dim); margin:16px 0 6px;
            text-transform:lowercase; }
  #lab .bar { margin:10px 0; }
@@ -444,16 +448,20 @@ let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
 // riaprendo non serve conoscere la durata del file.
 let LOOP = null;
 
-// Undo/redo. Lo stato che si annulla e' il lavoro — i breakpoint e il loop —
-// non quello che si vede: il breakpoint selezionato e i menu a schermo non ci
-// stanno dentro, o selezionare un punto riempirebbe la storia di nulla.
-// Si registra in `drawTl`, che e' il punto obbligato di ogni modifica, tranne
-// mentre un gesto e' in corso (`GESTO`): un trascinamento e' UN passo, non
-// cento. `istantanea()` e' anche il confronto: se non cambia niente, non si
-// registra niente.
+// Undo/redo. Lo stato che si annulla e' tutto il lavoro: i breakpoint, il
+// loop, il punto selezionato E i valori a schermo — quelli che hai cambiato
+// ma non ancora salvato sul breakpoint sono lavoro come gli altri, e un undo
+// che li lasciasse fermi annullerebbe meta' di quello che vedi.
+// Si registra in `labInfo`, che chiude ogni modifica (drawTl finisce li'),
+// tranne mentre un gesto e' in corso (`GESTO`): un trascinamento e' UN passo,
+// non cento. `istantanea()` e' anche il confronto: se non cambia niente, non
+// si registra niente.
 let STORIA = [], ISTO = -1, GESTO = false;
 
-function istantanea() { return JSON.stringify({bps, loop: LOOP}); }
+function istantanea() {
+  return JSON.stringify({bps, loop: LOOP, cur: curBp,
+                         vals: snapshot(), ints: snapInterp()});
+}
 
 function storia() {
   const s = istantanea();
@@ -478,10 +486,18 @@ function vaiStoria(d) {
   ISTO = i;
   const s = JSON.parse(STORIA[i]);
   bps = s.bps; LOOP = s.loop;
+  curBp = Math.min(s.cur, bps.length - 1);
+  // A schermo torna quello che c'era a schermo, non i valori del breakpoint:
+  // e' `bpLoad` che li riallinea, e qui riallinearli cancellerebbe proprio le
+  // modifiche non salvate che l'undo deve riportare indietro.
+  for (const [path, v] of Object.entries(s.vals || {})) setSel(path, v);
+  for (const p of AUT) {
+    const el = document.getElementById("I:" + p.path);
+    if (el) el.value = (s.ints || {})[p.path] || "linear";
+  }
   // GESTO tiene fermo il registratore: ripristinare non e' una modifica.
   GESTO = true;
-  if (bps.length) bpLoad(Math.min(Math.max(curBp, 0), bps.length - 1));
-  else { curBp = -1; drawTl(); }
+  drawTl();
   GESTO = false;
   document.getElementById("labInfo").textContent =
     (d < 0 ? "annullato" : "rifatto") + "  (" + (ISTO + 1) + "/" + STORIA.length + ")";
@@ -530,37 +546,45 @@ function labInit() {
   const mk = (p, box) => {
     const r = document.createElement("div"); r.className = "row";
     const k = document.createElement("div"); k.className = "k"; k.textContent = p.path;
-    // `free`: un parametro senza tacche, che si scrive invece di sceglierlo —
-    // il volume e' un aggiustamento continuo, non una scala da esplorare. Il
-    // resto del laboratorio non se ne accorge: legge `P:<path>`.value come
-    // per un menu, e i breakpoint funzionano identici.
-    // Un numerico si sceglie fra le tacche ma si scrive anche a mano: e' un
-    // `input` con la `datalist` delle tacche, non un menu chiuso. Il resto del
+    // Un numerico si sceglie E si scrive: il campo tiene il valore, il menu
+    // accanto offre le tacche dello study.yml. `free` (il volume) e' lo
+    // stesso campo senza menu, perche' tacche non ne ha. Il resto del
     // laboratorio non se ne accorge: legge `P:<path>`.value come prima.
-    // `free` (il volume) e' lo stesso campo senza tacche.
     const libero = p.free || p.kind === "num";
     const s = document.createElement(libero ? "input" : "select");
     s.id = "P:" + p.path;
     if (libero) {
-      // type=text e non number: in Safari la datalist su un number non si
-      // apre. Il valore lo converte gia' `Number(...)` a valle.
+      // type=text e non number: le frecce e il passo di un `number` non
+      // servono a niente su una scala logaritmica. Il valore lo converte
+      // gia' `Number(...)` a valle.
       s.type = "text";
       s.inputMode = "decimal";
       // I limiti dell'engine non bloccano piu' il campo (type=text): restano
       // come suggerimento sul passaggio del mouse.
       if (p.min != null || p.max != null) s.title = p.min + " .. " + p.max;
-      if (p.values.length) {
-        const dl = document.createElement("datalist");
-        dl.id = "D:" + p.path;
-        for (const v of p.values) {
-          const o = document.createElement("option");
-          o.value = v; o.label = fmt(v);
-          dl.appendChild(o);
-        }
-        s.setAttribute("list", dl.id);
-        r.appendChild(dl);
-      }
       s.value = iniziale(p);
+      if (p.values.length) {
+        // Le tacche restano un menu vero accanto al campo: la datalist da
+        // sola, in Safari, non si vede nemmeno. Si sceglie da li' oppure si
+        // scrive nel campo; il menu torna subito al suo `▾` perche' il
+        // valore buono e' uno solo, quello scritto nel campo.
+        const men = document.createElement("select");
+        men.className = "tacche";
+        men.title = "le tacche dello study.yml";
+        men.appendChild(new Option("▾", ""));
+        for (const v of p.values) men.appendChild(new Option(fmt(v), v));
+        men.onchange = () => {
+          if (!men.value) return;
+          s.value = men.value;
+          men.selectedIndex = 0;
+          s.dispatchEvent(new Event("change"));
+        };
+        const campo = document.createElement("div");
+        campo.className = "campo";
+        campo.appendChild(s); campo.appendChild(men);
+        r.appendChild(k); r.appendChild(campo); box.appendChild(r);
+        return;
+      }
     } else {
       for (const v of p.values) {
         const o = document.createElement("option");
@@ -881,7 +905,6 @@ function bpLoad(i) {
 }
 
 function drawTl() {
-  if (!GESTO) storia();
   bozzaSalva();
   if (typeof segna === "function") segna();
   marcaAudio();
@@ -1033,6 +1056,8 @@ function labInfo() {
     (diversi.length ? "  |  non salvati sul breakpoint " + (curBp + 1) + ": "
                       + diversi.join(", ") : "");
   document.getElementById("labYaml").textContent = bps.length ? preview() : "";
+  // Ogni modifica passa di qui: e' il posto dove la storia si registra.
+  if (!GESTO) storia();
 }
 
 // I breakpoint disegnati sopra sonogramma e forma d'onda: trascinando un

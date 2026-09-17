@@ -183,29 +183,30 @@ fuori da quella tabella parte da `base:`, e se manca anche li' dalla sua prima
 tacca (`iniziale()`, verificata in `tests/test_graph_js.py`).
 
 **Undo/redo.** `cmd+Z` annulla, `cmd+shift+Z` rifa (`ctrl` fuori da macOS).
-Lo stato che si annulla e' il lavoro — i breakpoint e il loop — non quello che
-si vede: selezionare un punto o muovere un menu non entra nella storia, e un
-trascinamento e' un passo solo, non cento (`GESTO`). Si registra in `drawTl`,
-che e' il passaggio obbligato di ogni modifica. Dentro un campo di testo
-`cmd+Z` resta l'undo del testo. Aprire un file o fare `nuovo` azzera la storia.
+Lo stato che si annulla e' tutto il lavoro: i breakpoint, il loop, il punto
+selezionato e **i valori a schermo non ancora salvati sul breakpoint** — sono
+lavoro come gli altri. Si registra in `labInfo`, dove ogni modifica va a
+finire, tranne durante un gesto (`GESTO`): un trascinamento e' un passo solo,
+non cento. Dentro un campo di testo `cmd+Z` resta l'undo del testo. Aprire un
+file o fare `nuovo` azzera la storia.
 
 **Il tempo di un breakpoint si scrive.** La riga `tempo (0-1)` in cima ai
 parametri mostra la x normalizzata del punto selezionato e la accetta digitata:
 vale subito, come il trascinamento, e riordina i punti (non passa da `salva
 modifica`, che riguarda i valori).
 
-**I numerici si scrivono, oltre che sceglierli.** Ogni parametro numerico
+**I numerici si scelgono E si scrivono.** Ogni parametro numerico
 (`grain.duration`, `grain.duration_range`, `fill_factor`, `pitch.ratio`,
 `pitch.range`, `pointer.speed_ratio`, `pointer.offset_range`, `distribution`,
-`volume`) e' un campo di testo con la `datalist` delle sue tacche: il menu si
-apre come prima, ma dentro ci si puo' anche digitare un valore che nello
-`study.yml` non c'e'. La virgola vale il punto e un campo vuoto o illeggibile
-tiene il valore del breakpoint invece di scrivere NaN
-(`tests/test_graph_js.py`). Il campo e' `type=text` perche' in Safari la
-datalist su un `number` non si apre: i limiti di `bounds_for` non bloccano piu'
-niente, restano come tooltip. **Il volume** resta l'unico senza tacche
-(`free: true`): non e' una scala da esplorare, e' un aggiustamento continuo.
-I categoriali (sample, finestre) restano menu chiusi.
+`volume`) ha due controlli sulla stessa riga: il **campo** che tiene il valore
+e, accanto, il **menu `▾` delle tacche** dello `study.yml`. Sceglierne una la
+scrive nel campo e il menu torna al suo `▾`: il valore buono e' uno solo,
+quello scritto. Nel campo si puo' digitare anche un valore che fra le tacche
+non c'e'; la virgola vale il punto, e un campo vuoto o illeggibile tiene il
+valore del breakpoint invece di scrivere NaN (`tests/test_graph_js.py`).
+I limiti di `bounds_for` non bloccano il campo, restano come tooltip.
+**Il volume** resta l'unico senza menu (`free: true`): non ha tacche, e' un
+aggiustamento continuo. I categoriali (sample, finestre) restano menu chiusi.
 
 ## Diario di ascolto
 
