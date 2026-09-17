@@ -185,6 +185,7 @@
   <div id="transport">
     <label><input type="checkbox" id="hold"> continua dal punto in cui era</label>
     <label><input type="checkbox" id="loop"> loop</label>
+    <label title="ritardo fra l'audio prodotto e quello che senti: il cursore resta indietro di tanto">latenza <input type="number" id="lat" min="0" max="1000" step="5" style="width:4.5em"> ms</label>
   </div>
 </div>
 
@@ -1317,7 +1318,7 @@ audio.addEventListener("pause", () => lpStop());
 var LP = null;       // {node, ls, le, off, t0}; var: marcaAudio lo tocca prima di qui
 
 function lpPos() {
-  const el = Math.max(0, ctx.currentTime - (ctx.outputLatency || 0) - LP.t0);
+  const el = Math.max(0, ctx.currentTime - latenza() - LP.t0);
   return LP.ls + (LP.off - LP.ls + el) % (LP.le - LP.ls);
 }
 
@@ -1371,6 +1372,18 @@ for (const [el, k] of [[hold, "graph.hold"], [loop, "graph.loop"]]) {
   });
 }
 audio.loop = loop.checked;
+
+// Il cursore mostra l'istante in cui l'audio e' PRODOTTO; alle orecchie arriva
+// dopo (buffer del sistema, DAC, Bluetooth). Il browser lo dice solo a volte
+// (`outputLatency`, non in Safari): il resto si tara a orecchio qui.
+const latEl = document.getElementById("lat");
+try { latEl.value = localStorage.getItem("graph.lat") || 0; } catch (e) { latEl.value = 0; }
+latEl.addEventListener("change", () => {
+  try { localStorage.setItem("graph.lat", latEl.value); } catch (e) {}
+});
+function latenza() {
+  return (ctx.outputLatency || 0) + (Number(latEl.value) || 0) / 1000;
+}
 
 const FMIN = 20;
 const cache = new Map();      // src -> {peaks, spec} gia' calcolati
@@ -1689,7 +1702,8 @@ const curSpec = document.getElementById("curSpec"), curWave = document.getElemen
 function frame() {
   // Un solo valore letto una volta sola: i due cursori non possono divergere.
   if (view && view.duration) {
-    const p = ((LP ? lpPos() : audio.currentTime) / view.duration) * 100;
+    const t = LP ? lpPos() : Math.max(0, audio.currentTime - (audio.paused ? 0 : latenza()));
+    const p = (t / view.duration) * 100;
     curSpec.style.left = p + "%";
     curWave.style.left = p + "%";
   }
