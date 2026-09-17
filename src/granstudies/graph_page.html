@@ -120,6 +120,15 @@
                     cursor:pointer; }
  #lab .bar button:hover { border-color:var(--fg); }
  #lab .bar button:disabled { opacity:.35; cursor:default; border-color:var(--line); }
+ /* Generare breakpoint a mucchio: chiuso finche' non serve. */
+ #gen { margin:10px 0; }
+ #gen summary { cursor:pointer; color:var(--dim); }
+ #gen .tre, #gen .rule { display:flex; gap:4px; align-items:center; }
+ #gen .tre input, #gen .rule input { width:5.5em; flex:0 0 auto; }
+ #gen .rule { margin:4px 0; }
+ #gen .rule select { flex:0 0 auto; }
+ #gen .rule button { font:inherit; color:inherit; background:none;
+                     border:1px solid var(--line); padding:1px 6px; cursor:pointer; }
  /* La linea dei breakpoint: una dimensione sola, il tempo. Il punto si
     trascina, e cliccandolo i select tornano ai valori di quel preset. */
  #tl { position:relative; height:38px; margin:14px 0 6px; border-bottom:1px solid var(--line);
@@ -179,6 +188,10 @@
       <button id="bpDel">togli</button>
       <button id="labRender">rendi e ascolta</button>
     </div>
+    <details id="gen">
+      <summary>genera breakpoint</summary>
+      <div id="genBox"></div>
+    </details>
     <div id="tl"></div>
     <div id="labInfo"></div>
     <div id="labYaml"></div>
@@ -672,6 +685,7 @@ function labInit() {
   document.getElementById("bpSave").onclick = bpSave;
   document.getElementById("bpAll").onclick = bpAll;
   document.getElementById("bpDel").onclick = bpDel;
+  genInit();
   // Cambiare un select su un breakpoint selezionato non lo modifica da solo:
   // finche' non si salva, i valori a schermo e quelli del punto divergono, e
   // e' l'unica cosa che si puo' guardare senza accorgersene. Lo dice l'info.
@@ -893,6 +907,140 @@ function bpDel() {
   bps.splice(curBp, 1);
   curBp = Math.min(curBp, bps.length - 1);
   drawTl();
+}
+
+// --- generare breakpoint a mucchio ----------------------------------------
+// Si sceglie un tratto dell'asse, quanti punti metterci e come si dispongono;
+// e per i parametri che devono muoversi, una maschera (min, max) e lo stesso
+// modo. Tempi e valori sono lo stesso problema — riempire un intervallo — per
+// questo li riempie una funzione sola.
+// Un parametro senza regola prende il valore che ha a schermo, come fa
+// `+ breakpoint`.
+const MODI = {uniforme: "uniforme", random: "random", gauss: "gaussiana", geom: "geometrica"};
+
+function gaussiano() {         // Box-Muller: uno standard normale
+  let u = 0, v = 0;
+  while (!u) u = Math.random();
+  while (!v) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function riempi(modo, n, a, b, passo) {
+  const out = [], lo = Math.min(a, b), hi = Math.max(a, b);
+  const dentro = v => Math.min(hi, Math.max(lo, v));
+  for (let i = 0; i < n; i++) {
+    const u = n > 1 ? i / (n - 1) : 0;
+    let v;
+    if (modo === "random") v = a + Math.random() * (b - a);
+    // gaussiana: il centro dell'intervallo, con tre sigma sugli estremi —
+    // la massa sta in mezzo e la coda si taglia sulla maschera.
+    else if (modo === "gauss") v = (a + b) / 2 + gaussiano() * (hi - lo) / 6;
+    // geometrica: passo costante in rapporto, non in differenza. Con uno zero
+    // o due segni diversi il rapporto non esiste: li' vale l'uniforme.
+    else if (modo === "geom" && a > 0 && b > 0) v = a * Math.pow(b / a, u);
+    else v = a + u * (b - a);
+    out.push(dentro(passo > 0 ? a + Math.round((v - a) / passo) * passo : v));
+  }
+  return out;
+}
+
+function numero(s, d) {
+  const v = Number(String(s).trim().replace(",", "."));
+  return Number.isFinite(v) ? v : d;
+}
+
+function genNum(val, segno) {
+  const i = document.createElement("input");
+  i.type = "text"; i.inputMode = "decimal"; i.value = val;
+  if (segno) i.placeholder = segno;
+  return i;
+}
+
+function genModo() {
+  const s = document.createElement("select");
+  for (const [v, t] of Object.entries(MODI)) s.appendChild(new Option(t, v));
+  return s;
+}
+
+function genRule() {
+  const r = document.createElement("div");
+  r.className = "rule";
+  const p = document.createElement("select");
+  for (const q of NUM) p.appendChild(new Option(q.path, q.path));
+  const min = genNum("", "min"), max = genNum("", "max"), passo = genNum("", "passo");
+  const modo = genModo();
+  const via = document.createElement("button");
+  via.textContent = "×"; via.title = "togli la regola";
+  via.onclick = () => r.remove();
+  // Le tacche dello study.yml danno la maschera di partenza; un parametro
+  // senza tacche (il volume) parte fermo sul suo valore.
+  p.onchange = () => {
+    const q = NUM.find(x => x.path === p.value);
+    min.value = q.values.length ? Math.min(...q.values) : iniziale(q);
+    max.value = q.values.length ? Math.max(...q.values) : iniziale(q);
+  };
+  p.onchange();
+  r.append(p, min, max, modo, passo, via);
+  document.getElementById("gRules").appendChild(r);
+}
+
+function genBps() {
+  const n = Math.round(numero(document.getElementById("gN").value, 0));
+  if (n < 1) return;
+  const chiuso = t => Math.min(1, Math.max(0, t));
+  const da = chiuso(numero(document.getElementById("gDa").value, 0));
+  const a = chiuso(numero(document.getElementById("gA").value, 1));
+  // I tempi vanno comunque ordinati (`serie` vuole un inviluppo che non torna
+  // indietro), e ordinarli PRIMA di assegnare i valori fa si' che una rampa
+  // di valori segua il tempo anche quando i tempi sono casuali.
+  const ts = riempi(document.getElementById("gModo").value, n, da, a)
+             .map(chiuso).sort((x, y) => x - y);
+  const regole = [...document.querySelectorAll("#gRules .rule")].map(r => {
+    const [p, min, max, modo, passo] = r.children;
+    const A = numero(min.value, NaN), B = numero(max.value, NaN);
+    if (!Number.isFinite(A) || !Number.isFinite(B)) return null;
+    return {path: p.value,
+            vals: riempi(modo.value, n, A, B, numero(passo.value, 0))};
+  }).filter(Boolean);
+  const base = snapshot(), ints = snapInterp();
+  let ultimo = null;
+  ts.forEach((t, i) => {
+    const vals = Object.assign({}, base);
+    for (const g of regole) vals[g.path] = g.vals[i];
+    bps.push(ultimo = {t, vals, ints: Object.assign({}, ints)});
+  });
+  bps.sort((x, y) => x.t - y.t);
+  curBp = bps.indexOf(ultimo);
+  drawTl();
+  document.getElementById("labInfo").textContent =
+    "generati " + n + " breakpoint fra " + da + " e " + a +
+    (regole.length ? " · " + regole.map(g => g.path).join(", ") : "");
+}
+
+function genInit() {
+  const box = document.getElementById("genBox");
+  const tre = document.createElement("div");
+  tre.className = "tre";
+  const da = genNum(0), a = genNum(1), n = genNum(8);
+  da.id = "gDa"; a.id = "gA"; n.id = "gN";
+  tre.append(da, a, n);
+  box.appendChild(riga("da · a · quanti", tre, ""));
+  const modo = genModo();
+  modo.id = "gModo";
+  box.appendChild(riga("disposizione", modo, ""));
+  const rules = document.createElement("div");
+  rules.id = "gRules";
+  box.appendChild(rules);
+  const bar = document.createElement("div");
+  bar.className = "bar";
+  const piu = document.createElement("button");
+  piu.textContent = "+ parametro";
+  piu.onclick = () => genRule();
+  const via = document.createElement("button");
+  via.textContent = "genera";
+  via.onclick = genBps;
+  bar.append(piu, via);
+  box.appendChild(bar);
 }
 
 function bpLoad(i) {

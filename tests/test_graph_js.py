@@ -510,3 +510,46 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
     assert punti == 0         # un altro passo indietro: il breakpoint sparisce
     assert dopoRedo == 7
     assert n == 3
+
+
+@node
+def test_i_valori_generati_riempiono_l_intervallo_come_si_e_chiesto(tmp_path):
+    """`riempi` riempie [a, b] nei quattro modi, e il passo quantizza.
+
+    E' l'unica matematica di `genera breakpoint`: tempi e valori escono tutti
+    di qui, e un intervallo riempito storto (un estremo mancato, un valore
+    fuori maschera) sullo YAML non si vede.
+    """
+    js = _script()
+    p = tmp_path / "g.js"
+    p.write_text(
+        _fn(js, "gaussiano") + _fn(js, "riempi") + """
+const out = {
+  lineare: riempi("uniforme", 5, 0, 1),
+  geom: riempi("geom", 5, 0.001, 0.016),
+  geomZero: riempi("geom", 3, 0, 1),        // rapporto impossibile -> uniforme
+  uno: riempi("uniforme", 1, 0.2, 0.9),
+  passo: riempi("uniforme", 5, 0, 1, 0.3),
+  random: riempi("random", 200, 0.01, 0.04),
+  gauss: riempi("gauss", 200, 0.01, 0.04),
+};
+console.log(JSON.stringify(out));
+""")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    g = json.loads(out.stdout)
+    assert g["lineare"] == [0, 0.25, 0.5, 0.75, 1]
+    # geometrica: rapporto costante fra un punto e il successivo, estremi compresi
+    assert g["geom"][0] == pytest.approx(0.001) and g["geom"][-1] == pytest.approx(0.016)
+    r = [b / a for a, b in zip(g["geom"], g["geom"][1:])]
+    assert all(x == pytest.approx(r[0]) for x in r)
+    assert g["geomZero"] == [0, 0.5, 1]
+    assert g["uno"] == [0.2]                       # un punto solo: parte da `a`
+    # il passo quantizza a multipli: comanda lui, anche se b non e' un
+    # multiplo e l'ultimo punto ci resta sotto
+    assert g["passo"] == pytest.approx([0, 0.3, 0.6, 0.9, 0.9])
+    for modo in ("random", "gauss"):
+        assert all(0.01 <= v <= 0.04 for v in g[modo]), modo
+    # la gaussiana sta in mezzo, l'uniforme no: tre sigma sugli estremi
+    centro = sum(1 for v in g["gauss"] if 0.02 <= v <= 0.03)
+    assert centro > sum(1 for v in g["random"] if 0.02 <= v <= 0.03)

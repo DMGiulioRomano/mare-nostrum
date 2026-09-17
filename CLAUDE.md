@@ -203,6 +203,23 @@ parametri mostra la x normalizzata del punto selezionato e la accetta digitata:
 vale subito, come il trascinamento, e riordina i punti (non passa da `salva
 modifica`, che riguarda i valori).
 
+**Generare breakpoint a mucchio.** Il blocco `genera breakpoint` (chiuso
+finché non serve, sotto i bottoni) prende un tratto dell'asse — `da`, `a`,
+`quanti` — e ci mette n punti disposti in uno di quattro modi: `uniforme`,
+`random`, `gaussiana` (centro dell'intervallo, tre sigma sugli estremi, code
+tagliate), `geometrica` (passo costante in rapporto; con uno zero o due segni
+diversi ripiega sull'uniforme). I tempi si ordinano prima che i valori vengano
+assegnati, così una rampa segue il tempo anche con tempi casuali.
+
+Con `+ parametro` si aggiunge una **regola**: parametro, `min`, `max` (la
+maschera, prefillata con le tacche dello `study.yml`), lo stesso menu dei
+quattro modi, e un `passo` facoltativo che quantizza a multipli — il passo
+comanda, quindi con un `max` che non è multiplo l'ultimo punto resta sotto.
+Un parametro senza regola prende il valore che ha a schermo, come `+ breakpoint`.
+I punti generati si aggiungono a quelli che ci sono (non li sostituiscono) e
+sono **un passo solo di undo**. La matematica è tutta in `riempi()`, verificata
+in `tests/test_graph_js.py`.
+
 **I numerici si scelgono E si scrivono.** Ogni parametro numerico
 (`grain.duration`, `grain.duration_range`, `fill_factor`, `pitch.ratio`,
 `pitch.range`, `pointer.speed_ratio`, `pointer.offset_range`, `distribution`,
