@@ -166,8 +166,9 @@ click e trascina disegna una regione: e' il loop del pointer, e gli estremi si
 prendono per allargarlo o stringerlo; doppio click lo toglie. Il sample si
 riascolta dentro il loop. Sul documento diventa `pointer.loop_unit: normalized`
 + `loop_start`/`loop_end` (frazioni del file), e `pointer.start` sparisce cosi'
-il pointer parte da loop_start. Il loop iniziale e' quello di `base:`; senza
-regione le chiavi di loop spariscono. Sul render dello stream non si disegna:
+il pointer parte da loop_start. Si parte sempre **senza loop** — il pointer
+percorre il file intero: quello di `base:` e' una scelta dello sweep, non il
+punto di partenza di un ascolto. Senza regione le chiavi di loop spariscono. Sul render dello stream non si disegna:
 li' l'asse e' il tempo d'uscita, non la posizione nel sample.
 Il loop suona con un `AudioBufferSourceNode` (loop nativo, preciso al
 campione), non spostando `audio.currentTime`: quel seek e' asincrono e il
