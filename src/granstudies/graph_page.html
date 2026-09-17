@@ -916,7 +916,13 @@ function bpDel() {
 // questo li riempie una funzione sola.
 // Un parametro senza regola prende il valore che ha a schermo, come fa
 // `+ breakpoint`.
-const MODI = {uniforme: "uniforme", random: "random", gauss: "gaussiana", geom: "geometrica"};
+// Due deterministici e due casuali, e il nome deve dire quale e' quale:
+// `equidistanti` e `geometrica` danno sempre gli stessi punti (a passo
+// costante in differenza il primo, in rapporto il secondo); `random` e
+// `gaussiana` pescano, e due generazioni danno due risultati — la prima con
+// tutti i valori ugualmente probabili, la seconda addensata in mezzo.
+const MODI = {equi: "equidistanti", geom: "geometrica",
+              random: "random (uniforme)", gauss: "random (gaussiana)"};
 
 function gaussiano() {         // Box-Muller: uno standard normale
   let u = 0, v = 0;
@@ -936,9 +942,9 @@ function riempi(modo, n, a, b, passo) {
     // la massa sta in mezzo e la coda si taglia sulla maschera.
     else if (modo === "gauss") v = (a + b) / 2 + gaussiano() * (hi - lo) / 6;
     // geometrica: passo costante in rapporto, non in differenza. Con uno zero
-    // o due segni diversi il rapporto non esiste: li' vale l'uniforme.
+    // o due segni diversi il rapporto non esiste: li' vale l'equidistante.
     else if (modo === "geom" && a > 0 && b > 0) v = a * Math.pow(b / a, u);
-    else v = a + u * (b - a);
+    else v = a + u * (b - a);        // equidistanti, e il ripiego di sopra
     out.push(dentro(passo > 0 ? a + Math.round((v - a) / passo) * passo : v));
   }
   return out;

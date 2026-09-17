@@ -525,11 +525,11 @@ def test_i_valori_generati_riempiono_l_intervallo_come_si_e_chiesto(tmp_path):
     p.write_text(
         _fn(js, "gaussiano") + _fn(js, "riempi") + """
 const out = {
-  lineare: riempi("uniforme", 5, 0, 1),
+  equi: riempi("equi", 5, 0, 1),
   geom: riempi("geom", 5, 0.001, 0.016),
-  geomZero: riempi("geom", 3, 0, 1),        // rapporto impossibile -> uniforme
-  uno: riempi("uniforme", 1, 0.2, 0.9),
-  passo: riempi("uniforme", 5, 0, 1, 0.3),
+  geomZero: riempi("geom", 3, 0, 1),        // rapporto impossibile -> equidistanti
+  uno: riempi("equi", 1, 0.2, 0.9),
+  passo: riempi("equi", 5, 0, 1, 0.3),
   random: riempi("random", 200, 0.01, 0.04),
   gauss: riempi("gauss", 200, 0.01, 0.04),
 };
@@ -538,7 +538,7 @@ console.log(JSON.stringify(out));
     out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
     g = json.loads(out.stdout)
-    assert g["lineare"] == [0, 0.25, 0.5, 0.75, 1]
+    assert g["equi"] == [0, 0.25, 0.5, 0.75, 1]
     # geometrica: rapporto costante fra un punto e il successivo, estremi compresi
     assert g["geom"][0] == pytest.approx(0.001) and g["geom"][-1] == pytest.approx(0.016)
     r = [b / a for a, b in zip(g["geom"], g["geom"][1:])]
