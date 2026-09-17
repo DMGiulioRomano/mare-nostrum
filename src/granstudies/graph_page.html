@@ -446,6 +446,9 @@ let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
 // Il loop del pointer: [inizio, fine] come frazioni del sample, o null.
 // Frazioni e non secondi perche' la forma d'onda da' proprio quelle, e
 // riaprendo non serve conoscere la durata del file.
+// Si parte SEMPRE senza: il pointer percorre il file intero. Il loop di
+// `base:` e' una scelta dello sweep, non il punto di partenza di un ascolto —
+// lo si disegna sulla forma d'onda quando serve.
 let LOOP = null;
 
 // Undo/redo. Lo stato che si annulla e' tutto il lavoro: i breakpoint, il
@@ -1242,7 +1245,7 @@ function fNew() {
   storiaReset();
   bps = [];
   curBp = -1;
-  LOOP = loopDi(L.base);
+  LOOP = null;              // il loop si disegna, non si eredita
   FILE = "";
   SALVATO = statoOra();
   document.getElementById("labName").value = "lab";
@@ -1401,7 +1404,6 @@ for (const [id, on] of [["tabGrid", false], ["tabLab", true]]) {
     document.getElementById("tabLab").classList.toggle("on", on);
   };
 }
-LOOP = loopDi(L.base);
 labInit();
 if (!D.combos.length) document.getElementById("tabLab").click();
 
