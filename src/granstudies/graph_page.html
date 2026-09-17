@@ -938,6 +938,7 @@ function labInfo() {
 // LAB_AUDIO (dichiarato in cima, dove `go` lo vede), che la griglia spegne e
 // il render del laboratorio accende.
 function marcaAudio() {
+  lpSync();
   const wv = document.getElementById("waveView");
   for (const v of wv.querySelectorAll(".loopr")) v.remove();
   if (SAMPLE_AUDIO && LOOP) {
@@ -1294,13 +1295,71 @@ const splitter = ctx.createChannelSplitter(2);
 const anL = ctx.createAnalyser(), anR = ctx.createAnalyser();
 anL.fftSize = anR.fftSize = 2048;
 const src = ctx.createMediaElementSource(audio);
-src.connect(analyser);
+// Il gain muta l'elemento quando a suonare e' il loop del sample (vedi LP).
+const gainEl = ctx.createGain();
+src.connect(gainEl);
+gainEl.connect(analyser);
 analyser.connect(ctx.destination);
-src.connect(splitter);
+gainEl.connect(splitter);
 splitter.connect(anL, 0);
 splitter.connect(anR, 1);
 
-audio.addEventListener("play", () => ctx.resume());
+audio.addEventListener("play", () => { ctx.resume(); lpSync(); });
+audio.addEventListener("pause", () => lpStop());
+
+// --- il loop del sample ----------------------------------------------------
+// Un loop non si fa spostando `audio.currentTime` alla fine della regione: il
+// seek dell'elemento e' asincrono, il cursore salta subito e il suono riparte
+// quando il browser ha ribufferizzato — si sentono i due andare fuori passo.
+// Qui suona un AudioBufferSourceNode col loop nativo (preciso al campione) e
+// l'elemento resta in play ma muto, solo come trasporto: play/pausa, spazio,
+// seek passano ancora da li'. Il cursore legge l'orologio del contesto.
+var LP = null;       // {node, ls, le, off, t0}; var: marcaAudio lo tocca prima di qui
+
+function lpPos() {
+  const el = Math.max(0, ctx.currentTime - (ctx.outputLatency || 0) - LP.t0);
+  return LP.ls + (LP.off - LP.ls + el) % (LP.le - LP.ls);
+}
+
+function lpStop() {
+  if (!LP) return;
+  LP.node.stop();
+  LP.node.disconnect();
+  LP = null;
+  gainEl.gain.value = 1;
+  audio.loop = loop.checked;
+}
+
+function lpStart(at) {
+  lpStop();
+  const D = view.buf.duration, ls = LOOP[0] * D, le = LOOP[1] * D;
+  const off = at >= ls && at < le ? at : ls;
+  const node = ctx.createBufferSource();
+  node.buffer = view.buf;
+  node.loop = true;
+  node.loopStart = ls;
+  node.loopEnd = le;
+  node.connect(analyser);
+  node.connect(splitter);
+  node.start(0, off);
+  LP = {node, ls, le, off, t0: ctx.currentTime};
+  gainEl.gain.value = 0;
+  audio.loop = true;       // l'elemento muto non deve fermarsi a fine file
+}
+
+// Allinea il loop allo stato: parte, si ferma, o riparte se la regione e'
+// cambiata (dal punto in cui era).
+// ponytail: durante il trascinamento degli estremi riparte a ogni mossa, con
+// qualche click; aggiornare loopStart/loopEnd dal vivo se da' fastidio.
+function lpSync() {
+  if (!LP && !SAMPLE_AUDIO) return;
+  const ok = SAMPLE_AUDIO && LOOP && view && view.buf && !audio.paused &&
+             audio.src.endsWith(view.url);
+  if (!ok) return lpStop();
+  const D = view.buf.duration;
+  if (LP && LP.ls === LOOP[0] * D && LP.le === LOOP[1] * D) return;
+  lpStart(LP ? lpPos() : audio.currentTime);
+}
 
 // --- spunte del trasporto, ricordate fra una sessione e l'altra -----------
 const hold = document.getElementById("hold"), loop = document.getElementById("loop");
@@ -1477,7 +1536,7 @@ async function analyse(url) {
     try {
       const buf = await ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
       const mono = mixdown(buf);
-      data = {duration: buf.duration, rate: buf.sampleRate, mono};
+      data = {duration: buf.duration, rate: buf.sampleRate, mono, buf, url};
       cache.set(url, data);
     } catch (e) {
       status.textContent = "impossibile leggere l'audio (" + e.name +
@@ -1486,6 +1545,7 @@ async function analyse(url) {
     }
   }
   view = data;
+  lpSync();          // il play e' arrivato prima dell'analisi: il buffer c'e' ora
   drawCtl();
   drawSpec(specC, data);
   drawWave(waveC, data);
@@ -1539,8 +1599,12 @@ function drawWave(c, d) {
 function seekFrom(el, e) {
   if (!view) return;
   const r = el.getBoundingClientRect();
-  const t = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * view.duration;
+  vaiA(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * view.duration);
+}
+
+function vaiA(t) {
   audio.currentTime = t;
+  if (LP) lpStart(t);
 }
 // Sulla forma d'onda di un sample un trascinamento non e' un seek ma un
 // loop: click = seek, click e trascina = regione. Sotto i 4 pixel e' un
@@ -1567,7 +1631,7 @@ for (const id of ["specView", "waveView"]) {
   });
   addEventListener("mouseup", () => {
     // Finito di disegnare, l'ascolto riparte dall'inizio del loop.
-    if (down && disegna && LOOP && view) audio.currentTime = LOOP[0] * view.duration;
+    if (down && disegna && LOOP && view) vaiA(LOOP[0] * view.duration);
     down = false;
   });
 }
@@ -1625,16 +1689,10 @@ const curSpec = document.getElementById("curSpec"), curWave = document.getElemen
 function frame() {
   // Un solo valore letto una volta sola: i due cursori non possono divergere.
   if (view && view.duration) {
-    const p = (audio.currentTime / view.duration) * 100;
+    const p = ((LP ? lpPos() : audio.currentTime) / view.duration) * 100;
     curSpec.style.left = p + "%";
     curWave.style.left = p + "%";
   }
-  // Il sample si ascolta dentro il loop, cioe' come lo leggera' il pointer.
-  // ponytail: il salto si controlla a ogni frame (~16 ms di tolleranza);
-  // un AudioBufferSourceNode con loopStart/loopEnd se servira' il campione esatto.
-  if (SAMPLE_AUDIO && LOOP && view && !audio.paused &&
-      audio.currentTime >= LOOP[1] * view.duration - 0.03)
-    audio.currentTime = LOOP[0] * view.duration;
   if (!audio.paused) { drawScope(); drawStereo(); }
   requestAnimationFrame(frame);
 }
