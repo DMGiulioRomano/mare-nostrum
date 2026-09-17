@@ -404,6 +404,9 @@ const AUT = NUM.concat(ENVP ? [ENVP] : []);
 // Qui serve un punto di partenza neutro per l'ascolto: grana media, niente
 // dispersione, niente trasposizione. Un parametro che non e' in questa tabella
 // parte da `base:`, e se manca anche li' dalla sua prima tacca.
+// La durata dello stream composto qui: un default solo, in un posto solo.
+const DUR = 30;
+
 const DEFAULTS = {
   "grain.duration": 0.064,
   "grain.duration_range": 0,
@@ -470,7 +473,7 @@ function labInit() {
   fixed.innerHTML = "<h2>fissi per lo stream</h2>";
   for (const p of CAT) mk(p, fixed);
   ascoltoSample(fixed);
-  for (const [id, lab, val, type] of [["labDur", "durata (s)", 8, "number"],
+  for (const [id, lab, val, type] of [["labDur", "durata (s)", DUR, "number"],
                                       ["labName", "nome", "lab", "text"]]) {
     const r = document.createElement("div"); r.className = "row";
     const k = document.createElement("div"); k.className = "k"; k.textContent = lab;
@@ -845,7 +848,7 @@ function envA(spec, t) {
 }
 
 function labDoc() {
-  const dur = Number(document.getElementById("labDur").value) || 8;
+  const dur = Number(document.getElementById("labDur").value) || DUR;
   // stream_id/onset/duration in testa, come nei documenti scritti a mano.
   const st = Object.assign({stream_id: "lab", onset: 0, duration: dur},
                            JSON.parse(JSON.stringify(L.base)));
@@ -975,7 +978,7 @@ function ripristina() {
   FILE = b.file || "";
   SALVATO = b.salvato || "";
   document.getElementById("labName").value = b.name || "lab";
-  document.getElementById("labDur").value = b.dur || 8;
+  document.getElementById("labDur").value = b.dur || DUR;
   for (const [path, v] of Object.entries(b.cat || {})) setSel(path, v);
   bpLoad(0);
   document.getElementById("labInfo").textContent =
@@ -1104,7 +1107,7 @@ function carica(doc, path) {
   FILE = path || "";
   document.getElementById("labName").value =
     (path || "lab").split("/").pop().replace(/\.ya?ml$/, "");
-  document.getElementById("labDur").value = doc.duration || st.duration || 8;
+  document.getElementById("labDur").value = doc.duration || st.duration || DUR;
   bpLoad(0);
   SALVATO = statoOra();
   segna();
