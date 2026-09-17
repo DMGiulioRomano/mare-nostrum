@@ -189,3 +189,14 @@ def test_le_finestre_sono_quelle_dell_engine_non_quelle_dello_studio():
     assert env["hanning"][0] == 0.0 and env["hanning"][-1] == 0.0
     assert max(env["hanning"]) > 0.99
     assert set(env["rectangle"]) == {1.0}
+
+
+def test_i_sample_sono_i_file_della_cartella(tmp_path):
+    """Le tacche del `sample` non stanno nello study.yml: sono i file su disco."""
+    from granstudies.graph import campioni
+
+    (tmp_path / "sub").mkdir()
+    for nome in ("b.wav", "a.flac", "note.md", "sub/c.aif"):
+        (tmp_path / nome).write_bytes(b"")
+    # Relativi alla cartella dei sample: e' cosi' che l'engine li risolve.
+    assert campioni(str(tmp_path)) == ["a.flac", "b.wav", "sub/c.aif"]

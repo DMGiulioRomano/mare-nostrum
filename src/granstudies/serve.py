@@ -34,16 +34,23 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
 from functools import partial
 from typing import Any, Dict, Tuple
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote
 
 import yaml
 
 LIVE = "live"          # sottocartella degli stream composti a mano
+SAMPLES = "/samples/"  # i sample del repo, che stanno fuori dallo studio
+# Il nome che `translate_path` restituisce quando la richiesta esce dalla
+# cartella dei sample: un file che non c'e' e' un 404, che e' la risposta
+# giusta. (Un carattere illegale darebbe un 500 con stack trace.)
+_FUORI = "fuori-dalla-cartella-dei-sample"
 _SAFE = re.compile(r"[^A-Za-z0-9._-]")
 
 
@@ -215,6 +222,24 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(render_doc(doc, body.get("name", "live"), self.directory,
                               self.repo_root, render=body.get("render", True),
                               path=body.get("path", "")))
+
+    def translate_path(self, path):
+        """Come la stdlib, ma ``/samples/<file>`` esce dallo studio.
+
+        I sample stanno in ``<repo>/samples`` e la pagina e' servita dalla
+        cartella dello studio: senza questo, sentire un sample prima di
+        sceglierlo nel laboratorio sarebbe l'unica cosa che richiede di
+        renderizzare qualcosa.
+        """
+        p = path.split("?")[0].split("#")[0]
+        if not p.startswith(SAMPLES):
+            return super().translate_path(path)
+        base = os.path.join(self.repo_root, "samples")
+        rel = posixpath.normpath(unquote(p[len(SAMPLES):])).lstrip("/")
+        full = os.path.abspath(os.path.join(base, rel))
+        # `..` porta fuori dalla cartella dei sample: un nome che non esiste
+        # (404) invece di un file del disco.
+        return full if full.startswith(base + os.sep) else os.path.join(base, _FUORI)
 
     def end_headers(self):
         # La pagina e l'elenco cambiano a ogni `graph` e a ogni salvataggio, e

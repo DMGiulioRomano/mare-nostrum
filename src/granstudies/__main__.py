@@ -641,7 +641,8 @@ def cmd_graph(study: str) -> int:
     la pagina, non file diversi, e ``COMBO`` ha gia' fatto il suo filtro a
     monte decidendo cosa renderizzare.
     """
-    from .graph import lab_data, write_graph
+    from . import bounds
+    from .graph import campioni, lab_data, write_graph
 
     gen_root = os.path.join(REPO_ROOT, "generated", study)
     out = os.path.join(gen_root, "graph.html")
@@ -652,6 +653,18 @@ def cmd_graph(study: str) -> int:
     with open(os.path.join(study_dir(study), "study.yml")) as fh:
         lab = lab_data(yaml.safe_load(fh))
     lab["envelopes"] = _finestre()
+    noti = {p["path"] for p in lab["params"]}
+    # Il sample e' una manopola fissa come le altre categoriali, ma le sue
+    # tacche non stanno nello study.yml: sono i file della cartella dei sample.
+    camp = campioni(samples_dir(_load_spec(study).samples_dir))
+    if camp and "sample" not in noti:
+        lab["params"].append({"path": "sample", "values": camp, "kind": "cat"})
+    # Il volume non ha tacche: e' un aggiustamento continuo, si scrive a mano.
+    # I limiti li sa l'engine (bounds.bounds_for), non li riscriviamo qui.
+    if "volume" not in noti:
+        lo, hi = bounds.bounds_for("volume") or (None, None)
+        lab["params"].append({"path": "volume", "values": [], "kind": "num",
+                              "free": True, "min": lo, "max": hi})
     os.makedirs(gen_root, exist_ok=True)
     n_combos, n_nodes = write_graph(study, gen_root, out, _axis_orders(study), lab)
     if not n_combos and not lab["params"]:

@@ -149,6 +149,32 @@ resta la stringa scalare di prima. Il round-trip e' verificato
 Gli altri categoriali restano fissi per lo stream. Tutti i parametri numerici
 reggono gli inviluppi — verificati uno per uno.
 
+**Il sample** e' un fisso come gli altri, ma le sue tacche non stanno nello
+`study.yml`: sono i file audio della cartella `samples_dir` dello studio, letti
+da `graph` (`campioni()`) e messi in un menu. I fissi partono dal valore di
+`base:`, non dalla prima tacca della lista. Il sample **si sente prima di
+sceglierlo**: cambiare il menu (o premere `▶ ascolta`) lo manda nel pannello di
+destra, che e' gia' il lettore completo — sonogramma, forma d'onda,
+spectroscope, stereoscope, cursore, durata. Niente popup: sarebbe lo stesso
+codice due volte; `↩ stream` riporta all'ultimo render dello stream — il file
+c'e' ancora e i campioni sono in cache, quindi non si rende niente. Il server
+serve `/samples/` dalla cartella dei sample del repo, che sta fuori da quella
+servita.
+
+**Da dove parte il laboratorio.** Non da `base:` — quello e' lo stream a riposo
+dello *sweep*, tarato per i render della griglia — ma da una tabella `DEFAULTS`
+nella pagina: grana media (`grain.duration` 0.064), niente dispersione
+(`*_range` e `distribution` a 0), niente trasposizione (`pitch.ratio` 1),
+`pointer.speed_ratio` 1, `volume` 0, `grain.envelope` gaussian. Un parametro
+fuori da quella tabella parte da `base:`, e se manca anche li' dalla sua prima
+tacca (`iniziale()`, verificata in `tests/test_graph_js.py`).
+
+**Il volume** e' l'unico parametro che si **scrive** invece di sceglierlo: non
+ha tacche da esplorare, e' un aggiustamento continuo. E' un parametro numerico
+come gli altri — sta sui breakpoint, regge gli inviluppi — solo che la sua
+riga e' un campo di testo (`free: true`), coi limiti presi da `bounds_for`,
+cioe' dall'engine.
+
 ## Diario di ascolto
 
 Il diario è unico per lo studio e vive in `studies/ascolto/`:

@@ -386,3 +386,35 @@ console.log(JSON.stringify(ts.map(t => envA(spec, t))));
 """, tmp_path)
     assert json.loads(got) == seq[:len(json.loads(got))]
     assert json.loads(got) == seq
+
+
+@node
+def test_da_dove_parte_ogni_parametro(tmp_path):
+    """Il laboratorio parte dai default suoi, non dalla prima tacca.
+
+    Tre strade in ordine: la tabella DEFAULTS, poi `base:` dello study.yml,
+    poi la prima tacca — ed e' l'ordine che fa partire il volume da 0 (neutro
+    per l'ascolto) invece che dai 12 dB con cui lo sweep compensa il sample.
+    """
+    js = _script()
+    frag = (js[js.index("const DEFAULTS"):js.index("function iniziale")]
+            + _fn(js, "iniziale") + _fn(js, "leggiPath"))
+    p = tmp_path / "i.js"
+    p.write_text(
+        "const L = {base: {volume: 12, sample: 'x.wav', grain: {envelope: 'hanning'}}};\n"
+        + frag +
+        "console.log(JSON.stringify(["
+        "  iniziale({path:'grain.duration', values:[0.001, 0.064]}),"
+        "  iniziale({path:'volume', values:[], free:true}),"
+        "  iniziale({path:'grain.envelope', values:['bartlett','gaussian']}),"
+        "  iniziale({path:'sample', values:['a.wav','x.wav']}),"
+        "  iniziale({path:'pan', values:[7, 9]})]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout) == [
+        0.064,        # dalla tabella
+        0,            # dalla tabella, non i 12 dB di base:
+        "gaussian",   # dalla tabella, non l'hanning di base:
+        "x.wav",      # niente default: quello di base:
+        7,            # niente default e niente base: la prima tacca
+    ]

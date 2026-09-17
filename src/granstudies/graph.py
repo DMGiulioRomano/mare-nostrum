@@ -261,3 +261,21 @@ def _template() -> str:
     """
     with open(_TEMPLATE_PATH) as fh:
         return fh.read()
+
+
+_AUDIO = (".wav", ".flac", ".aif", ".aiff")
+
+
+def campioni(samples_dir: str) -> List[str]:
+    """I sample della cartella dello studio, come li scrive `sample:`.
+
+    Nel laboratorio il sample e' una manopola fissa per lo stream come le
+    altre categoriali: cambiarlo e' un ascolto diverso, non un asse. I nomi
+    sono relativi a ``samples_dir`` — e' cosi' che l'engine li risolve.
+    """
+    out: List[str] = []
+    for root, _dirs, files in os.walk(samples_dir):
+        for f in files:
+            if f.lower().endswith(_AUDIO):
+                out.append(os.path.relpath(os.path.join(root, f), samples_dir))
+    return sorted(out)

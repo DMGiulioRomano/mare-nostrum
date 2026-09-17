@@ -92,6 +92,11 @@
  #labParams .capo2 select { border-color:var(--on); }
  #labParams .capo2 .k { color:var(--on); }
  #labParams .capo2 { margin-bottom:8px; }
+ #labFixed .row.audio { grid-template-columns:max-content 1fr max-content; }
+ #labFixed .row.audio button { font:inherit; color:inherit; background:none;
+                               border:1px solid var(--line); padding:1px 8px;
+                               margin-left:6px; cursor:pointer; }
+ #labFixed .row.audio button:hover { border-color:var(--fg); }
  #lab .row .k { color:var(--dim); text-align:right; white-space:nowrap; }
  #lab select, #lab input { font:inherit; color:inherit; background:var(--panel);
                            border:1px solid var(--line); padding:1px 4px; }
@@ -393,6 +398,36 @@ const CAT = L.params.filter(p => p.kind !== "num" && p.path !== EP);
 // I parametri che stanno sui breakpoint: i numerici piu' l'envelope.
 const AUT = NUM.concat(ENVP ? [ENVP] : []);
 
+// Da dove parte il laboratorio. Non sono i valori di `base:` — quello e' lo
+// stream a riposo dello *sweep*, tarato per i render della griglia (volume 12
+// compensa un sample crudo, speed_ratio 0.1 accompagna il passo dello sweep).
+// Qui serve un punto di partenza neutro per l'ascolto: grana media, niente
+// dispersione, niente trasposizione. Un parametro che non e' in questa tabella
+// parte da `base:`, e se manca anche li' dalla sua prima tacca.
+// La durata dello stream composto qui: un default solo, in un posto solo.
+const DUR = 30;
+
+const DEFAULTS = {
+  "grain.duration": 0.064,
+  "grain.duration_range": 0,
+  "grain.envelope": "gaussian",
+  "fill_factor": 2,
+  "pitch.ratio": 1,
+  "pitch.range": 0,
+  "pointer.speed_ratio": 1,
+  "pointer.offset_range": 0,
+  "distribution": 0,
+  "volume": 0,
+};
+
+function iniziale(p) {
+  const d = DEFAULTS[p.path];
+  if (d !== undefined) return d;
+  const b = leggiPath(L.base, p.path);
+  if (b !== undefined && b !== null) return b;
+  return p.values.length ? p.values[0] : (p.free ? 0 : "");
+}
+
 let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
 let curBp = -1;
 
@@ -405,12 +440,28 @@ function labInit() {
   const mk = (p, box) => {
     const r = document.createElement("div"); r.className = "row";
     const k = document.createElement("div"); k.className = "k"; k.textContent = p.path;
-    const s = document.createElement("select");
+    // `free`: un parametro senza tacche, che si scrive invece di sceglierlo —
+    // il volume e' un aggiustamento continuo, non una scala da esplorare. Il
+    // resto del laboratorio non se ne accorge: legge `P:<path>`.value come
+    // per un menu, e i breakpoint funzionano identici.
+    const s = document.createElement(p.free ? "input" : "select");
     s.id = "P:" + p.path;
-    for (const v of p.values) {
-      const o = document.createElement("option");
-      o.value = v; o.textContent = fmt(v);
-      s.appendChild(o);
+    if (p.free) {
+      s.type = "number";
+      s.step = "any";                       // le frazioni si scrivono lo stesso
+      if (p.min != null) s.min = p.min;     // i limiti sono quelli dell'engine
+      if (p.max != null) s.max = p.max;
+      s.value = iniziale(p);
+    } else {
+      for (const v of p.values) {
+        const o = document.createElement("option");
+        o.value = v; o.textContent = fmt(v);
+        s.appendChild(o);
+      }
+      s.value = iniziale(p);
+      // Un default che non e' fra le tacche lascerebbe il menu vuoto: li'
+      // vale la prima, che e' cio' che il menu faceva da solo.
+      if (!s.value && p.values.length) s.value = p.values[0];
     }
     r.appendChild(k); r.appendChild(s); box.appendChild(r);
   };
@@ -421,7 +472,8 @@ function labInit() {
   const ENV = L.envelopes || {};
   fixed.innerHTML = "<h2>fissi per lo stream</h2>";
   for (const p of CAT) mk(p, fixed);
-  for (const [id, lab, val, type] of [["labDur", "durata (s)", 8, "number"],
+  ascoltoSample(fixed);
+  for (const [id, lab, val, type] of [["labDur", "durata (s)", DUR, "number"],
                                       ["labName", "nome", "lab", "text"]]) {
     const r = document.createElement("div"); r.className = "row";
     const k = document.createElement("div"); k.className = "k"; k.textContent = lab;
@@ -477,6 +529,78 @@ function labInit() {
   segna();
 }
 
+// Il sample si sente PRIMA di sceglierlo, come nel browser dei media di
+// PGE-ui — ma senza popup: il pannello di destra e' gia' un lettore completo
+// (sonogramma, forma d'onda, spectroscope, stereoscope, cursore che si
+// trascina, durata e frequenza di campionamento nella riga di stato). Un
+// secondo lettore dentro una finestra sarebbe lo stesso codice due volte, in
+// meno spazio.
+function ascoltoSample(fixed) {
+  const sel = document.getElementById("P:sample");
+  if (!sel) return;
+  sel.parentNode.classList.add("audio");
+  const b = document.createElement("button");
+  b.textContent = "▶ ascolta";
+  b.title = "sente il sample nel pannello di destra (spazio: play/pausa)";
+  b.onclick = () => ascolta(sel.value);
+  sel.parentNode.appendChild(b);
+  // Il ritorno: l'ultimo render dello stream e' ancora sul disco e i suoi
+  // campioni sono ancora nella cache dell'analisi, quindi tornarci e'
+  // immediato e non rende niente. Senza questo, per riascoltare lo stream
+  // dopo un sample bisognerebbe ri-renderizzarlo.
+  TORNA = document.createElement("button");
+  TORNA.textContent = "↩ stream";
+  TORNA.title = "torna all'ultimo render dello stream";
+  TORNA.disabled = true;
+  TORNA.onclick = () => riprendiStream();
+  sel.parentNode.appendChild(TORNA);
+  // Cambiare sample lo fa partire: scegliere un materiale E' ascoltarlo, e
+  // un click in meno per ogni file conta quando se ne provano trenta.
+  sel.onchange = () => { ascolta(sel.value); bozzaSalva(); segna(); };
+}
+
+// L'ultimo render del laboratorio, per poterci tornare dopo aver ascoltato
+// un sample. Il bottone e' spento finche' non c'e' niente dove tornare.
+let ULTIMO = "";
+let TORNA = null;
+
+function riprendiStream() {
+  if (!ULTIMO) return;
+  document.getElementById("now").innerHTML =
+    "<b>stream</b><br><span class='file'>" +
+    (document.getElementById("labName").value || "lab") + "</span>";
+  LAB_AUDIO = true;
+  audio.src = ULTIMO;
+  audio.play();
+  analyse(ULTIMO);
+  marcaAudio();
+}
+
+// `/samples/` non sta sotto lo studio: e' il server che lo mappa sulla
+// cartella dei sample del repo (serve.translate_path).
+async function ascolta(nome) {
+  if (!nome) return;
+  const url = "/samples/" + nome.split("/").map(encodeURIComponent).join("/");
+  // Il caso vero: un `make serve` avviato prima che questa rotta esistesse.
+  // Senza questo controllo l'audio non parte e non lo dice nessuno — e' lo
+  // stesso silenzio che `post` evita sulle rotte POST.
+  const r = await fetch(url, {method: "HEAD"}).catch(() => null);
+  if (!r || !r.ok) {
+    document.getElementById("labInfo").textContent = r && r.status === 404
+      ? "il server non serve /samples/: e' una versione vecchia (o un altro "
+        + "studio), fermalo con Ctrl-C e rilancia `make serve`."
+      : "sample non raggiungibile: serve `make serve` (non file://).";
+    return;
+  }
+  LAB_AUDIO = false;
+  marcaAudio();
+  document.getElementById("now").innerHTML =
+    "<b>sample</b><br><span class='file'>" + nome + "</span>";
+  audio.src = url;
+  audio.play();
+  analyse(url);
+}
+
 // Una finestra disegnata: polilinea del profilo vero, quello che l'engine
 // moltiplica per il grano.
 function envSvg(pts) {
@@ -496,7 +620,8 @@ function mkEnv(p, box, ENV) {
   // ogni altro parametro, e la galleria e' solo il modo di sceglierlo.
   const hid = document.createElement("input");
   hid.type = "hidden"; hid.id = "P:" + p.path;
-  hid.value = p.values.includes("hanning") ? "hanning" : Object.keys(ENV)[0];
+  const d = iniziale(p);
+  hid.value = ENV[d] ? d : (p.values.includes("hanning") ? "hanning" : Object.keys(ENV)[0]);
   const box2 = document.createElement("div"); box2.id = "envs";
   for (const [name, pts] of Object.entries(ENV)) {
     const b = document.createElement("button");
@@ -723,7 +848,7 @@ function envA(spec, t) {
 }
 
 function labDoc() {
-  const dur = Number(document.getElementById("labDur").value) || 8;
+  const dur = Number(document.getElementById("labDur").value) || DUR;
   // stream_id/onset/duration in testa, come nei documenti scritti a mano.
   const st = Object.assign({stream_id: "lab", onset: 0, duration: dur},
                            JSON.parse(JSON.stringify(L.base)));
@@ -853,7 +978,7 @@ function ripristina() {
   FILE = b.file || "";
   SALVATO = b.salvato || "";
   document.getElementById("labName").value = b.name || "lab";
-  document.getElementById("labDur").value = b.dur || 8;
+  document.getElementById("labDur").value = b.dur || DUR;
   for (const [path, v] of Object.entries(b.cat || {})) setSel(path, v);
   bpLoad(0);
   document.getElementById("labInfo").textContent =
@@ -982,7 +1107,7 @@ function carica(doc, path) {
   FILE = path || "";
   document.getElementById("labName").value =
     (path || "lab").split("/").pop().replace(/\.ya?ml$/, "");
-  document.getElementById("labDur").value = doc.duration || st.duration || 8;
+  document.getElementById("labDur").value = doc.duration || st.duration || DUR;
   bpLoad(0);
   SALVATO = statoOra();
   segna();
@@ -1045,6 +1170,8 @@ async function labPost(render, path) {
     // `?t=` perche' rirendendo con lo stesso nome il browser servirebbe il
     // file vecchio dalla cache.
     const src = out.src + "?t=" + Date.now();
+    ULTIMO = src;
+    if (TORNA) TORNA.disabled = false;
     LAB_AUDIO = true;
     audio.src = src;
     audio.play();
