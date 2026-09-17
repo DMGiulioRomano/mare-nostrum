@@ -169,6 +169,10 @@ riascolta dentro il loop. Sul documento diventa `pointer.loop_unit: normalized`
 il pointer parte da loop_start. Il loop iniziale e' quello di `base:`; senza
 regione le chiavi di loop spariscono. Sul render dello stream non si disegna:
 li' l'asse e' il tempo d'uscita, non la posizione nel sample.
+Il loop suona con un `AudioBufferSourceNode` (loop nativo, preciso al
+campione), non spostando `audio.currentTime`: quel seek e' asincrono e il
+cursore andava fuori passo. Il campo `latenza (ms)` del trasporto ritarda il
+cursore della latenza d'uscita, che Safari non dichiara: si tara a orecchio.
 
 **Da dove parte il laboratorio.** Non da `base:` — quello e' lo stream a riposo
 dello *sweep*, tarato per i render della griglia — ma da una tabella `DEFAULTS`
