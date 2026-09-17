@@ -152,7 +152,12 @@ reggono gli inviluppi — verificati uno per uno.
 **Il sample** e' un fisso come gli altri, ma le sue tacche non stanno nello
 `study.yml`: sono i file audio della cartella `samples_dir` dello studio, letti
 da `graph` (`campioni()`) e messi in un menu. I fissi partono dal valore di
-`base:`, non dalla prima tacca della lista.
+`base:`, non dalla prima tacca della lista. Il sample **si sente prima di
+sceglierlo**: cambiare il menu (o premere `▶ ascolta`) lo manda nel pannello di
+destra, che e' gia' il lettore completo — sonogramma, forma d'onda,
+spectroscope, stereoscope, cursore, durata. Niente popup: sarebbe lo stesso
+codice due volte. Il server serve `/samples/` dalla cartella dei sample del
+repo, che sta fuori da quella servita.
 
 ## Diario di ascolto
 

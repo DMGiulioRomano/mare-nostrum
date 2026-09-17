@@ -92,6 +92,11 @@
  #labParams .capo2 select { border-color:var(--on); }
  #labParams .capo2 .k { color:var(--on); }
  #labParams .capo2 { margin-bottom:8px; }
+ #labFixed .row.audio { grid-template-columns:max-content 1fr max-content; }
+ #labFixed .row.audio button { font:inherit; color:inherit; background:none;
+                               border:1px solid var(--line); padding:1px 8px;
+                               margin-left:6px; cursor:pointer; }
+ #labFixed .row.audio button:hover { border-color:var(--fg); }
  #lab .row .k { color:var(--dim); text-align:right; white-space:nowrap; }
  #lab select, #lab input { font:inherit; color:inherit; background:var(--panel);
                            border:1px solid var(--line); padding:1px 4px; }
@@ -421,6 +426,7 @@ function labInit() {
   const ENV = L.envelopes || {};
   fixed.innerHTML = "<h2>fissi per lo stream</h2>";
   for (const p of CAT) mk(p, fixed);
+  ascoltoSample(fixed);
   for (const [id, lab, val, type] of [["labDur", "durata (s)", 8, "number"],
                                       ["labName", "nome", "lab", "text"]]) {
     const r = document.createElement("div"); r.className = "row";
@@ -479,6 +485,40 @@ function labInit() {
   for (const p of CAT) setSel(p.path, leggiPath(L.base, p.path));
   ripristina();
   segna();
+}
+
+// Il sample si sente PRIMA di sceglierlo, come nel browser dei media di
+// PGE-ui — ma senza popup: il pannello di destra e' gia' un lettore completo
+// (sonogramma, forma d'onda, spectroscope, stereoscope, cursore che si
+// trascina, durata e frequenza di campionamento nella riga di stato). Un
+// secondo lettore dentro una finestra sarebbe lo stesso codice due volte, in
+// meno spazio.
+function ascoltoSample(fixed) {
+  const sel = document.getElementById("P:sample");
+  if (!sel) return;
+  sel.parentNode.classList.add("audio");
+  const b = document.createElement("button");
+  b.textContent = "▶ ascolta";
+  b.title = "sente il sample nel pannello di destra (spazio: play/pausa)";
+  b.onclick = () => ascolta(sel.value);
+  sel.parentNode.appendChild(b);
+  // Cambiare sample lo fa partire: scegliere un materiale E' ascoltarlo, e
+  // un click in meno per ogni file conta quando se ne provano trenta.
+  sel.onchange = () => { ascolta(sel.value); bozzaSalva(); segna(); };
+}
+
+// `/samples/` non sta sotto lo studio: e' il server che lo mappa sulla
+// cartella dei sample del repo (serve.translate_path).
+function ascolta(nome) {
+  if (!nome) return;
+  LAB_AUDIO = false;
+  marcaAudio();
+  document.getElementById("now").innerHTML =
+    "<b>sample</b><br><span class='file'>" + nome + "</span>";
+  const url = "/samples/" + nome.split("/").map(encodeURIComponent).join("/");
+  audio.src = url;
+  audio.play();
+  analyse(url);
 }
 
 // Una finestra disegnata: polilinea del profilo vero, quello che l'engine

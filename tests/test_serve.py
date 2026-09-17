@@ -111,3 +111,30 @@ def test_il_percorso_scelto_diventa_autorizzato(monkeypatch, tmp_path):
                         lambda *a, **k: subprocess.CompletedProcess(a, 0, scelto + "\n", ""))
     assert S.pannello("save", "nuovo.yml") == (scelto, "")
     assert S.autorizzato(scelto)
+
+
+def test_i_sample_si_servono_ma_solo_quelli(tmp_path):
+    """Il laboratorio fa sentire un sample prima di sceglierlo: i file stanno
+    in <repo>/samples, fuori dalla cartella servita. Fuori di li' niente."""
+    import http.client
+    import threading
+
+    studio = tmp_path / "generated" / "s"
+    studio.mkdir(parents=True)
+    (tmp_path / "samples").mkdir()
+    (tmp_path / "samples" / "a.wav").write_bytes(b"RIFF")
+    (tmp_path / "segreto.txt").write_text("x")
+    srv = S.crea(str(studio), str(tmp_path), 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        def get(url):
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
+            c.request("GET", url)
+            r = c.getresponse()
+            return r.status, r.read()
+
+        assert get("/samples/a.wav") == (200, b"RIFF")
+        assert get("/samples/../segreto.txt")[0] == 404
+        assert get("/samples/manca.wav")[0] == 404
+    finally:
+        srv.shutdown()
