@@ -203,6 +203,15 @@ parametri mostra la x normalizzata del punto selezionato e la accetta digitata:
 vale subito, come il trascinamento, e riordina i punti (non passa da `salva
 modifica`, che riguarda i valori).
 
+**Dove si scrive, la tastiera è di chi scrive.** Con il focus in un campo
+(o in un menu) gli scorciatoi della pagina si fanno da parte: frecce per
+muovere il cursore, shift+frecce per selezionare, barra spaziatrice per lo
+spazio, backspace per una cifra, `cmd+Z` per l'undo del testo. Fuori dai campi
+tornano a valere trasporto (spazio), navigazione della griglia (frecce), undo
+e `delete`. La guardia è una sola, `inCampo()`, chiamata da tutti i gestori:
+mancava a quello della griglia, che si prendeva frecce e spazio su tutta la
+pagina.
+
 **Selezione multipla.** Trascinando sul **vuoto** della linea dei breakpoint
 si disegna una banda, come su una scrivania, e i punti che ci cadono dentro
 (estremi compresi) restano selezionati — anello attorno, e il conto nella riga

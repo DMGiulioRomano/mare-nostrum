@@ -391,7 +391,16 @@ function show(c) {
   go(Math.min(cx, cur.xs.length - 1), Math.min(cy, cur.ys.length - 1), false);
 }
 
+// Dove si sta scrivendo, la tastiera e' di chi scrive: le frecce muovono il
+// cursore, shift+frecce selezionano, la barra spaziatrice fa uno spazio e
+// backspace cancella una cifra. Gli scorciatoi della pagina — trasporto,
+// navigazione della griglia, undo, delete — si fanno da parte.
+function inCampo(t) {
+  return /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable;
+}
+
 addEventListener("keydown", e => {
+  if (inCampo(e.target)) return;
   // I bottoni tengono il focus dopo un click, e col focus la barra spaziatrice
   // li ripremerebbe invece di comandare il trasporto.
   if (e.target.tagName === "BUTTON") e.target.blur();
@@ -526,7 +535,7 @@ function vaiStoria(d) {
 addEventListener("keydown", e => {
   if (e.key.toLowerCase() !== "z" || !(e.metaKey || e.ctrlKey)) return;
   // In un campo di testo cmd+Z e' l'undo del testo: non glielo si toglie.
-  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if (inCampo(e.target)) return;
   e.preventDefault();
   vaiStoria(e.shiftKey ? 1 : -1);
 });
@@ -943,7 +952,7 @@ function bpDel() {
 addEventListener("keydown", e => {
   if (e.key !== "Delete" && e.key !== "Backspace") return;
   if (document.getElementById("lab").hidden) return;
-  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if (inCampo(e.target)) return;
   e.preventDefault();
   bpDel();
 });
