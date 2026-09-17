@@ -536,13 +536,24 @@ function riprendiStream() {
 
 // `/samples/` non sta sotto lo studio: e' il server che lo mappa sulla
 // cartella dei sample del repo (serve.translate_path).
-function ascolta(nome) {
+async function ascolta(nome) {
   if (!nome) return;
+  const url = "/samples/" + nome.split("/").map(encodeURIComponent).join("/");
+  // Il caso vero: un `make serve` avviato prima che questa rotta esistesse.
+  // Senza questo controllo l'audio non parte e non lo dice nessuno — e' lo
+  // stesso silenzio che `post` evita sulle rotte POST.
+  const r = await fetch(url, {method: "HEAD"}).catch(() => null);
+  if (!r || !r.ok) {
+    document.getElementById("labInfo").textContent = r && r.status === 404
+      ? "il server non serve /samples/: e' una versione vecchia (o un altro "
+        + "studio), fermalo con Ctrl-C e rilancia `make serve`."
+      : "sample non raggiungibile: serve `make serve` (non file://).";
+    return;
+  }
   LAB_AUDIO = false;
   marcaAudio();
   document.getElementById("now").innerHTML =
     "<b>sample</b><br><span class='file'>" + nome + "</span>";
-  const url = "/samples/" + nome.split("/").map(encodeURIComponent).join("/");
   audio.src = url;
   audio.play();
   analyse(url);
