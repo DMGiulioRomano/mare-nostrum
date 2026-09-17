@@ -205,14 +205,22 @@ modifica`, che riguarda i valori).
 
 **Generare breakpoint a mucchio.** Il blocco `genera breakpoint` (chiuso
 finché non serve, sotto i bottoni) prende un tratto dell'asse — `da`, `a`,
-`quanti` — e ci mette n punti disposti in uno di quattro modi, due
-deterministici e due casuali: `equidistanti` (passo costante in differenza),
-`geometrica` (passo costante in rapporto; con uno zero o due segni diversi
-ripiega sull'equidistante), `random (uniforme)` (pescati, tutti i valori
-ugualmente probabili), `random (gaussiana)` (pescati, centro dell'intervallo
-come media e tre sigma sugli estremi, code tagliate sulla maschera). I tempi
-si ordinano prima che i valori vengano assegnati, così una rampa segue il
-tempo anche con tempi casuali.
+`quanti` — e ci mette n punti disposti in uno di tre modi.
+
+- `regolare` + **`ratio`**: la ragione con cui ogni passo sta al precedente.
+  A **1** i passi sono uguali (equidistanti); **>1** crescono e i punti si
+  addensano in principio; **<1** calano e si addensano alla fine. La
+  geometrica non è un modo a parte, è il valore `ratio = (b/a)^(1/(n-1))` —
+  quello per cui resta costante il rapporto fra un *valore* e il successivo.
+  Gli estremi ci cadono sempre sopra per costruzione, e lo zero non è più un
+  caso vietato.
+- `random (uniforme)` — pescati, tutti i valori ugualmente probabili.
+- `random (gaussiana)` — pescati, centro dell'intervallo come media e tre
+  sigma sugli estremi, code tagliate sulla maschera.
+
+Il campo `ratio` si spegne sui due modi che pescano: lì non vuol dire niente.
+I tempi si ordinano prima che i valori vengano assegnati, così una rampa segue
+il tempo anche con tempi casuali.
 
 Con `+ parametro` si aggiunge una **regola**: parametro, `min`, `max` (la
 maschera, prefillata con le tacche dello `study.yml`), lo stesso menu dei

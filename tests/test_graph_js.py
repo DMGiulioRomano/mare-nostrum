@@ -524,12 +524,15 @@ def test_i_valori_generati_riempiono_l_intervallo_come_si_e_chiesto(tmp_path):
     p = tmp_path / "g.js"
     p.write_text(
         _fn(js, "gaussiano") + _fn(js, "riempi") + """
+const q = Math.pow(0.016 / 0.001, 1 / 4);   // il ratio che da' la geometrica
 const out = {
-  equi: riempi("equi", 5, 0, 1),
-  geom: riempi("geom", 5, 0.001, 0.016),
-  geomZero: riempi("geom", 3, 0, 1),        // rapporto impossibile -> equidistanti
-  uno: riempi("equi", 1, 0.2, 0.9),
-  passo: riempi("equi", 5, 0, 1, 0.3),
+  uno: riempi("regolare", 5, 0, 1, 0, 1),
+  cresce: riempi("regolare", 5, 0, 1, 0, 2),
+  cala: riempi("regolare", 5, 0, 1, 0, 0.5),
+  geom: riempi("regolare", 5, 0.001, 0.016, 0, q),
+  zero: riempi("regolare", 5, 0, 1, 0, q),  // il ratio non teme lo zero
+  solo: riempi("regolare", 1, 0.2, 0.9, 0, 1),
+  passo: riempi("regolare", 5, 0, 1, 0.3, 1),
   random: riempi("random", 200, 0.01, 0.04),
   gauss: riempi("gauss", 200, 0.01, 0.04),
 };
@@ -538,13 +541,22 @@ console.log(JSON.stringify(out));
     out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
     g = json.loads(out.stdout)
-    assert g["equi"] == [0, 0.25, 0.5, 0.75, 1]
-    # geometrica: rapporto costante fra un punto e il successivo, estremi compresi
+    assert g["uno"] == [0, 0.25, 0.5, 0.75, 1]        # ratio 1: equidistanti
+    # ratio != 1: i passi stanno in progressione geometrica di quella ragione,
+    # e gli estremi ci cadono sopra lo stesso
+    for nome, r in (("cresce", 2), ("cala", 0.5)):
+        passi = [b - a for a, b in zip(g[nome], g[nome][1:])]
+        assert all(y / x == pytest.approx(r) for x, y in zip(passi, passi[1:])), nome
+        assert (g[nome][0], g[nome][-1]) == pytest.approx((0, 1)), nome
+    # ratio = (b/a)^(1/(n-1)): e' la geometrica di prima, rapporto costante
+    # fra un VALORE e il successivo
     assert g["geom"][0] == pytest.approx(0.001) and g["geom"][-1] == pytest.approx(0.016)
     r = [b / a for a, b in zip(g["geom"], g["geom"][1:])]
     assert all(x == pytest.approx(r[0]) for x in r)
-    assert g["geomZero"] == [0, 0.5, 1]
-    assert g["uno"] == [0.2]                       # un punto solo: parte da `a`
+    # con a = 0 la vecchia geometrica non esisteva; qui il ratio lavora lo stesso
+    assert g["zero"][0] == 0 and g["zero"][-1] == pytest.approx(1)
+    assert sorted(g["zero"]) == g["zero"]
+    assert g["solo"] == [0.2]                      # un punto solo: parte da `a`
     # il passo quantizza a multipli: comanda lui, anche se b non e' un
     # multiplo e l'ultimo punto ci resta sotto
     assert g["passo"] == pytest.approx([0, 0.3, 0.6, 0.9, 0.9])

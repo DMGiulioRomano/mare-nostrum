@@ -916,13 +916,18 @@ function bpDel() {
 // questo li riempie una funzione sola.
 // Un parametro senza regola prende il valore che ha a schermo, come fa
 // `+ breakpoint`.
-// Due deterministici e due casuali, e il nome deve dire quale e' quale:
-// `equidistanti` e `geometrica` danno sempre gli stessi punti (a passo
-// costante in differenza il primo, in rapporto il secondo); `random` e
-// `gaussiana` pescano, e due generazioni danno due risultati — la prima con
-// tutti i valori ugualmente probabili, la seconda addensata in mezzo.
-const MODI = {equi: "equidistanti", geom: "geometrica",
-              random: "random (uniforme)", gauss: "random (gaussiana)"};
+// Uno deterministico e due casuali. `regolare` non e' un modo solo: e' una
+// manopola, il `ratio` con cui ogni passo sta al precedente. A 1 i passi sono
+// tutti uguali — equidistanti; sopra crescono e i punti si addensano in
+// principio, sotto calano e si addensano alla fine. La vecchia `geometrica`
+// e' un valore di quella manopola, ratio = (b/a)^(1/(n-1)), che e' proprio il
+// rapporto fra un valore e il successivo; ma qui gli estremi ci cadono sempre
+// sopra e lo zero non e' piu' un caso vietato.
+// `random` e `gaussiana` invece pescano, e due generazioni danno due risultati
+// diversi: la prima con tutti i valori ugualmente probabili, la seconda
+// addensata in mezzo.
+const MODI = {regolare: "regolare", random: "random (uniforme)",
+              gauss: "random (gaussiana)"};
 
 function gaussiano() {         // Box-Muller: uno standard normale
   let u = 0, v = 0;
@@ -931,20 +936,22 @@ function gaussiano() {         // Box-Muller: uno standard normale
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
-function riempi(modo, n, a, b, passo) {
+function riempi(modo, n, a, b, passo, ratio) {
   const out = [], lo = Math.min(a, b), hi = Math.max(a, b);
   const dentro = v => Math.min(hi, Math.max(lo, v));
+  // I primi k passi, in progressione geometrica di ragione r. A r=1 sono k
+  // passi uguali; il rapporto fra il parziale e il totale e' la frazione di
+  // intervallo percorsa, quindi gli estremi ci cadono sopra per costruzione.
+  const r = ratio > 0 ? ratio : 1;
+  const somma = k => r === 1 ? k : (Math.pow(r, k) - 1) / (r - 1);
+  const tot = n > 1 ? somma(n - 1) : 0;
   for (let i = 0; i < n; i++) {
-    const u = n > 1 ? i / (n - 1) : 0;
     let v;
     if (modo === "random") v = a + Math.random() * (b - a);
     // gaussiana: il centro dell'intervallo, con tre sigma sugli estremi —
     // la massa sta in mezzo e la coda si taglia sulla maschera.
     else if (modo === "gauss") v = (a + b) / 2 + gaussiano() * (hi - lo) / 6;
-    // geometrica: passo costante in rapporto, non in differenza. Con uno zero
-    // o due segni diversi il rapporto non esiste: li' vale l'equidistante.
-    else if (modo === "geom" && a > 0 && b > 0) v = a * Math.pow(b / a, u);
-    else v = a + u * (b - a);        // equidistanti, e il ripiego di sopra
+    else v = a + (b - a) * (tot ? somma(i) / tot : 0);
     out.push(dentro(passo > 0 ? a + Math.round((v - a) / passo) * passo : v));
   }
   return out;
@@ -968,13 +975,23 @@ function genModo() {
   return s;
 }
 
+// La manopola di `regolare`. Sui due modi che pescano non vuol dire niente:
+// li' si spegne invece di restare li' a farsi girare senza effetto.
+function genRatio(modo) {
+  const i = genNum(1, "ratio");
+  i.title = "quanto ogni passo sta al precedente: 1 = equidistanti, "
+          + ">1 fitti in principio, <1 fitti alla fine";
+  modo.onchange = () => { i.disabled = modo.value !== "regolare"; };
+  return i;
+}
+
 function genRule() {
   const r = document.createElement("div");
   r.className = "rule";
   const p = document.createElement("select");
   for (const q of NUM) p.appendChild(new Option(q.path, q.path));
   const min = genNum("", "min"), max = genNum("", "max"), passo = genNum("", "passo");
-  const modo = genModo();
+  const modo = genModo(), ratio = genRatio(modo);
   const via = document.createElement("button");
   via.textContent = "×"; via.title = "togli la regola";
   via.onclick = () => r.remove();
@@ -986,7 +1003,7 @@ function genRule() {
     max.value = q.values.length ? Math.max(...q.values) : iniziale(q);
   };
   p.onchange();
-  r.append(p, min, max, modo, passo, via);
+  r.append(p, min, max, modo, ratio, passo, via);
   document.getElementById("gRules").appendChild(r);
 }
 
@@ -999,14 +1016,16 @@ function genBps() {
   // I tempi vanno comunque ordinati (`serie` vuole un inviluppo che non torna
   // indietro), e ordinarli PRIMA di assegnare i valori fa si' che una rampa
   // di valori segua il tempo anche quando i tempi sono casuali.
-  const ts = riempi(document.getElementById("gModo").value, n, da, a)
+  const ts = riempi(document.getElementById("gModo").value, n, da, a, 0,
+                    numero(document.getElementById("gRatio").value, 1))
              .map(chiuso).sort((x, y) => x - y);
   const regole = [...document.querySelectorAll("#gRules .rule")].map(r => {
-    const [p, min, max, modo, passo] = r.children;
+    const [p, min, max, modo, ratio, passo] = r.children;
     const A = numero(min.value, NaN), B = numero(max.value, NaN);
     if (!Number.isFinite(A) || !Number.isFinite(B)) return null;
     return {path: p.value,
-            vals: riempi(modo.value, n, A, B, numero(passo.value, 0))};
+            vals: riempi(modo.value, n, A, B, numero(passo.value, 0),
+                         numero(ratio.value, 1))};
   }).filter(Boolean);
   const base = snapshot(), ints = snapInterp();
   let ultimo = null;
@@ -1031,9 +1050,12 @@ function genInit() {
   da.id = "gDa"; a.id = "gA"; n.id = "gN";
   tre.append(da, a, n);
   box.appendChild(riga("da · a · quanti", tre, ""));
-  const modo = genModo();
-  modo.id = "gModo";
-  box.appendChild(riga("disposizione", modo, ""));
+  const modo = genModo(), ratio = genRatio(modo);
+  modo.id = "gModo"; ratio.id = "gRatio";
+  const disp = document.createElement("div");
+  disp.className = "tre";
+  disp.append(modo, ratio);
+  box.appendChild(riga("disposizione", disp, ""));
   const rules = document.createElement("div");
   rules.id = "gRules";
   box.appendChild(rules);
