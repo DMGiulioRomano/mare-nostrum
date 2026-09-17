@@ -156,8 +156,10 @@ da `graph` (`campioni()`) e messi in un menu. I fissi partono dal valore di
 sceglierlo**: cambiare il menu (o premere `▶ ascolta`) lo manda nel pannello di
 destra, che e' gia' il lettore completo — sonogramma, forma d'onda,
 spectroscope, stereoscope, cursore, durata. Niente popup: sarebbe lo stesso
-codice due volte. Il server serve `/samples/` dalla cartella dei sample del
-repo, che sta fuori da quella servita.
+codice due volte; `↩ stream` riporta all'ultimo render dello stream — il file
+c'e' ancora e i campioni sono in cache, quindi non si rende niente. Il server
+serve `/samples/` dalla cartella dei sample del repo, che sta fuori da quella
+servita.
 
 ## Diario di ascolto
 

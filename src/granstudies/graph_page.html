@@ -502,9 +502,36 @@ function ascoltoSample(fixed) {
   b.title = "sente il sample nel pannello di destra (spazio: play/pausa)";
   b.onclick = () => ascolta(sel.value);
   sel.parentNode.appendChild(b);
+  // Il ritorno: l'ultimo render dello stream e' ancora sul disco e i suoi
+  // campioni sono ancora nella cache dell'analisi, quindi tornarci e'
+  // immediato e non rende niente. Senza questo, per riascoltare lo stream
+  // dopo un sample bisognerebbe ri-renderizzarlo.
+  TORNA = document.createElement("button");
+  TORNA.textContent = "↩ stream";
+  TORNA.title = "torna all'ultimo render dello stream";
+  TORNA.disabled = true;
+  TORNA.onclick = () => riprendiStream();
+  sel.parentNode.appendChild(TORNA);
   // Cambiare sample lo fa partire: scegliere un materiale E' ascoltarlo, e
   // un click in meno per ogni file conta quando se ne provano trenta.
   sel.onchange = () => { ascolta(sel.value); bozzaSalva(); segna(); };
+}
+
+// L'ultimo render del laboratorio, per poterci tornare dopo aver ascoltato
+// un sample. Il bottone e' spento finche' non c'e' niente dove tornare.
+let ULTIMO = "";
+let TORNA = null;
+
+function riprendiStream() {
+  if (!ULTIMO) return;
+  document.getElementById("now").innerHTML =
+    "<b>stream</b><br><span class='file'>" +
+    (document.getElementById("labName").value || "lab") + "</span>";
+  LAB_AUDIO = true;
+  audio.src = ULTIMO;
+  audio.play();
+  analyse(ULTIMO);
+  marcaAudio();
 }
 
 // `/samples/` non sta sotto lo studio: e' il server che lo mappa sulla
@@ -1089,6 +1116,8 @@ async function labPost(render, path) {
     // `?t=` perche' rirendendo con lo stesso nome il browser servirebbe il
     // file vecchio dalla cache.
     const src = out.src + "?t=" + Date.now();
+    ULTIMO = src;
+    if (TORNA) TORNA.disabled = false;
     LAB_AUDIO = true;
     audio.src = src;
     audio.play();
