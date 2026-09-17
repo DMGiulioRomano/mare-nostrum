@@ -1640,7 +1640,9 @@ function heat(v) {
 }
 
 let view = null;   // {duration} della clip attualmente disegnata
-let logScale = true, nfft = 2048;
+// 8192 campioni di default: la grana fine si guarda in frequenza, e una
+// finestra corta impasta le righe dei grani.
+let logScale = true, nfft = 8192;
 
 const RES = [256, 512, 1024, 2048, 4096, 8192];
 function drawCtl() {
