@@ -473,6 +473,10 @@ function labInit() {
   document.getElementById("fOpen").onclick = fOpen;
   document.getElementById("fSave").onclick = () => fSave(false);
   document.getElementById("fSaveAs").onclick = () => fSave(true);
+  // Il valore di partenza di un fisso e' quello dello stream a riposo, non la
+  // prima tacca della lista: un select che parte da un `sample` diverso da
+  // quello dello studio cambierebbe l'ascolto senza che nessuno l'abbia chiesto.
+  for (const p of CAT) setSel(p.path, leggiPath(L.base, p.path));
   ripristina();
   segna();
 }

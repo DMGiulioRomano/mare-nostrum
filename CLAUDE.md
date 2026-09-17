@@ -149,6 +149,11 @@ resta la stringa scalare di prima. Il round-trip e' verificato
 Gli altri categoriali restano fissi per lo stream. Tutti i parametri numerici
 reggono gli inviluppi — verificati uno per uno.
 
+**Il sample** e' un fisso come gli altri, ma le sue tacche non stanno nello
+`study.yml`: sono i file audio della cartella `samples_dir` dello studio, letti
+da `graph` (`campioni()`) e messi in un menu. I fissi partono dal valore di
+`base:`, non dalla prima tacca della lista.
+
 ## Diario di ascolto
 
 Il diario è unico per lo studio e vive in `studies/ascolto/`:
