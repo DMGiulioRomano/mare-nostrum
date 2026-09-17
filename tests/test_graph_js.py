@@ -581,23 +581,28 @@ def test_la_banda_prende_i_punti_che_ci_cadono_dentro_e_delete_li_toglie(tmp_pat
     p.write_text(
         "let bps = [0.1, 0.3, 0.5, 0.7, 0.9].map(t => ({t, vals:{}}));\n"
         "let curBp = 4;\n"
+        "let CARICATO = -1;\n"
         "function drawTl() {}\n"
+        "function bpLoad(i) { CARICATO = i; }\n"
         "const document = {getElementById: () => ({hidden: true})};\n"
         "const addEventListener = () => {};\n"
         + "let SELEZIONE = new Set();\n"
-        + _fn(js, "selezionaFra") + _fn(js, "bpDel") + """
+        + _fn(js, "selezionaFra") + _fn(js, "mostraBp") + _fn(js, "bpDel") + """
 selezionaFra(0.7, 0.3);                 // tirata al contrario: stesso risultato
 const presi = SELEZIONE.size;
 bpDel();
 const restano = bps.map(b => b.t), dopo = curBp, sel = SELEZIONE.size;
 bpDel();                                // senza banda: il punto corrente
-console.log(JSON.stringify([presi, restano, dopo, sel, bps.map(b => b.t)]));
+console.log(JSON.stringify([presi, restano, dopo, sel, bps.map(b => b.t), CARICATO]));
 """)
     out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
-    presi, restano, dopo, sel, infine = json.loads(out.stdout)
+    presi, restano, dopo, sel, infine, caricato = json.loads(out.stdout)
     assert presi == 3                    # 0.3, 0.5, 0.7 — estremi compresi
     assert restano == [0.1, 0.9]
     assert dopo == 1                     # 0.9 era il corrente ed e' rimasto lui
     assert sel == 0                      # la banda si scioglie dopo la cancellazione
     assert infine == [0.1]               # il secondo giro toglie solo il corrente
+    # il punto corrente e' cambiato da solo: i valori a schermo lo seguono,
+    # se no `cambiati()` segnerebbe come non salvato quello che c'era prima
+    assert caricato == 0

@@ -928,6 +928,13 @@ function selezionaFra(a, b) {
   for (const p of bps) if (p.t >= Math.min(a, b) && p.t <= Math.max(a, b)) SELEZIONE.add(p);
 }
 
+// Quando il punto corrente cambia da solo — generando, cancellando — i valori
+// a schermo devono seguirlo. Cliccare un punto lo fa gia' (`bpLoad`); se qui
+// non lo facesse nessuno, i valori rimasti a schermo sono quelli di prima e
+// `cambiati()` li segnerebbe come non salvati su un punto che nessuno ha
+// toccato. Senza piu' punti non c'e' niente da mostrare: si ridisegna e basta.
+function mostraBp() { if (curBp >= 0) bpLoad(curBp); else drawTl(); }
+
 function bpDel() {
   // Con una banda aperta si tolgono tutti insieme; senza, il punto corrente,
   // che e' quello che il bottone ha sempre fatto.
@@ -938,13 +945,13 @@ function bpDel() {
     // Se il punto corrente e' sopravvissuto resta lui, se no si scende
     // all'ultimo: la barra dei valori deve puntare comunque a qualcosa.
     curBp = bps.includes(b0) ? bps.indexOf(b0) : bps.length - 1;
-    drawTl();
+    mostraBp();
     return;
   }
   if (curBp < 0) return;
   bps.splice(curBp, 1);
   curBp = Math.min(curBp, bps.length - 1);
-  drawTl();
+  mostraBp();
 }
 
 // `delete` (e `backspace`) toglie quello che e' selezionato, come su una
@@ -1084,7 +1091,7 @@ function genBps() {
   });
   bps.sort((x, y) => x.t - y.t);
   curBp = bps.indexOf(ultimo);
-  drawTl();
+  mostraBp();
   document.getElementById("labInfo").textContent =
     "generati " + n + " breakpoint fra " + da + " e " + a +
     (regole.length ? " · " + regole.map(g => g.path).join(", ") : "");

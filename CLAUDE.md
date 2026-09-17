@@ -240,6 +240,12 @@ finché non serve, sotto i bottoni) prende un tratto dell'asse — `da`, `a`,
 - `random (gaussiana)` — pescati, centro dell'intervallo come media e tre
   sigma sugli estremi, code tagliate sulla maschera.
 
+Dopo la generazione il punto corrente è l'ultimo generato e **i valori a
+schermo lo seguono** (`mostraBp`), come quando si clicca un punto: se restassero
+quelli di prima, `cambiati()` li segnerebbe come "non salvati" su un breakpoint
+che nessuno ha toccato. Vale anche dopo `togli`, che sposta il corrente su un
+altro punto.
+
 Il campo `ratio` si spegne sui due modi che pescano: lì non vuol dire niente.
 I tempi si ordinano prima che i valori vengano assegnati, così una rampa segue
 il tempo anche con tempi casuali.
