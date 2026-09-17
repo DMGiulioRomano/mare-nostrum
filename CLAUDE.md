@@ -60,6 +60,13 @@ La modalità take non esiste più: vedi `docs/plans/done/for-each.md`.
 
 ## Il laboratorio (`make serve`)
 
+`make serve` chiude da solo il server di prima. Chiusa la pagina, il processo
+resta: se la porta e' tenuta da un altro `granstudies serve` lo si termina
+(SIGTERM, poi SIGKILL se non molla) e si riparte — e' il proprio lavoro di
+prima, non quello di qualcun altro. Se la porta e' di un processo estraneo non
+si tocca niente e si dice chi e' (`libera_porta` in `serve.py`, verificata in
+`tests/test_serve.py`).
+
 `make serve STUDY=<scala>` non e' piu' `http.server`: e' `granstudies serve`,
 che serve la pagina e accetta `POST /render`. La pagina ha due schede.
 
@@ -166,8 +173,9 @@ click e trascina disegna una regione: e' il loop del pointer, e gli estremi si
 prendono per allargarlo o stringerlo; doppio click lo toglie. Il sample si
 riascolta dentro il loop. Sul documento diventa `pointer.loop_unit: normalized`
 + `loop_start`/`loop_end` (frazioni del file), e `pointer.start` sparisce cosi'
-il pointer parte da loop_start. Il loop iniziale e' quello di `base:`; senza
-regione le chiavi di loop spariscono. Sul render dello stream non si disegna:
+il pointer parte da loop_start. Si parte sempre **senza loop** — il pointer
+percorre il file intero: quello di `base:` e' una scelta dello sweep, non il
+punto di partenza di un ascolto. Senza regione le chiavi di loop spariscono. Sul render dello stream non si disegna:
 li' l'asse e' il tempo d'uscita, non la posizione nel sample.
 Il loop suona con un `AudioBufferSourceNode` (loop nativo, preciso al
 campione), non spostando `audio.currentTime`: quel seek e' asincrono e il
@@ -182,11 +190,31 @@ nella pagina: grana media (`grain.duration` 0.064), niente dispersione
 fuori da quella tabella parte da `base:`, e se manca anche li' dalla sua prima
 tacca (`iniziale()`, verificata in `tests/test_graph_js.py`).
 
-**Il volume** e' l'unico parametro che si **scrive** invece di sceglierlo: non
-ha tacche da esplorare, e' un aggiustamento continuo. E' un parametro numerico
-come gli altri — sta sui breakpoint, regge gli inviluppi — solo che la sua
-riga e' un campo di testo (`free: true`), coi limiti presi da `bounds_for`,
-cioe' dall'engine.
+**Undo/redo.** `cmd+Z` annulla, `cmd+shift+Z` rifa (`ctrl` fuori da macOS).
+Lo stato che si annulla e' tutto il lavoro: i breakpoint, il loop, il punto
+selezionato e **i valori a schermo non ancora salvati sul breakpoint** — sono
+lavoro come gli altri. Si registra in `labInfo`, dove ogni modifica va a
+finire, tranne durante un gesto (`GESTO`): un trascinamento e' un passo solo,
+non cento. Dentro un campo di testo `cmd+Z` resta l'undo del testo. Aprire un
+file o fare `nuovo` azzera la storia.
+
+**Il tempo di un breakpoint si scrive.** La riga `tempo (0-1)` in cima ai
+parametri mostra la x normalizzata del punto selezionato e la accetta digitata:
+vale subito, come il trascinamento, e riordina i punti (non passa da `salva
+modifica`, che riguarda i valori).
+
+**I numerici si scelgono E si scrivono.** Ogni parametro numerico
+(`grain.duration`, `grain.duration_range`, `fill_factor`, `pitch.ratio`,
+`pitch.range`, `pointer.speed_ratio`, `pointer.offset_range`, `distribution`,
+`volume`) ha due controlli sulla stessa riga: il **campo** che tiene il valore
+e, accanto, il **menu `▾` delle tacche** dello `study.yml`. Sceglierne una la
+scrive nel campo e il menu torna al suo `▾`: il valore buono e' uno solo,
+quello scritto. Nel campo si puo' digitare anche un valore che fra le tacche
+non c'e'; la virgola vale il punto, e un campo vuoto o illeggibile tiene il
+valore del breakpoint invece di scrivere NaN (`tests/test_graph_js.py`).
+I limiti di `bounds_for` non bloccano il campo, restano come tooltip.
+**Il volume** resta l'unico senza menu (`free: true`): non ha tacche, e' un
+aggiustamento continuo. I categoriali (sample, finestre) restano menu chiusi.
 
 ## Diario di ascolto
 

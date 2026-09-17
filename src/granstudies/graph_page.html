@@ -107,6 +107,10 @@
  #lab select, #lab input { font:inherit; color:inherit; background:var(--panel);
                            border:1px solid var(--line); padding:1px 4px; }
  #lab input[type=text], #lab input[type=number] { width:9em; }
+ /* campo scrivibile + menu delle tacche, sulla stessa riga */
+ #lab .campo { display:flex; gap:4px; align-items:center; }
+ #lab .campo input { flex:1; width:auto; min-width:0; }
+ #lab .campo select.tacche { width:4.2em; }
  #lab h2 { font-size:12px; font-weight:600; color:var(--dim); margin:16px 0 6px;
            text-transform:lowercase; }
  #lab .bar { margin:10px 0; }
@@ -442,7 +446,73 @@ let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
 // Il loop del pointer: [inizio, fine] come frazioni del sample, o null.
 // Frazioni e non secondi perche' la forma d'onda da' proprio quelle, e
 // riaprendo non serve conoscere la durata del file.
+// Si parte SEMPRE senza: il pointer percorre il file intero. Il loop di
+// `base:` e' una scelta dello sweep, non il punto di partenza di un ascolto —
+// lo si disegna sulla forma d'onda quando serve.
 let LOOP = null;
+
+// Undo/redo. Lo stato che si annulla e' tutto il lavoro: i breakpoint, il
+// loop, il punto selezionato E i valori a schermo — quelli che hai cambiato
+// ma non ancora salvato sul breakpoint sono lavoro come gli altri, e un undo
+// che li lasciasse fermi annullerebbe meta' di quello che vedi.
+// Si registra in `labInfo`, che chiude ogni modifica (drawTl finisce li'),
+// tranne mentre un gesto e' in corso (`GESTO`): un trascinamento e' UN passo,
+// non cento. `istantanea()` e' anche il confronto: se non cambia niente, non
+// si registra niente.
+let STORIA = [], ISTO = -1, GESTO = false;
+
+function istantanea() {
+  return JSON.stringify({bps, loop: LOOP, cur: curBp,
+                         vals: snapshot(), ints: snapInterp()});
+}
+
+function storia() {
+  const s = istantanea();
+  if (STORIA[ISTO] === s) return;
+  STORIA.splice(ISTO + 1);        // modificare dopo un undo taglia il redo
+  STORIA.push(s);
+  if (STORIA.length > 200) STORIA.shift();
+  ISTO = STORIA.length - 1;
+}
+
+// Aprire un file, o ricominciare, azzera la storia: l'undo non deve
+// riportare indietro i breakpoint di un altro documento.
+function storiaReset() { STORIA = []; ISTO = -1; }
+
+function vaiStoria(d) {
+  const i = ISTO + d;
+  if (i < 0 || i >= STORIA.length) {
+    document.getElementById("labInfo").textContent =
+      d < 0 ? "niente da annullare" : "niente da rifare";
+    return;
+  }
+  ISTO = i;
+  const s = JSON.parse(STORIA[i]);
+  bps = s.bps; LOOP = s.loop;
+  curBp = Math.min(s.cur, bps.length - 1);
+  // A schermo torna quello che c'era a schermo, non i valori del breakpoint:
+  // e' `bpLoad` che li riallinea, e qui riallinearli cancellerebbe proprio le
+  // modifiche non salvate che l'undo deve riportare indietro.
+  for (const [path, v] of Object.entries(s.vals || {})) setSel(path, v);
+  for (const p of AUT) {
+    const el = document.getElementById("I:" + p.path);
+    if (el) el.value = (s.ints || {})[p.path] || "linear";
+  }
+  // GESTO tiene fermo il registratore: ripristinare non e' una modifica.
+  GESTO = true;
+  drawTl();
+  GESTO = false;
+  document.getElementById("labInfo").textContent =
+    (d < 0 ? "annullato" : "rifatto") + "  (" + (ISTO + 1) + "/" + STORIA.length + ")";
+}
+
+addEventListener("keydown", e => {
+  if (e.key.toLowerCase() !== "z" || !(e.metaKey || e.ctrlKey)) return;
+  // In un campo di testo cmd+Z e' l'undo del testo: non glielo si toglie.
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  e.preventDefault();
+  vaiStoria(e.shiftKey ? 1 : -1);
+});
 
 // Il loop scritto in uno stream. Solo `loop_unit: normalized`: un loop in
 // secondi non si sa disegnare senza la durata del sample.
@@ -479,18 +549,45 @@ function labInit() {
   const mk = (p, box) => {
     const r = document.createElement("div"); r.className = "row";
     const k = document.createElement("div"); k.className = "k"; k.textContent = p.path;
-    // `free`: un parametro senza tacche, che si scrive invece di sceglierlo —
-    // il volume e' un aggiustamento continuo, non una scala da esplorare. Il
-    // resto del laboratorio non se ne accorge: legge `P:<path>`.value come
-    // per un menu, e i breakpoint funzionano identici.
-    const s = document.createElement(p.free ? "input" : "select");
+    // Un numerico si sceglie E si scrive: il campo tiene il valore, il menu
+    // accanto offre le tacche dello study.yml. `free` (il volume) e' lo
+    // stesso campo senza menu, perche' tacche non ne ha. Il resto del
+    // laboratorio non se ne accorge: legge `P:<path>`.value come prima.
+    const libero = p.free || p.kind === "num";
+    const s = document.createElement(libero ? "input" : "select");
     s.id = "P:" + p.path;
-    if (p.free) {
-      s.type = "number";
-      s.step = "any";                       // le frazioni si scrivono lo stesso
-      if (p.min != null) s.min = p.min;     // i limiti sono quelli dell'engine
-      if (p.max != null) s.max = p.max;
+    if (libero) {
+      // type=text e non number: le frecce e il passo di un `number` non
+      // servono a niente su una scala logaritmica. Il valore lo converte
+      // gia' `Number(...)` a valle.
+      s.type = "text";
+      s.inputMode = "decimal";
+      // I limiti dell'engine non bloccano piu' il campo (type=text): restano
+      // come suggerimento sul passaggio del mouse.
+      if (p.min != null || p.max != null) s.title = p.min + " .. " + p.max;
       s.value = iniziale(p);
+      if (p.values.length) {
+        // Le tacche restano un menu vero accanto al campo: la datalist da
+        // sola, in Safari, non si vede nemmeno. Si sceglie da li' oppure si
+        // scrive nel campo; il menu torna subito al suo `▾` perche' il
+        // valore buono e' uno solo, quello scritto nel campo.
+        const men = document.createElement("select");
+        men.className = "tacche";
+        men.title = "le tacche dello study.yml";
+        men.appendChild(new Option("▾", ""));
+        for (const v of p.values) men.appendChild(new Option(fmt(v), v));
+        men.onchange = () => {
+          if (!men.value) return;
+          s.value = men.value;
+          men.selectedIndex = 0;
+          s.dispatchEvent(new Event("change"));
+        };
+        const campo = document.createElement("div");
+        campo.className = "campo";
+        campo.appendChild(s); campo.appendChild(men);
+        r.appendChild(k); r.appendChild(campo); box.appendChild(r);
+        return;
+      }
     } else {
       for (const v of p.values) {
         const o = document.createElement("option");
@@ -524,6 +621,27 @@ function labInit() {
   // Tre livelli, dal piu' largo al piu' stretto: tutti i breakpoint -> questo
   // breakpoint -> il singolo parametro. Si decide in blocco e poi si fanno le
   // eccezioni, che e' l'ordine in cui si lavora davvero.
+  // Il tempo del breakpoint selezionato si scrive, non solo si trascina: a
+  // mano 0.14 e' 0.14, col mouse e' quel che capita. Vale subito, come il
+  // trascinamento — non passa da `salva modifica`, che riguarda i valori.
+  const bpT = document.createElement("input");
+  bpT.id = "bpT"; bpT.type = "text"; bpT.inputMode = "decimal";
+  bpT.onchange = () => {
+    if (curBp < 0) return;
+    const b = bps[curBp];
+    const v = Number(bpT.value.trim().replace(",", "."));
+    if (!Number.isFinite(v)) { bpT.value = b.t.toFixed(3); return; }
+    b.t = Math.min(1, Math.max(0, v));
+    bps.sort((x, y) => x.t - y.t);      // come dopo un trascinamento
+    curBp = bps.indexOf(b);
+    drawTl();
+  };
+  const rT = document.createElement("div");
+  rT.className = "row capo";
+  rT.innerHTML = "<div class='k'>tempo (0-1)</div>";
+  rT.appendChild(bpT);
+  box.appendChild(rT);
+
   const ovunque = mkInterp("**");
   ovunque.onchange = () => {
     // Questo scrive subito su TUTTI i punti: non e' una proposta da salvare,
@@ -707,7 +825,12 @@ function snapshot() {
   const v = {};
   for (const p of AUT) {
     const raw = document.getElementById("P:" + p.path).value;
-    v[p.path] = p.kind === "num" ? Number(raw) : raw;
+    // Scritto a mano: la virgola vale il punto, e un campo vuoto o sbagliato
+    // tiene il valore del breakpoint invece di diventare NaN.
+    const testo = String(raw).trim().replace(",", ".");
+    v[p.path] = p.kind === "num" ? (testo === "" ? NaN : Number(testo)) : raw;
+    if (p.kind === "num" && !Number.isFinite(v[p.path]))
+      v[p.path] = (bps[curBp] && bps[curBp].vals[p.path]) ?? iniziale(p);
   }
   return v;
 }
@@ -800,12 +923,14 @@ function drawTl() {
       bpLoad(i);
       const box = tl.getBoundingClientRect();
       const move = ev => {
+        GESTO = true;      // il trascinamento e' un passo solo di undo
         b.t = Math.min(1, Math.max(0, (ev.clientX - box.left) / box.width));
         drawTl();
       };
       const up = () => {
         removeEventListener("pointermove", move);
         removeEventListener("pointerup", up);
+        GESTO = false;
         // L'ordine dei punti e' il tempo: dopo il trascinamento la lista va
         // riordinata, o `serie` produrrebbe un inviluppo che torna indietro.
         const b0 = bps[curBp];
@@ -818,6 +943,11 @@ function drawTl() {
     };
     tl.appendChild(d);
   });
+  // Il campo del tempo segue il punto selezionato, ma non mentre ci si scrive
+  // dentro: riscriverlo sotto le dita cancellerebbe quello che stai digitando.
+  const bpT = document.getElementById("bpT");
+  if (bpT && document.activeElement !== bpT)
+    bpT.value = curBp >= 0 ? bps[curBp].t.toFixed(3) : "";
   labInfo();
 }
 
@@ -929,6 +1059,8 @@ function labInfo() {
     (diversi.length ? "  |  non salvati sul breakpoint " + (curBp + 1) + ": "
                       + diversi.join(", ") : "");
   document.getElementById("labYaml").textContent = bps.length ? preview() : "";
+  // Ogni modifica passa di qui: e' il posto dove la storia si registra.
+  if (!GESTO) storia();
 }
 
 // I breakpoint disegnati sopra sonogramma e forma d'onda: trascinando un
@@ -1056,6 +1188,7 @@ function ripristina() {
   document.getElementById("labName").value = b.name || "lab";
   document.getElementById("labDur").value = b.dur || DUR;
   for (const [path, v] of Object.entries(b.cat || {})) setSel(path, v);
+  storiaReset();
   bpLoad(0);
   document.getElementById("labInfo").textContent =
     "ripreso il lavoro in corso (" + bps.length + " breakpoint)";
@@ -1109,9 +1242,10 @@ function confermaPerdita(cosa) {
 
 function fNew() {
   if (!confermaPerdita("creare un nuovo stream")) return;
+  storiaReset();
   bps = [];
   curBp = -1;
-  LOOP = loopDi(L.base);
+  LOOP = null;              // il loop si disegna, non si eredita
   FILE = "";
   SALVATO = statoOra();
   document.getElementById("labName").value = "lab";
@@ -1186,6 +1320,7 @@ function carica(doc, path) {
   document.getElementById("labName").value =
     (path || "lab").split("/").pop().replace(/\.ya?ml$/, "");
   document.getElementById("labDur").value = doc.duration || st.duration || DUR;
+  storiaReset();
   bpLoad(0);
   SALVATO = statoOra();
   segna();
@@ -1269,7 +1404,6 @@ for (const [id, on] of [["tabGrid", false], ["tabLab", true]]) {
     document.getElementById("tabLab").classList.toggle("on", on);
   };
 }
-LOOP = loopDi(L.base);
 labInit();
 if (!D.combos.length) document.getElementById("tabLab").click();
 
@@ -1506,7 +1640,9 @@ function heat(v) {
 }
 
 let view = null;   // {duration} della clip attualmente disegnata
-let logScale = true, nfft = 2048;
+// 8192 campioni di default: la grana fine si guarda in frequenza, e una
+// finestra corta impasta le righe dei grani.
+let logScale = true, nfft = 8192;
 
 const RES = [256, 512, 1024, 2048, 4096, 8192];
 function drawCtl() {
@@ -1638,6 +1774,7 @@ for (const id of ["specView", "waveView"]) {
       disegna = true;
       const a = frac({clientX: x0}), b = frac(e);
       if (Math.abs(b - a) < 0.001) return;
+      GESTO = true;      // disegnare il loop e' un passo solo di undo
       LOOP = [Math.min(a, b), Math.max(a, b)];
       drawTl();
     } else if (!disegna) seekFrom(el, e);
@@ -1645,6 +1782,7 @@ for (const id of ["specView", "waveView"]) {
   addEventListener("mouseup", () => {
     // Finito di disegnare, l'ascolto riparte dall'inizio del loop.
     if (down && disegna && LOOP && view) vaiA(LOOP[0] * view.duration);
+    if (down && disegna) { GESTO = false; drawTl(); }
     down = false;
   });
 }

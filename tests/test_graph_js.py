@@ -451,3 +451,62 @@ console.log(JSON.stringify([loopDi(base), st.pointer, loopDi(st), via.pointer,
         None,
         [0.8, 1],
     ]
+
+
+@node
+def test_un_numerico_si_puo_scrivere_a_mano(tmp_path):
+    """Il campo libero: la virgola vale il punto, il vuoto tiene il punto."""
+    js = _script()
+    frag = js[js.index("function snapshot"):js.index("function bpAdd")]
+    p = tmp_path / "m.js"
+    p.write_text(
+        "const AUT = [{path:'a', kind:'num'}, {path:'b', kind:'num'}];\n"
+        "const SCHERMO = {a: '0,0037', b: ''};\n"
+        "const document = {getElementById: id => ({value: SCHERMO[id.slice(2)]})};\n"
+        "let bps = [{t:0, vals:{a:1, b:5}}];\n"
+        "let curBp = 0;\n"
+        + frag +
+        "console.log(JSON.stringify(snapshot()));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    v = __import__("json").loads(out.stdout)
+    assert v["a"] == 0.0037     # scritto a mano, fuori dalle tacche
+    assert v["b"] == 5          # campo vuoto: resta il valore del breakpoint
+
+
+@node
+def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
+    """La storia e' tutto il lavoro: i punti e i valori a schermo non salvati."""
+    js = _script()
+    frag = (js[js.index("function istantanea"):js.index("addEventListener(\"keydown\", e => {\n  if (e.key.toLowerCase()")]
+            + _fn(js, "snapshot") + _fn(js, "snapInterp"))
+    p = tmp_path / "u.js"
+    p.write_text(
+        "const AUT = [{path:'a', kind:'num'}];\n"
+        "let bps = [], LOOP = null, curBp = -1;\n"
+        "let STORIA = [], ISTO = -1, GESTO = false;\n"
+        "const SCHERMO = {a: 1};\n"
+        "const document = {getElementById: id => ({\n"
+        "  get value() { return id[0] === 'I' ? 'linear' : SCHERMO[id.slice(2)]; },\n"
+        "  set value(v) { if (id[0] !== 'I') SCHERMO[id.slice(2)] = v; },\n"
+        "  textContent: '', classList: {toggle(){}}, querySelectorAll: () => []})};\n"
+        "function setSel(path, v) { SCHERMO[path] = v; }\n"
+        "function drawTl() { if (!GESTO) storia(); }\n"
+        "function iniziale() { return 0; }\n"
+        + frag +
+        "drawTl();\n"                        # stato iniziale: vuoto
+        "bps.push({t:0, vals:{a:1}}); drawTl();\n"
+        "SCHERMO.a = 7; drawTl();\n"         # valore cambiato ma non salvato
+        "const prima = SCHERMO.a;\n"
+        "vaiStoria(-1); const dopoUndo = SCHERMO.a;\n"
+        "vaiStoria(-1); const punti = bps.length;\n"
+        "vaiStoria(1); vaiStoria(1); const dopoRedo = SCHERMO.a;\n"
+        "console.log(JSON.stringify([prima, dopoUndo, punti, dopoRedo, STORIA.length]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    prima, dopoUndo, punti, dopoRedo, n = __import__("json").loads(out.stdout)
+    assert prima == 7
+    assert dopoUndo == 1      # l'undo riporta anche il valore non salvato
+    assert punti == 0         # un altro passo indietro: il breakpoint sparisce
+    assert dopoRedo == 7
+    assert n == 3
