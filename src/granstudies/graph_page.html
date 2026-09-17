@@ -120,6 +120,15 @@
                     cursor:pointer; }
  #lab .bar button:hover { border-color:var(--fg); }
  #lab .bar button:disabled { opacity:.35; cursor:default; border-color:var(--line); }
+ /* Generare breakpoint a mucchio: chiuso finche' non serve. */
+ #gen { margin:10px 0; }
+ #gen summary { cursor:pointer; color:var(--dim); }
+ #gen .tre, #gen .rule { display:flex; gap:4px; align-items:center; }
+ #gen .tre input, #gen .rule input { width:5.5em; flex:0 0 auto; }
+ #gen .rule { margin:4px 0; }
+ #gen .rule select { flex:0 0 auto; }
+ #gen .rule button { font:inherit; color:inherit; background:none;
+                     border:1px solid var(--line); padding:1px 6px; cursor:pointer; }
  /* La linea dei breakpoint: una dimensione sola, il tempo. Il punto si
     trascina, e cliccandolo i select tornano ai valori di quel preset. */
  #tl { position:relative; height:38px; margin:14px 0 6px; border-bottom:1px solid var(--line);
@@ -128,6 +137,10 @@
            border:1px solid var(--fg); background:var(--bg); border-radius:50%;
            cursor:grab; }
  #tl .bp.on { background:var(--on); border-color:var(--on); }
+ /* Presi con la banda: l'anello attorno, che convive col rosso del corrente. */
+ #tl .bp.sel { box-shadow:0 0 0 2px var(--fg); }
+ #tl .banda { position:absolute; top:0; bottom:0; pointer-events:none;
+              background:rgba(128,128,128,.22); border:1px solid var(--fg); }
  #tl .bp .t { position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
               font-size:10px; color:var(--dim); white-space:nowrap; }
  /* Le finestre: il nome da solo non dice niente, la forma si'. */
@@ -176,9 +189,13 @@
       <button id="bpAdd">+ breakpoint</button>
       <button id="bpSave">salva modifica</button>
       <button id="bpAll" title="scrive i soli valori che hai appena cambiato su tutti i breakpoint">applica a tutti</button>
-      <button id="bpDel">togli</button>
+      <button id="bpDel" title="delete — i selezionati se c'e' una banda, se no il punto corrente">togli ⌫</button>
       <button id="labRender">rendi e ascolta</button>
     </div>
+    <details id="gen">
+      <summary>genera breakpoint</summary>
+      <div id="genBox"></div>
+    </details>
     <div id="tl"></div>
     <div id="labInfo"></div>
     <div id="labYaml"></div>
@@ -374,7 +391,16 @@ function show(c) {
   go(Math.min(cx, cur.xs.length - 1), Math.min(cy, cur.ys.length - 1), false);
 }
 
+// Dove si sta scrivendo, la tastiera e' di chi scrive: le frecce muovono il
+// cursore, shift+frecce selezionano, la barra spaziatrice fa uno spazio e
+// backspace cancella una cifra. Gli scorciatoi della pagina — trasporto,
+// navigazione della griglia, undo, delete — si fanno da parte.
+function inCampo(t) {
+  return /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable;
+}
+
 addEventListener("keydown", e => {
+  if (inCampo(e.target)) return;
   // I bottoni tengono il focus dopo un click, e col focus la barra spaziatrice
   // li ripremerebbe invece di comandare il trasporto.
   if (e.target.tagName === "BUTTON") e.target.blur();
@@ -488,7 +514,7 @@ function vaiStoria(d) {
   }
   ISTO = i;
   const s = JSON.parse(STORIA[i]);
-  bps = s.bps; LOOP = s.loop;
+  bps = s.bps; LOOP = s.loop; SELEZIONE.clear();
   curBp = Math.min(s.cur, bps.length - 1);
   // A schermo torna quello che c'era a schermo, non i valori del breakpoint:
   // e' `bpLoad` che li riallinea, e qui riallinearli cancellerebbe proprio le
@@ -509,7 +535,7 @@ function vaiStoria(d) {
 addEventListener("keydown", e => {
   if (e.key.toLowerCase() !== "z" || !(e.metaKey || e.ctrlKey)) return;
   // In un campo di testo cmd+Z e' l'undo del testo: non glielo si toglie.
-  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if (inCampo(e.target)) return;
   e.preventDefault();
   vaiStoria(e.shiftKey ? 1 : -1);
 });
@@ -672,6 +698,7 @@ function labInit() {
   document.getElementById("bpSave").onclick = bpSave;
   document.getElementById("bpAll").onclick = bpAll;
   document.getElementById("bpDel").onclick = bpDel;
+  genInit();
   // Cambiare un select su un breakpoint selezionato non lo modifica da solo:
   // finche' non si salva, i valori a schermo e quelli del punto divergono, e
   // e' l'unica cosa che si puo' guardare senza accorgersene. Lo dice l'info.
@@ -888,11 +915,215 @@ function bpAll() {
     "applicato a tutti i " + bps.length + " breakpoint: " + ks.join(", ");
 }
 
+// La selezione multipla: i breakpoint presi con la banda, per oggetto e non
+// per indice — un trascinamento riordina la lista e gli indici si spostano
+// sotto i piedi. Non entra nella storia dell'undo: selezionare non e' una
+// modifica del documento (`istantanea` non la guarda, quindi non registra un
+// passo a vuoto), e per lo stesso motivo un undo la lascia indietro — i
+// breakpoint che tornano sono altri oggetti. Li' si azzera.
+let SELEZIONE = new Set();
+
+function selezionaFra(a, b) {
+  SELEZIONE.clear();
+  for (const p of bps) if (p.t >= Math.min(a, b) && p.t <= Math.max(a, b)) SELEZIONE.add(p);
+}
+
+// Quando il punto corrente cambia da solo — generando, cancellando — i valori
+// a schermo devono seguirlo. Cliccare un punto lo fa gia' (`bpLoad`); se qui
+// non lo facesse nessuno, i valori rimasti a schermo sono quelli di prima e
+// `cambiati()` li segnerebbe come non salvati su un punto che nessuno ha
+// toccato. Senza piu' punti non c'e' niente da mostrare: si ridisegna e basta.
+function mostraBp() { if (curBp >= 0) bpLoad(curBp); else drawTl(); }
+
 function bpDel() {
+  // Con una banda aperta si tolgono tutti insieme; senza, il punto corrente,
+  // che e' quello che il bottone ha sempre fatto.
+  if (SELEZIONE.size) {
+    const b0 = bps[curBp];
+    bps = bps.filter(p => !SELEZIONE.has(p));
+    SELEZIONE.clear();
+    // Se il punto corrente e' sopravvissuto resta lui, se no si scende
+    // all'ultimo: la barra dei valori deve puntare comunque a qualcosa.
+    curBp = bps.includes(b0) ? bps.indexOf(b0) : bps.length - 1;
+    mostraBp();
+    return;
+  }
   if (curBp < 0) return;
   bps.splice(curBp, 1);
   curBp = Math.min(curBp, bps.length - 1);
-  drawTl();
+  mostraBp();
+}
+
+// `delete` (e `backspace`) toglie quello che e' selezionato, come su una
+// scrivania. Dentro un campo di testo resta la cancellazione del testo.
+addEventListener("keydown", e => {
+  if (e.key !== "Delete" && e.key !== "Backspace") return;
+  if (document.getElementById("lab").hidden) return;
+  if (inCampo(e.target)) return;
+  e.preventDefault();
+  bpDel();
+});
+
+// --- generare breakpoint a mucchio ----------------------------------------
+// Si sceglie un tratto dell'asse, quanti punti metterci e come si dispongono;
+// e per i parametri che devono muoversi, una maschera (min, max) e lo stesso
+// modo. Tempi e valori sono lo stesso problema — riempire un intervallo — per
+// questo li riempie una funzione sola.
+// Un parametro senza regola prende il valore che ha a schermo, come fa
+// `+ breakpoint`.
+// Uno deterministico e due casuali. `regolare` non e' un modo solo: e' una
+// manopola, il `ratio` con cui ogni passo sta al precedente. A 1 i passi sono
+// tutti uguali — equidistanti; sopra crescono e i punti si addensano in
+// principio, sotto calano e si addensano alla fine. La vecchia `geometrica`
+// e' un valore di quella manopola, ratio = (b/a)^(1/(n-1)), che e' proprio il
+// rapporto fra un valore e il successivo; ma qui gli estremi ci cadono sempre
+// sopra e lo zero non e' piu' un caso vietato.
+// `random` e `gaussiana` invece pescano, e due generazioni danno due risultati
+// diversi: la prima con tutti i valori ugualmente probabili, la seconda
+// addensata in mezzo.
+const MODI = {regolare: "regolare", random: "random (uniforme)",
+              gauss: "random (gaussiana)"};
+
+function gaussiano() {         // Box-Muller: uno standard normale
+  let u = 0, v = 0;
+  while (!u) u = Math.random();
+  while (!v) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function riempi(modo, n, a, b, passo, ratio) {
+  const out = [], lo = Math.min(a, b), hi = Math.max(a, b);
+  const dentro = v => Math.min(hi, Math.max(lo, v));
+  // I primi k passi, in progressione geometrica di ragione r. A r=1 sono k
+  // passi uguali; il rapporto fra il parziale e il totale e' la frazione di
+  // intervallo percorsa, quindi gli estremi ci cadono sopra per costruzione.
+  const r = ratio > 0 ? ratio : 1;
+  const somma = k => r === 1 ? k : (Math.pow(r, k) - 1) / (r - 1);
+  const tot = n > 1 ? somma(n - 1) : 0;
+  for (let i = 0; i < n; i++) {
+    let v;
+    if (modo === "random") v = a + Math.random() * (b - a);
+    // gaussiana: il centro dell'intervallo, con tre sigma sugli estremi —
+    // la massa sta in mezzo e la coda si taglia sulla maschera.
+    else if (modo === "gauss") v = (a + b) / 2 + gaussiano() * (hi - lo) / 6;
+    else v = a + (b - a) * (tot ? somma(i) / tot : 0);
+    out.push(dentro(passo > 0 ? a + Math.round((v - a) / passo) * passo : v));
+  }
+  return out;
+}
+
+function numero(s, d) {
+  const v = Number(String(s).trim().replace(",", "."));
+  return Number.isFinite(v) ? v : d;
+}
+
+function genNum(val, segno) {
+  const i = document.createElement("input");
+  i.type = "text"; i.inputMode = "decimal"; i.value = val;
+  if (segno) i.placeholder = segno;
+  return i;
+}
+
+function genModo() {
+  const s = document.createElement("select");
+  for (const [v, t] of Object.entries(MODI)) s.appendChild(new Option(t, v));
+  return s;
+}
+
+// La manopola di `regolare`. Sui due modi che pescano non vuol dire niente:
+// li' si spegne invece di restare li' a farsi girare senza effetto.
+function genRatio(modo) {
+  const i = genNum(1, "ratio");
+  i.title = "quanto ogni passo sta al precedente: 1 = equidistanti, "
+          + ">1 fitti in principio, <1 fitti alla fine";
+  modo.onchange = () => { i.disabled = modo.value !== "regolare"; };
+  return i;
+}
+
+function genRule() {
+  const r = document.createElement("div");
+  r.className = "rule";
+  const p = document.createElement("select");
+  for (const q of NUM) p.appendChild(new Option(q.path, q.path));
+  const min = genNum("", "min"), max = genNum("", "max"), passo = genNum("", "passo");
+  const modo = genModo(), ratio = genRatio(modo);
+  const via = document.createElement("button");
+  via.textContent = "×"; via.title = "togli la regola";
+  via.onclick = () => r.remove();
+  // Le tacche dello study.yml danno la maschera di partenza; un parametro
+  // senza tacche (il volume) parte fermo sul suo valore.
+  p.onchange = () => {
+    const q = NUM.find(x => x.path === p.value);
+    min.value = q.values.length ? Math.min(...q.values) : iniziale(q);
+    max.value = q.values.length ? Math.max(...q.values) : iniziale(q);
+  };
+  p.onchange();
+  r.append(p, min, max, modo, ratio, passo, via);
+  document.getElementById("gRules").appendChild(r);
+}
+
+function genBps() {
+  const n = Math.round(numero(document.getElementById("gN").value, 0));
+  if (n < 1) return;
+  const chiuso = t => Math.min(1, Math.max(0, t));
+  const da = chiuso(numero(document.getElementById("gDa").value, 0));
+  const a = chiuso(numero(document.getElementById("gA").value, 1));
+  // I tempi vanno comunque ordinati (`serie` vuole un inviluppo che non torna
+  // indietro), e ordinarli PRIMA di assegnare i valori fa si' che una rampa
+  // di valori segua il tempo anche quando i tempi sono casuali.
+  const ts = riempi(document.getElementById("gModo").value, n, da, a, 0,
+                    numero(document.getElementById("gRatio").value, 1))
+             .map(chiuso).sort((x, y) => x - y);
+  const regole = [...document.querySelectorAll("#gRules .rule")].map(r => {
+    const [p, min, max, modo, ratio, passo] = r.children;
+    const A = numero(min.value, NaN), B = numero(max.value, NaN);
+    if (!Number.isFinite(A) || !Number.isFinite(B)) return null;
+    return {path: p.value,
+            vals: riempi(modo.value, n, A, B, numero(passo.value, 0),
+                         numero(ratio.value, 1))};
+  }).filter(Boolean);
+  const base = snapshot(), ints = snapInterp();
+  let ultimo = null;
+  ts.forEach((t, i) => {
+    const vals = Object.assign({}, base);
+    for (const g of regole) vals[g.path] = g.vals[i];
+    bps.push(ultimo = {t, vals, ints: Object.assign({}, ints)});
+  });
+  bps.sort((x, y) => x.t - y.t);
+  curBp = bps.indexOf(ultimo);
+  mostraBp();
+  document.getElementById("labInfo").textContent =
+    "generati " + n + " breakpoint fra " + da + " e " + a +
+    (regole.length ? " · " + regole.map(g => g.path).join(", ") : "");
+}
+
+function genInit() {
+  const box = document.getElementById("genBox");
+  const tre = document.createElement("div");
+  tre.className = "tre";
+  const da = genNum(0), a = genNum(1), n = genNum(8);
+  da.id = "gDa"; a.id = "gA"; n.id = "gN";
+  tre.append(da, a, n);
+  box.appendChild(riga("da · a · quanti", tre, ""));
+  const modo = genModo(), ratio = genRatio(modo);
+  modo.id = "gModo"; ratio.id = "gRatio";
+  const disp = document.createElement("div");
+  disp.className = "tre";
+  disp.append(modo, ratio);
+  box.appendChild(riga("disposizione", disp, ""));
+  const rules = document.createElement("div");
+  rules.id = "gRules";
+  box.appendChild(rules);
+  const bar = document.createElement("div");
+  bar.className = "bar";
+  const piu = document.createElement("button");
+  piu.textContent = "+ parametro";
+  piu.onclick = () => genRule();
+  const via = document.createElement("button");
+  via.textContent = "genera";
+  via.onclick = genBps;
+  bar.append(piu, via);
+  box.appendChild(bar);
 }
 
 function bpLoad(i) {
@@ -913,9 +1144,37 @@ function drawTl() {
   marcaAudio();
   const tl = document.getElementById("tl");
   tl.innerHTML = "";
+  // Trascinare sul vuoto della linea disegna una banda e prende i punti che
+  // ci cadono dentro; un click a vuoto la scioglie. Sui punti no: li' il
+  // trascinamento e' gia' il loro, sposta il breakpoint nel tempo.
+  tl.onpointerdown = e => {
+    if (e.target !== tl) return;
+    e.preventDefault();
+    const box = tl.getBoundingClientRect();
+    const x = ev => Math.min(1, Math.max(0, (ev.clientX - box.left) / box.width));
+    const x0 = x(e);
+    const banda = document.createElement("div");
+    banda.className = "banda";
+    tl.appendChild(banda);
+    let mosso = false;
+    const move = ev => {
+      mosso = mosso || Math.abs(ev.clientX - e.clientX) > 3;
+      banda.style.left = (Math.min(x0, x(ev)) * 100) + "%";
+      banda.style.width = (Math.abs(x(ev) - x0) * 100) + "%";
+    };
+    const up = ev => {
+      removeEventListener("pointermove", move);
+      removeEventListener("pointerup", up);
+      banda.remove();
+      if (mosso) selezionaFra(x0, x(ev)); else SELEZIONE.clear();
+      drawTl();
+    };
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+  };
   bps.forEach((b, i) => {
     const d = document.createElement("div");
-    d.className = "bp" + (i === curBp ? " on" : "");
+    d.className = "bp" + (i === curBp ? " on" : "") + (SELEZIONE.has(b) ? " sel" : "");
     d.style.left = (b.t * 100) + "%";
     d.innerHTML = "<span class='t'>" + b.t.toFixed(2) + "</span>";
     d.onpointerdown = e => {
@@ -1056,6 +1315,7 @@ function labInfo() {
   document.getElementById("labInfo").textContent =
     bps.length + " breakpoint · " + mossi.length + " parametri mossi" +
     (mossi.length ? ": " + mossi.map(p => p.path).join(", ") : "") +
+    (SELEZIONE.size ? "  ·  " + SELEZIONE.size + " selezionati" : "") +
     (diversi.length ? "  |  non salvati sul breakpoint " + (curBp + 1) + ": "
                       + diversi.join(", ") : "");
   document.getElementById("labYaml").textContent = bps.length ? preview() : "";
@@ -1245,6 +1505,7 @@ function fNew() {
   storiaReset();
   bps = [];
   curBp = -1;
+  SELEZIONE.clear();
   LOOP = null;              // il loop si disegna, non si eredita
   FILE = "";
   SALVATO = statoOra();
@@ -1316,6 +1577,7 @@ function carica(doc, path) {
   }));
   for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
   LOOP = loopDi(st);
+  SELEZIONE.clear();        // i breakpoint di prima non esistono piu'
   FILE = path || "";
   document.getElementById("labName").value =
     (path || "lab").split("/").pop().replace(/\.ya?ml$/, "");

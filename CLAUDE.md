@@ -203,6 +203,62 @@ parametri mostra la x normalizzata del punto selezionato e la accetta digitata:
 vale subito, come il trascinamento, e riordina i punti (non passa da `salva
 modifica`, che riguarda i valori).
 
+**Dove si scrive, la tastiera è di chi scrive.** Con il focus in un campo
+(o in un menu) gli scorciatoi della pagina si fanno da parte: frecce per
+muovere il cursore, shift+frecce per selezionare, barra spaziatrice per lo
+spazio, backspace per una cifra, `cmd+Z` per l'undo del testo. Fuori dai campi
+tornano a valere trasporto (spazio), navigazione della griglia (frecce), undo
+e `delete`. La guardia è una sola, `inCampo()`, chiamata da tutti i gestori:
+mancava a quello della griglia, che si prendeva frecce e spazio su tutta la
+pagina.
+
+**Selezione multipla.** Trascinando sul **vuoto** della linea dei breakpoint
+si disegna una banda, come su una scrivania, e i punti che ci cadono dentro
+(estremi compresi) restano selezionati — anello attorno, e il conto nella riga
+di stato. Un click a vuoto la scioglie. Sul punto no: lì il trascinamento è
+già il suo, lo sposta nel tempo.
+
+`delete` (o `backspace`) toglie: i selezionati se c'è una banda, altrimenti il
+punto corrente — cioè quello che `togli` ha sempre fatto. Dentro un campo di
+testo resta la cancellazione del testo. La selezione non entra nell'undo
+(selezionare non modifica il documento) e si azzera su undo, `nuovo` e `apri`,
+dove i breakpoint che tornano sono altri oggetti. Verificata in
+`tests/test_graph_js.py`.
+
+**Generare breakpoint a mucchio.** Il blocco `genera breakpoint` (chiuso
+finché non serve, sotto i bottoni) prende un tratto dell'asse — `da`, `a`,
+`quanti` — e ci mette n punti disposti in uno di tre modi.
+
+- `regolare` + **`ratio`**: la ragione con cui ogni passo sta al precedente.
+  A **1** i passi sono uguali (equidistanti); **>1** crescono e i punti si
+  addensano in principio; **<1** calano e si addensano alla fine. La
+  geometrica non è un modo a parte, è il valore `ratio = (b/a)^(1/(n-1))` —
+  quello per cui resta costante il rapporto fra un *valore* e il successivo.
+  Gli estremi ci cadono sempre sopra per costruzione, e lo zero non è più un
+  caso vietato.
+- `random (uniforme)` — pescati, tutti i valori ugualmente probabili.
+- `random (gaussiana)` — pescati, centro dell'intervallo come media e tre
+  sigma sugli estremi, code tagliate sulla maschera.
+
+Dopo la generazione il punto corrente è l'ultimo generato e **i valori a
+schermo lo seguono** (`mostraBp`), come quando si clicca un punto: se restassero
+quelli di prima, `cambiati()` li segnerebbe come "non salvati" su un breakpoint
+che nessuno ha toccato. Vale anche dopo `togli`, che sposta il corrente su un
+altro punto.
+
+Il campo `ratio` si spegne sui due modi che pescano: lì non vuol dire niente.
+I tempi si ordinano prima che i valori vengano assegnati, così una rampa segue
+il tempo anche con tempi casuali.
+
+Con `+ parametro` si aggiunge una **regola**: parametro, `min`, `max` (la
+maschera, prefillata con le tacche dello `study.yml`), lo stesso menu dei
+quattro modi, e un `passo` facoltativo che quantizza a multipli — il passo
+comanda, quindi con un `max` che non è multiplo l'ultimo punto resta sotto.
+Un parametro senza regola prende il valore che ha a schermo, come `+ breakpoint`.
+I punti generati si aggiungono a quelli che ci sono (non li sostituiscono) e
+sono **un passo solo di undo**. La matematica è tutta in `riempi()`, verificata
+in `tests/test_graph_js.py`.
+
 **I numerici si scelgono E si scrivono.** Ogni parametro numerico
 (`grain.duration`, `grain.duration_range`, `fill_factor`, `pitch.ratio`,
 `pitch.range`, `pointer.speed_ratio`, `pointer.offset_range`, `distribution`,

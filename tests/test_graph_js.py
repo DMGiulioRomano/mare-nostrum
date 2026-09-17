@@ -485,6 +485,7 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
         "const AUT = [{path:'a', kind:'num'}];\n"
         "let bps = [], LOOP = null, curBp = -1;\n"
         "let STORIA = [], ISTO = -1, GESTO = false;\n"
+        "const SELEZIONE = new Set();\n"
         "const SCHERMO = {a: 1};\n"
         "const document = {getElementById: id => ({\n"
         "  get value() { return id[0] === 'I' ? 'linear' : SCHERMO[id.slice(2)]; },\n"
@@ -510,3 +511,98 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
     assert punti == 0         # un altro passo indietro: il breakpoint sparisce
     assert dopoRedo == 7
     assert n == 3
+
+
+@node
+def test_i_valori_generati_riempiono_l_intervallo_come_si_e_chiesto(tmp_path):
+    """`riempi` riempie [a, b] nei quattro modi, e il passo quantizza.
+
+    E' l'unica matematica di `genera breakpoint`: tempi e valori escono tutti
+    di qui, e un intervallo riempito storto (un estremo mancato, un valore
+    fuori maschera) sullo YAML non si vede.
+    """
+    js = _script()
+    p = tmp_path / "g.js"
+    p.write_text(
+        _fn(js, "gaussiano") + _fn(js, "riempi") + """
+const q = Math.pow(0.016 / 0.001, 1 / 4);   // il ratio che da' la geometrica
+const out = {
+  uno: riempi("regolare", 5, 0, 1, 0, 1),
+  cresce: riempi("regolare", 5, 0, 1, 0, 2),
+  cala: riempi("regolare", 5, 0, 1, 0, 0.5),
+  geom: riempi("regolare", 5, 0.001, 0.016, 0, q),
+  zero: riempi("regolare", 5, 0, 1, 0, q),  // il ratio non teme lo zero
+  solo: riempi("regolare", 1, 0.2, 0.9, 0, 1),
+  passo: riempi("regolare", 5, 0, 1, 0.3, 1),
+  random: riempi("random", 200, 0.01, 0.04),
+  gauss: riempi("gauss", 200, 0.01, 0.04),
+};
+console.log(JSON.stringify(out));
+""")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    g = json.loads(out.stdout)
+    assert g["uno"] == [0, 0.25, 0.5, 0.75, 1]        # ratio 1: equidistanti
+    # ratio != 1: i passi stanno in progressione geometrica di quella ragione,
+    # e gli estremi ci cadono sopra lo stesso
+    for nome, r in (("cresce", 2), ("cala", 0.5)):
+        passi = [b - a for a, b in zip(g[nome], g[nome][1:])]
+        assert all(y / x == pytest.approx(r) for x, y in zip(passi, passi[1:])), nome
+        assert (g[nome][0], g[nome][-1]) == pytest.approx((0, 1)), nome
+    # ratio = (b/a)^(1/(n-1)): e' la geometrica di prima, rapporto costante
+    # fra un VALORE e il successivo
+    assert g["geom"][0] == pytest.approx(0.001) and g["geom"][-1] == pytest.approx(0.016)
+    r = [b / a for a, b in zip(g["geom"], g["geom"][1:])]
+    assert all(x == pytest.approx(r[0]) for x in r)
+    # con a = 0 la vecchia geometrica non esisteva; qui il ratio lavora lo stesso
+    assert g["zero"][0] == 0 and g["zero"][-1] == pytest.approx(1)
+    assert sorted(g["zero"]) == g["zero"]
+    assert g["solo"] == [0.2]                      # un punto solo: parte da `a`
+    # il passo quantizza a multipli: comanda lui, anche se b non e' un
+    # multiplo e l'ultimo punto ci resta sotto
+    assert g["passo"] == pytest.approx([0, 0.3, 0.6, 0.9, 0.9])
+    for modo in ("random", "gauss"):
+        assert all(0.01 <= v <= 0.04 for v in g[modo]), modo
+    # la gaussiana sta in mezzo, l'uniforme no: tre sigma sugli estremi
+    centro = sum(1 for v in g["gauss"] if 0.02 <= v <= 0.03)
+    assert centro > sum(1 for v in g["random"] if 0.02 <= v <= 0.03)
+
+
+@node
+def test_la_banda_prende_i_punti_che_ci_cadono_dentro_e_delete_li_toglie(tmp_path):
+    """Selezione multipla: chi sta nella banda se ne va tutto insieme.
+
+    Gli estremi ci stanno dentro (una banda tirata su un punto lo prende), il
+    punto corrente sopravvissuto resta corrente, e la selezione si scioglie
+    dopo: lasciarla addosso a oggetti cancellati toglierebbe il prossimo giro.
+    """
+    js = _script()
+    p = tmp_path / "b.js"
+    p.write_text(
+        "let bps = [0.1, 0.3, 0.5, 0.7, 0.9].map(t => ({t, vals:{}}));\n"
+        "let curBp = 4;\n"
+        "let CARICATO = -1;\n"
+        "function drawTl() {}\n"
+        "function bpLoad(i) { CARICATO = i; }\n"
+        "const document = {getElementById: () => ({hidden: true})};\n"
+        "const addEventListener = () => {};\n"
+        + "let SELEZIONE = new Set();\n"
+        + _fn(js, "selezionaFra") + _fn(js, "mostraBp") + _fn(js, "bpDel") + """
+selezionaFra(0.7, 0.3);                 // tirata al contrario: stesso risultato
+const presi = SELEZIONE.size;
+bpDel();
+const restano = bps.map(b => b.t), dopo = curBp, sel = SELEZIONE.size;
+bpDel();                                // senza banda: il punto corrente
+console.log(JSON.stringify([presi, restano, dopo, sel, bps.map(b => b.t), CARICATO]));
+""")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    presi, restano, dopo, sel, infine, caricato = json.loads(out.stdout)
+    assert presi == 3                    # 0.3, 0.5, 0.7 — estremi compresi
+    assert restano == [0.1, 0.9]
+    assert dopo == 1                     # 0.9 era il corrente ed e' rimasto lui
+    assert sel == 0                      # la banda si scioglie dopo la cancellazione
+    assert infine == [0.1]               # il secondo giro toglie solo il corrente
+    # il punto corrente e' cambiato da solo: i valori a schermo lo seguono,
+    # se no `cambiati()` segnerebbe come non salvato quello che c'era prima
+    assert caricato == 0
