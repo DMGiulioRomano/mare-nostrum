@@ -485,6 +485,7 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
         "const AUT = [{path:'a', kind:'num'}];\n"
         "let bps = [], LOOP = null, curBp = -1;\n"
         "let STORIA = [], ISTO = -1, GESTO = false;\n"
+        "const SELEZIONE = new Set();\n"
         "const SCHERMO = {a: 1};\n"
         "const document = {getElementById: id => ({\n"
         "  get value() { return id[0] === 'I' ? 'linear' : SCHERMO[id.slice(2)]; },\n"
@@ -565,3 +566,38 @@ console.log(JSON.stringify(out));
     # la gaussiana sta in mezzo, l'uniforme no: tre sigma sugli estremi
     centro = sum(1 for v in g["gauss"] if 0.02 <= v <= 0.03)
     assert centro > sum(1 for v in g["random"] if 0.02 <= v <= 0.03)
+
+
+@node
+def test_la_banda_prende_i_punti_che_ci_cadono_dentro_e_delete_li_toglie(tmp_path):
+    """Selezione multipla: chi sta nella banda se ne va tutto insieme.
+
+    Gli estremi ci stanno dentro (una banda tirata su un punto lo prende), il
+    punto corrente sopravvissuto resta corrente, e la selezione si scioglie
+    dopo: lasciarla addosso a oggetti cancellati toglierebbe il prossimo giro.
+    """
+    js = _script()
+    p = tmp_path / "b.js"
+    p.write_text(
+        "let bps = [0.1, 0.3, 0.5, 0.7, 0.9].map(t => ({t, vals:{}}));\n"
+        "let curBp = 4;\n"
+        "function drawTl() {}\n"
+        "const document = {getElementById: () => ({hidden: true})};\n"
+        "const addEventListener = () => {};\n"
+        + "let SELEZIONE = new Set();\n"
+        + _fn(js, "selezionaFra") + _fn(js, "bpDel") + """
+selezionaFra(0.7, 0.3);                 // tirata al contrario: stesso risultato
+const presi = SELEZIONE.size;
+bpDel();
+const restano = bps.map(b => b.t), dopo = curBp, sel = SELEZIONE.size;
+bpDel();                                // senza banda: il punto corrente
+console.log(JSON.stringify([presi, restano, dopo, sel, bps.map(b => b.t)]));
+""")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    presi, restano, dopo, sel, infine = json.loads(out.stdout)
+    assert presi == 3                    # 0.3, 0.5, 0.7 — estremi compresi
+    assert restano == [0.1, 0.9]
+    assert dopo == 1                     # 0.9 era il corrente ed e' rimasto lui
+    assert sel == 0                      # la banda si scioglie dopo la cancellazione
+    assert infine == [0.1]               # il secondo giro toglie solo il corrente

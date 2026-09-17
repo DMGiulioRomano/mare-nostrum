@@ -203,6 +203,19 @@ parametri mostra la x normalizzata del punto selezionato e la accetta digitata:
 vale subito, come il trascinamento, e riordina i punti (non passa da `salva
 modifica`, che riguarda i valori).
 
+**Selezione multipla.** Trascinando sul **vuoto** della linea dei breakpoint
+si disegna una banda, come su una scrivania, e i punti che ci cadono dentro
+(estremi compresi) restano selezionati — anello attorno, e il conto nella riga
+di stato. Un click a vuoto la scioglie. Sul punto no: lì il trascinamento è
+già il suo, lo sposta nel tempo.
+
+`delete` (o `backspace`) toglie: i selezionati se c'è una banda, altrimenti il
+punto corrente — cioè quello che `togli` ha sempre fatto. Dentro un campo di
+testo resta la cancellazione del testo. La selezione non entra nell'undo
+(selezionare non modifica il documento) e si azzera su undo, `nuovo` e `apri`,
+dove i breakpoint che tornano sono altri oggetti. Verificata in
+`tests/test_graph_js.py`.
+
 **Generare breakpoint a mucchio.** Il blocco `genera breakpoint` (chiuso
 finché non serve, sotto i bottoni) prende un tratto dell'asse — `da`, `a`,
 `quanti` — e ci mette n punti disposti in uno di tre modi.

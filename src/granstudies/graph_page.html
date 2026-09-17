@@ -137,6 +137,10 @@
            border:1px solid var(--fg); background:var(--bg); border-radius:50%;
            cursor:grab; }
  #tl .bp.on { background:var(--on); border-color:var(--on); }
+ /* Presi con la banda: l'anello attorno, che convive col rosso del corrente. */
+ #tl .bp.sel { box-shadow:0 0 0 2px var(--fg); }
+ #tl .banda { position:absolute; top:0; bottom:0; pointer-events:none;
+              background:rgba(128,128,128,.22); border:1px solid var(--fg); }
  #tl .bp .t { position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
               font-size:10px; color:var(--dim); white-space:nowrap; }
  /* Le finestre: il nome da solo non dice niente, la forma si'. */
@@ -501,7 +505,7 @@ function vaiStoria(d) {
   }
   ISTO = i;
   const s = JSON.parse(STORIA[i]);
-  bps = s.bps; LOOP = s.loop;
+  bps = s.bps; LOOP = s.loop; SELEZIONE.clear();
   curBp = Math.min(s.cur, bps.length - 1);
   // A schermo torna quello che c'era a schermo, non i valori del breakpoint:
   // e' `bpLoad` che li riallinea, e qui riallinearli cancellerebbe proprio le
@@ -902,12 +906,47 @@ function bpAll() {
     "applicato a tutti i " + bps.length + " breakpoint: " + ks.join(", ");
 }
 
+// La selezione multipla: i breakpoint presi con la banda, per oggetto e non
+// per indice — un trascinamento riordina la lista e gli indici si spostano
+// sotto i piedi. Non entra nella storia dell'undo: selezionare non e' una
+// modifica del documento (`istantanea` non la guarda, quindi non registra un
+// passo a vuoto), e per lo stesso motivo un undo la lascia indietro — i
+// breakpoint che tornano sono altri oggetti. Li' si azzera.
+let SELEZIONE = new Set();
+
+function selezionaFra(a, b) {
+  SELEZIONE.clear();
+  for (const p of bps) if (p.t >= Math.min(a, b) && p.t <= Math.max(a, b)) SELEZIONE.add(p);
+}
+
 function bpDel() {
+  // Con una banda aperta si tolgono tutti insieme; senza, il punto corrente,
+  // che e' quello che il bottone ha sempre fatto.
+  if (SELEZIONE.size) {
+    const b0 = bps[curBp];
+    bps = bps.filter(p => !SELEZIONE.has(p));
+    SELEZIONE.clear();
+    // Se il punto corrente e' sopravvissuto resta lui, se no si scende
+    // all'ultimo: la barra dei valori deve puntare comunque a qualcosa.
+    curBp = bps.includes(b0) ? bps.indexOf(b0) : bps.length - 1;
+    drawTl();
+    return;
+  }
   if (curBp < 0) return;
   bps.splice(curBp, 1);
   curBp = Math.min(curBp, bps.length - 1);
   drawTl();
 }
+
+// `delete` (e `backspace`) toglie quello che e' selezionato, come su una
+// scrivania. Dentro un campo di testo resta la cancellazione del testo.
+addEventListener("keydown", e => {
+  if (e.key !== "Delete" && e.key !== "Backspace") return;
+  if (document.getElementById("lab").hidden) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  e.preventDefault();
+  bpDel();
+});
 
 // --- generare breakpoint a mucchio ----------------------------------------
 // Si sceglie un tratto dell'asse, quanti punti metterci e come si dispongono;
@@ -1089,9 +1128,37 @@ function drawTl() {
   marcaAudio();
   const tl = document.getElementById("tl");
   tl.innerHTML = "";
+  // Trascinare sul vuoto della linea disegna una banda e prende i punti che
+  // ci cadono dentro; un click a vuoto la scioglie. Sui punti no: li' il
+  // trascinamento e' gia' il loro, sposta il breakpoint nel tempo.
+  tl.onpointerdown = e => {
+    if (e.target !== tl) return;
+    e.preventDefault();
+    const box = tl.getBoundingClientRect();
+    const x = ev => Math.min(1, Math.max(0, (ev.clientX - box.left) / box.width));
+    const x0 = x(e);
+    const banda = document.createElement("div");
+    banda.className = "banda";
+    tl.appendChild(banda);
+    let mosso = false;
+    const move = ev => {
+      mosso = mosso || Math.abs(ev.clientX - e.clientX) > 3;
+      banda.style.left = (Math.min(x0, x(ev)) * 100) + "%";
+      banda.style.width = (Math.abs(x(ev) - x0) * 100) + "%";
+    };
+    const up = ev => {
+      removeEventListener("pointermove", move);
+      removeEventListener("pointerup", up);
+      banda.remove();
+      if (mosso) selezionaFra(x0, x(ev)); else SELEZIONE.clear();
+      drawTl();
+    };
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+  };
   bps.forEach((b, i) => {
     const d = document.createElement("div");
-    d.className = "bp" + (i === curBp ? " on" : "");
+    d.className = "bp" + (i === curBp ? " on" : "") + (SELEZIONE.has(b) ? " sel" : "");
     d.style.left = (b.t * 100) + "%";
     d.innerHTML = "<span class='t'>" + b.t.toFixed(2) + "</span>";
     d.onpointerdown = e => {
@@ -1232,6 +1299,7 @@ function labInfo() {
   document.getElementById("labInfo").textContent =
     bps.length + " breakpoint · " + mossi.length + " parametri mossi" +
     (mossi.length ? ": " + mossi.map(p => p.path).join(", ") : "") +
+    (SELEZIONE.size ? "  ·  " + SELEZIONE.size + " selezionati" : "") +
     (diversi.length ? "  |  non salvati sul breakpoint " + (curBp + 1) + ": "
                       + diversi.join(", ") : "");
   document.getElementById("labYaml").textContent = bps.length ? preview() : "";
@@ -1421,6 +1489,7 @@ function fNew() {
   storiaReset();
   bps = [];
   curBp = -1;
+  SELEZIONE.clear();
   LOOP = null;              // il loop si disegna, non si eredita
   FILE = "";
   SALVATO = statoOra();
@@ -1492,6 +1561,7 @@ function carica(doc, path) {
   }));
   for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
   LOOP = loopDi(st);
+  SELEZIONE.clear();        // i breakpoint di prima non esistono piu'
   FILE = path || "";
   document.getElementById("labName").value =
     (path || "lab").split("/").pop().replace(/\.ya?ml$/, "");
