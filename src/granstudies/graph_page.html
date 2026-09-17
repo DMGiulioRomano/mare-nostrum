@@ -410,12 +410,25 @@ function labInit() {
   const mk = (p, box) => {
     const r = document.createElement("div"); r.className = "row";
     const k = document.createElement("div"); k.className = "k"; k.textContent = p.path;
-    const s = document.createElement("select");
+    // `free`: un parametro senza tacche, che si scrive invece di sceglierlo —
+    // il volume e' un aggiustamento continuo, non una scala da esplorare. Il
+    // resto del laboratorio non se ne accorge: legge `P:<path>`.value come
+    // per un menu, e i breakpoint funzionano identici.
+    const s = document.createElement(p.free ? "input" : "select");
     s.id = "P:" + p.path;
-    for (const v of p.values) {
-      const o = document.createElement("option");
-      o.value = v; o.textContent = fmt(v);
-      s.appendChild(o);
+    if (p.free) {
+      s.type = "number";
+      s.step = "any";                       // le frazioni si scrivono lo stesso
+      if (p.min != null) s.min = p.min;     // i limiti sono quelli dell'engine
+      if (p.max != null) s.max = p.max;
+      const b = leggiPath(L.base, p.path);
+      s.value = b != null ? b : 0;
+    } else {
+      for (const v of p.values) {
+        const o = document.createElement("option");
+        o.value = v; o.textContent = fmt(v);
+        s.appendChild(o);
+      }
     }
     r.appendChild(k); r.appendChild(s); box.appendChild(r);
   };

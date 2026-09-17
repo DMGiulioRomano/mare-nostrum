@@ -161,6 +161,12 @@ c'e' ancora e i campioni sono in cache, quindi non si rende niente. Il server
 serve `/samples/` dalla cartella dei sample del repo, che sta fuori da quella
 servita.
 
+**Il volume** e' l'unico parametro che si **scrive** invece di sceglierlo: non
+ha tacche da esplorare, e' un aggiustamento continuo. E' un parametro numerico
+come gli altri — sta sui breakpoint, regge gli inviluppi — solo che la sua
+riga e' un campo di testo (`free: true`), coi limiti presi da `bounds_for`,
+cioe' dall'engine.
+
 ## Diario di ascolto
 
 Il diario è unico per lo studio e vive in `studies/ascolto/`:
