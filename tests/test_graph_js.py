@@ -472,3 +472,32 @@ def test_un_numerico_si_puo_scrivere_a_mano(tmp_path):
     v = __import__("json").loads(out.stdout)
     assert v["a"] == 0.0037     # scritto a mano, fuori dalle tacche
     assert v["b"] == 5          # campo vuoto: resta il valore del breakpoint
+
+
+@node
+def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
+    """Un passo indietro e uno avanti: la storia e' lo stato del lavoro."""
+    js = _script()
+    frag = js[js.index("function istantanea"):js.index("addEventListener(\"keydown\", e => {\n  if (e.key.toLowerCase()")]
+    p = tmp_path / "u.js"
+    p.write_text(
+        "let bps = [], LOOP = null, curBp = -1;\n"
+        "let STORIA = [], ISTO = -1, GESTO = false;\n"
+        "const INFO = {textContent: ''};\n"
+        "const document = {getElementById: () => INFO};\n"
+        "function drawTl() { if (!GESTO) storia(); }\n"
+        "function bpLoad(i) { curBp = i; drawTl(); }\n"
+        + frag +
+        "drawTl();\n"                       # stato iniziale: vuoto
+        "bps.push({t:0, vals:{a:1}}); drawTl();\n"
+        "bps.push({t:1, vals:{a:2}}); drawTl();\n"
+        "const tre = bps.length;\n"
+        "vaiStoria(-1); const dopoUndo = bps.length;\n"
+        "vaiStoria(-1); const dueUndo = bps.length;\n"
+        "vaiStoria(1);  const dopoRedo = bps.length;\n"
+        "console.log(JSON.stringify([tre, dopoUndo, dueUndo, dopoRedo, STORIA.length]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    tre, uno, zero, due, n = __import__("json").loads(out.stdout)
+    assert [tre, uno, zero, due] == [2, 1, 0, 1]
+    assert n == 3          # vuoto, un punto, due punti: la selezione non conta

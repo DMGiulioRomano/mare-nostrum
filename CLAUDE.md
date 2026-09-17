@@ -182,6 +182,18 @@ nella pagina: grana media (`grain.duration` 0.064), niente dispersione
 fuori da quella tabella parte da `base:`, e se manca anche li' dalla sua prima
 tacca (`iniziale()`, verificata in `tests/test_graph_js.py`).
 
+**Undo/redo.** `cmd+Z` annulla, `cmd+shift+Z` rifa (`ctrl` fuori da macOS).
+Lo stato che si annulla e' il lavoro — i breakpoint e il loop — non quello che
+si vede: selezionare un punto o muovere un menu non entra nella storia, e un
+trascinamento e' un passo solo, non cento (`GESTO`). Si registra in `drawTl`,
+che e' il passaggio obbligato di ogni modifica. Dentro un campo di testo
+`cmd+Z` resta l'undo del testo. Aprire un file o fare `nuovo` azzera la storia.
+
+**Il tempo di un breakpoint si scrive.** La riga `tempo (0-1)` in cima ai
+parametri mostra la x normalizzata del punto selezionato e la accetta digitata:
+vale subito, come il trascinamento, e riordina i punti (non passa da `salva
+modifica`, che riguarda i valori).
+
 **I numerici si scrivono, oltre che sceglierli.** Ogni parametro numerico
 (`grain.duration`, `grain.duration_range`, `fill_factor`, `pitch.ratio`,
 `pitch.range`, `pointer.speed_ratio`, `pointer.offset_range`, `distribution`,
