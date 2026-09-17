@@ -288,7 +288,7 @@ def test_l_anteprima_mostra_anche_il_tipo(tmp_path):
     p.write_text(
         "const NUM = [{path:'a', kind:'num'}, {path:'b', kind:'num'}];\n"
         "const AUT = NUM;\n"
-        "const ENVP = null, EP = 'grain.envelope';\n"
+        "const ENVP = null, EP = 'grain.envelope', LOOP = null;\n"
         "let bps = [{t:0, vals:{a:1, b:1}, ints:{a:'cubic', b:'linear'}},"
         "           {t:1, vals:{a:2, b:2}, ints:{a:'cubic', b:'linear'}}];\n"
         + frag + "console.log(preview());")
@@ -307,7 +307,7 @@ def test_l_anteprima_mostra_anche_il_tipo(tmp_path):
 def _fn(js: str, nome: str) -> str:
     i = js.index("function " + nome + "(")
     j = js.index("\nfunction ", i + 1)
-    return js[i:j]
+    return js[i:j] + "\n"
 
 
 def _env(bps: str, coda: str, tmp_path) -> str:
@@ -417,4 +417,37 @@ def test_da_dove_parte_ogni_parametro(tmp_path):
         "gaussian",   # dalla tabella, non l'hanning di base:
         "x.wav",      # niente default: quello di base:
         7,            # niente default e niente base: la prima tacca
+    ]
+
+
+@node
+def test_il_loop_disegnato_sul_sample_torna_riaprendo(tmp_path):
+    """La regione sulla forma d'onda diventa loop_start/loop_end normalizzati.
+
+    Senza loop le chiavi spariscono (il pointer legge tutto il file); con il
+    loop sparisce `start`, cosi' il pointer parte da loop_start. Un loop in
+    secondi non si sa disegnare e resta fuori.
+    """
+    js = _script()
+    frag = _fn(js, "loopDi") + _fn(js, "scriviLoop")
+    p = tmp_path / "l.js"
+    p.write_text(frag + """
+const base = {pointer: {start: 0, speed_ratio: 0.1, loop_unit: 'normalized', loop_start: 0, loop_end: 0.3636}};
+const st = JSON.parse(JSON.stringify(base));
+scriviLoop(st, [0.123456, 0.5]);
+const via = JSON.parse(JSON.stringify(base));
+scriviLoop(via, null);
+console.log(JSON.stringify([loopDi(base), st.pointer, loopDi(st), via.pointer,
+  loopDi({pointer: {loop_start: 1, loop_end: 2}}),
+  loopDi({pointer: {loop_unit: 'normalized', loop_start: 0.8, loop_dur: 0.5}})]));
+""")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout) == [
+        [0, 0.3636],
+        {"speed_ratio": 0.1, "loop_unit": "normalized", "loop_start": 0.1235, "loop_end": 0.5},
+        [0.1235, 0.5],
+        {"start": 0, "speed_ratio": 0.1},
+        None,
+        [0.8, 1],
     ]

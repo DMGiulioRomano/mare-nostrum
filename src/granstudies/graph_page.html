@@ -62,6 +62,12 @@
  .bpm.on { opacity:1; width:2px; }
  .bpm i { position:absolute; top:1px; left:2px; font-size:9px; font-style:normal;
           color:#e8c000; text-shadow:0 0 3px #000; }
+ /* Il loop sul sample: si disegna trascinando sulla forma d'onda, gli estremi
+    si prendono per allargarlo o stringerlo. Doppio click lo toglie. */
+ .loopr { position:absolute; top:0; bottom:0; background:rgba(74,158,255,.18);
+          border-left:2px solid #4a9eff; border-right:2px solid #4a9eff; pointer-events:none; }
+ .loopr b { position:absolute; top:0; bottom:0; width:10px; cursor:ew-resize; pointer-events:auto; }
+ .loopr b.a { left:-6px; } .loopr b.b { right:-6px; }
  .pair { display:flex; gap:10px; }
  .pair .view { flex:1 1 0; margin-bottom:0; }
  .pair .view:last-child { flex:0 0 auto; }
@@ -196,7 +202,7 @@
   </div>
   <div class="view seek" id="waveView">
     <canvas id="wave" height="180"></canvas>
-    <div class="lab">forma d'onda</div>
+    <div class="lab">forma d'onda — sul sample: trascina per il loop, doppio click lo toglie</div>
     <div class="cur" id="curWave"></div>
   </div>
   <div class="pair">
@@ -217,6 +223,9 @@ const D = __DATA__;
 // Vero quando l'audio caricato e' il render del laboratorio: solo allora i
 // breakpoint si possono proiettare sul sonogramma (vedi `marcaAudio`).
 let LAB_AUDIO = false;
+// Vero quando suona un sample (`ascolta`): solo li' la forma d'onda e' il
+// sample stesso, e una regione disegnata sopra e' un loop_start/loop_end.
+let SAMPLE_AUDIO = false;
 const byLabel = {};
 for (const c of D.combos) byLabel[c.label] = c;
 
@@ -317,7 +326,7 @@ const status = document.getElementById("status");
 function go(i, j, play) {
   if (!cur.xs.length) return;
   // Suona un file della griglia: i breakpoint non c'entrano piu' niente.
-  LAB_AUDIO = false;
+  LAB_AUDIO = SAMPLE_AUDIO = false;
   marcaAudio();
   const n = cur.at[key(cur.xs[i], cur.ys[j])];
   cx = i; cy = j;
@@ -429,6 +438,35 @@ function iniziale(p) {
 }
 
 let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
+// Il loop del pointer: [inizio, fine] come frazioni del sample, o null.
+// Frazioni e non secondi perche' la forma d'onda da' proprio quelle, e
+// riaprendo non serve conoscere la durata del file.
+let LOOP = null;
+
+// Il loop scritto in uno stream. Solo `loop_unit: normalized`: un loop in
+// secondi non si sa disegnare senza la durata del sample.
+// ponytail: loop in secondi ignorato in lettura (e riscritto via in labDoc);
+// convertirlo quando la durata del sample e' nota, se servira'.
+function loopDi(st) {
+  const p = (st && st.pointer) || {};
+  if (p.loop_start == null || p.loop_unit !== "normalized") return null;
+  const fine = p.loop_end != null ? p.loop_end
+             : p.loop_dur != null ? p.loop_start + p.loop_dur : 1;
+  return [Number(p.loop_start), Math.min(1, Number(fine))];
+}
+
+// L'inverso, sul documento. Senza loop le chiavi spariscono: il pointer
+// percorre il file intero. Con il loop sparisce `start`, cosi' il pointer
+// parte da loop_start invece di arrivarci (l'engine fa cosi' quando start
+// manca).
+function scriviLoop(st, loop) {
+  const p = st.pointer = st.pointer || {};
+  for (const k of ["loop_start", "loop_end", "loop_dur", "loop_unit"]) delete p[k];
+  if (!loop) return;
+  delete p.start;
+  const r = v => Math.round(v * 1e4) / 1e4;
+  Object.assign(p, {loop_unit: "normalized", loop_start: r(loop[0]), loop_end: r(loop[1])});
+}
 let curBp = -1;
 
 function labInit() {
@@ -570,6 +608,7 @@ function riprendiStream() {
     "<b>stream</b><br><span class='file'>" +
     (document.getElementById("labName").value || "lab") + "</span>";
   LAB_AUDIO = true;
+  SAMPLE_AUDIO = false;
   audio.src = ULTIMO;
   audio.play();
   analyse(ULTIMO);
@@ -593,6 +632,7 @@ async function ascolta(nome) {
     return;
   }
   LAB_AUDIO = false;
+  SAMPLE_AUDIO = true;
   marcaAudio();
   document.getElementById("now").innerHTML =
     "<b>sample</b><br><span class='file'>" + nome + "</span>";
@@ -863,6 +903,7 @@ function labDoc() {
     const v = serieEnv();
     if (v !== null) setPath(st, EP, v);
   }
+  scriviLoop(st, LOOP);
   return {duration: dur, bpm: 120, streams: [st]};
 }
 
@@ -897,6 +938,37 @@ function labInfo() {
 // LAB_AUDIO (dichiarato in cima, dove `go` lo vede), che la griglia spegne e
 // il render del laboratorio accende.
 function marcaAudio() {
+  const wv = document.getElementById("waveView");
+  for (const v of wv.querySelectorAll(".loopr")) v.remove();
+  if (SAMPLE_AUDIO && LOOP) {
+    const r = document.createElement("div");
+    r.className = "loopr";
+    r.style.left = (LOOP[0] * 100) + "%";
+    r.style.width = ((LOOP[1] - LOOP[0]) * 100) + "%";
+    [0, 1].forEach(k => {
+      const h = document.createElement("b");
+      h.className = k ? "b" : "a";
+      h.onpointerdown = e => {
+        e.preventDefault();          // niente mousedown: non e' un seek
+        const box = wv.getBoundingClientRect();
+        const move = ev => {
+          const x = Math.min(1, Math.max(0, (ev.clientX - box.left) / box.width));
+          // Un estremo non scavalca l'altro: loop_end > loop_start, lo
+          // pretende l'engine.
+          LOOP[k] = k ? Math.max(LOOP[0] + 0.001, x) : Math.min(LOOP[1] - 0.001, x);
+          drawTl();
+        };
+        const up = () => {
+          removeEventListener("pointermove", move);
+          removeEventListener("pointerup", up);
+        };
+        addEventListener("pointermove", move);
+        addEventListener("pointerup", up);
+      };
+      r.appendChild(h);
+    });
+    wv.appendChild(r);
+  }
   for (const id of ["specView", "waveView"]) {
     const box = document.getElementById(id);
     if (!box) continue;
@@ -927,6 +999,7 @@ function preview() {
     righe.push(EP + ":\n  states: [" +
                e.states.map(st => "[" + st[0].toFixed(3) + ", " + st[1] + "]").join(", ") +
                "]\n  curve: [" + e.curve.map(punto).join(", ") + "]");
+  if (LOOP) righe.push("pointer.loop (normalized): [" + LOOP.map(v => v.toFixed(4)).join(", ") + "]");
   return righe.join("\n");
 }
 
@@ -962,7 +1035,7 @@ function segna() {
 function bozzaSalva() {
   try {
     localStorage.setItem(BOZZA, JSON.stringify({
-      bps, file: FILE, salvato: SALVATO,
+      bps, file: FILE, salvato: SALVATO, loop: LOOP,
       name: document.getElementById("labName").value,
       dur: document.getElementById("labDur").value,
       cat: Object.fromEntries(CAT.map(p => [p.path, document.getElementById("P:" + p.path).value])),
@@ -975,6 +1048,7 @@ function ripristina() {
   try { b = JSON.parse(localStorage.getItem(BOZZA) || "null"); } catch (e) { return; }
   if (!b || !b.bps || !b.bps.length) return;
   bps = b.bps;
+  if ("loop" in b) LOOP = b.loop;
   FILE = b.file || "";
   SALVATO = b.salvato || "";
   document.getElementById("labName").value = b.name || "lab";
@@ -1035,6 +1109,7 @@ function fNew() {
   if (!confermaPerdita("creare un nuovo stream")) return;
   bps = [];
   curBp = -1;
+  LOOP = loopDi(L.base);
   FILE = "";
   SALVATO = statoOra();
   document.getElementById("labName").value = "lab";
@@ -1104,6 +1179,7 @@ function carica(doc, path) {
     })),
   }));
   for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
+  LOOP = loopDi(st);
   FILE = path || "";
   document.getElementById("labName").value =
     (path || "lab").split("/").pop().replace(/\.ya?ml$/, "");
@@ -1173,6 +1249,7 @@ async function labPost(render, path) {
     ULTIMO = src;
     if (TORNA) TORNA.disabled = false;
     LAB_AUDIO = true;
+    SAMPLE_AUDIO = false;
     audio.src = src;
     audio.play();
     analyse(src);
@@ -1190,6 +1267,7 @@ for (const [id, on] of [["tabGrid", false], ["tabLab", true]]) {
     document.getElementById("tabLab").classList.toggle("on", on);
   };
 }
+LOOP = loopDi(L.base);
 labInit();
 if (!D.combos.length) document.getElementById("tabLab").click();
 
@@ -1464,13 +1542,40 @@ function seekFrom(el, e) {
   const t = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * view.duration;
   audio.currentTime = t;
 }
+// Sulla forma d'onda di un sample un trascinamento non e' un seek ma un
+// loop: click = seek, click e trascina = regione. Sotto i 4 pixel e' un
+// click con la mano che trema.
 for (const id of ["specView", "waveView"]) {
   const el = document.getElementById(id);
-  let down = false;
-  el.addEventListener("mousedown", e => { down = true; seekFrom(el, e); });
-  addEventListener("mousemove", e => { if (down) seekFrom(el, e); });
-  addEventListener("mouseup", () => { down = false; });
+  let down = false, x0 = 0, disegna = false;
+  const frac = e => {
+    const r = el.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  };
+  el.addEventListener("mousedown", e => {
+    down = true; disegna = false; x0 = e.clientX; seekFrom(el, e);
+  });
+  addEventListener("mousemove", e => {
+    if (!down) return;
+    if (id === "waveView" && SAMPLE_AUDIO && (disegna || Math.abs(e.clientX - x0) > 4)) {
+      disegna = true;
+      const a = frac({clientX: x0}), b = frac(e);
+      if (Math.abs(b - a) < 0.001) return;
+      LOOP = [Math.min(a, b), Math.max(a, b)];
+      drawTl();
+    } else if (!disegna) seekFrom(el, e);
+  });
+  addEventListener("mouseup", () => {
+    // Finito di disegnare, l'ascolto riparte dall'inizio del loop.
+    if (down && disegna && LOOP && view) audio.currentTime = LOOP[0] * view.duration;
+    down = false;
+  });
 }
+document.getElementById("waveView").addEventListener("dblclick", () => {
+  if (!SAMPLE_AUDIO || !LOOP) return;
+  LOOP = null;
+  drawTl();
+});
 
 // --- il ciclo: cursori + viste in tempo reale -----------------------------
 const scopeC = document.getElementById("scope"), stereoC = document.getElementById("stereo");
@@ -1524,6 +1629,12 @@ function frame() {
     curSpec.style.left = p + "%";
     curWave.style.left = p + "%";
   }
+  // Il sample si ascolta dentro il loop, cioe' come lo leggera' il pointer.
+  // ponytail: il salto si controlla a ogni frame (~16 ms di tolleranza);
+  // un AudioBufferSourceNode con loopStart/loopEnd se servira' il campione esatto.
+  if (SAMPLE_AUDIO && LOOP && view && !audio.paused &&
+      audio.currentTime >= LOOP[1] * view.duration - 0.03)
+    audio.currentTime = LOOP[0] * view.duration;
   if (!audio.paused) { drawScope(); drawStereo(); }
   requestAnimationFrame(frame);
 }

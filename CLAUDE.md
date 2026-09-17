@@ -161,6 +161,15 @@ c'e' ancora e i campioni sono in cache, quindi non si rende niente. Il server
 serve `/samples/` dalla cartella dei sample del repo, che sta fuori da quella
 servita.
 
+**Il loop sul sample.** Quando la forma d'onda mostra un sample (`▶ ascolta`),
+click e trascina disegna una regione: e' il loop del pointer, e gli estremi si
+prendono per allargarlo o stringerlo; doppio click lo toglie. Il sample si
+riascolta dentro il loop. Sul documento diventa `pointer.loop_unit: normalized`
++ `loop_start`/`loop_end` (frazioni del file), e `pointer.start` sparisce cosi'
+il pointer parte da loop_start. Il loop iniziale e' quello di `base:`; senza
+regione le chiavi di loop spariscono. Sul render dello stream non si disegna:
+li' l'asse e' il tempo d'uscita, non la posizione nel sample.
+
 **Da dove parte il laboratorio.** Non da `base:` — quello e' lo stream a riposo
 dello *sweep*, tarato per i render della griglia — ma da una tabella `DEFAULTS`
 nella pagina: grana media (`grain.duration` 0.064), niente dispersione
