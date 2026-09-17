@@ -483,13 +483,32 @@ function labInit() {
     // il volume e' un aggiustamento continuo, non una scala da esplorare. Il
     // resto del laboratorio non se ne accorge: legge `P:<path>`.value come
     // per un menu, e i breakpoint funzionano identici.
-    const s = document.createElement(p.free ? "input" : "select");
+    // Un numerico si sceglie fra le tacche ma si scrive anche a mano: e' un
+    // `input` con la `datalist` delle tacche, non un menu chiuso. Il resto del
+    // laboratorio non se ne accorge: legge `P:<path>`.value come prima.
+    // `free` (il volume) e' lo stesso campo senza tacche.
+    const libero = p.free || p.kind === "num";
+    const s = document.createElement(libero ? "input" : "select");
     s.id = "P:" + p.path;
-    if (p.free) {
-      s.type = "number";
-      s.step = "any";                       // le frazioni si scrivono lo stesso
-      if (p.min != null) s.min = p.min;     // i limiti sono quelli dell'engine
-      if (p.max != null) s.max = p.max;
+    if (libero) {
+      // type=text e non number: in Safari la datalist su un number non si
+      // apre. Il valore lo converte gia' `Number(...)` a valle.
+      s.type = "text";
+      s.inputMode = "decimal";
+      // I limiti dell'engine non bloccano piu' il campo (type=text): restano
+      // come suggerimento sul passaggio del mouse.
+      if (p.min != null || p.max != null) s.title = p.min + " .. " + p.max;
+      if (p.values.length) {
+        const dl = document.createElement("datalist");
+        dl.id = "D:" + p.path;
+        for (const v of p.values) {
+          const o = document.createElement("option");
+          o.value = v; o.label = fmt(v);
+          dl.appendChild(o);
+        }
+        s.setAttribute("list", dl.id);
+        r.appendChild(dl);
+      }
       s.value = iniziale(p);
     } else {
       for (const v of p.values) {
@@ -707,7 +726,12 @@ function snapshot() {
   const v = {};
   for (const p of AUT) {
     const raw = document.getElementById("P:" + p.path).value;
-    v[p.path] = p.kind === "num" ? Number(raw) : raw;
+    // Scritto a mano: la virgola vale il punto, e un campo vuoto o sbagliato
+    // tiene il valore del breakpoint invece di diventare NaN.
+    const testo = String(raw).trim().replace(",", ".");
+    v[p.path] = p.kind === "num" ? (testo === "" ? NaN : Number(testo)) : raw;
+    if (p.kind === "num" && !Number.isFinite(v[p.path]))
+      v[p.path] = (bps[curBp] && bps[curBp].vals[p.path]) ?? iniziale(p);
   }
   return v;
 }

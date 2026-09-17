@@ -182,11 +182,18 @@ nella pagina: grana media (`grain.duration` 0.064), niente dispersione
 fuori da quella tabella parte da `base:`, e se manca anche li' dalla sua prima
 tacca (`iniziale()`, verificata in `tests/test_graph_js.py`).
 
-**Il volume** e' l'unico parametro che si **scrive** invece di sceglierlo: non
-ha tacche da esplorare, e' un aggiustamento continuo. E' un parametro numerico
-come gli altri — sta sui breakpoint, regge gli inviluppi — solo che la sua
-riga e' un campo di testo (`free: true`), coi limiti presi da `bounds_for`,
-cioe' dall'engine.
+**I numerici si scrivono, oltre che sceglierli.** Ogni parametro numerico
+(`grain.duration`, `grain.duration_range`, `fill_factor`, `pitch.ratio`,
+`pitch.range`, `pointer.speed_ratio`, `pointer.offset_range`, `distribution`,
+`volume`) e' un campo di testo con la `datalist` delle sue tacche: il menu si
+apre come prima, ma dentro ci si puo' anche digitare un valore che nello
+`study.yml` non c'e'. La virgola vale il punto e un campo vuoto o illeggibile
+tiene il valore del breakpoint invece di scrivere NaN
+(`tests/test_graph_js.py`). Il campo e' `type=text` perche' in Safari la
+datalist su un `number` non si apre: i limiti di `bounds_for` non bloccano piu'
+niente, restano come tooltip. **Il volume** resta l'unico senza tacche
+(`free: true`): non e' una scala da esplorare, e' un aggiustamento continuo.
+I categoriali (sample, finestre) restano menu chiusi.
 
 ## Diario di ascolto
 

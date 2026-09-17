@@ -451,3 +451,24 @@ console.log(JSON.stringify([loopDi(base), st.pointer, loopDi(st), via.pointer,
         None,
         [0.8, 1],
     ]
+
+
+@node
+def test_un_numerico_si_puo_scrivere_a_mano(tmp_path):
+    """Il campo libero: la virgola vale il punto, il vuoto tiene il punto."""
+    js = _script()
+    frag = js[js.index("function snapshot"):js.index("function bpAdd")]
+    p = tmp_path / "m.js"
+    p.write_text(
+        "const AUT = [{path:'a', kind:'num'}, {path:'b', kind:'num'}];\n"
+        "const SCHERMO = {a: '0,0037', b: ''};\n"
+        "const document = {getElementById: id => ({value: SCHERMO[id.slice(2)]})};\n"
+        "let bps = [{t:0, vals:{a:1, b:5}}];\n"
+        "let curBp = 0;\n"
+        + frag +
+        "console.log(JSON.stringify(snapshot()));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    v = __import__("json").loads(out.stdout)
+    assert v["a"] == 0.0037     # scritto a mano, fuori dalle tacche
+    assert v["b"] == 5          # campo vuoto: resta il valore del breakpoint
