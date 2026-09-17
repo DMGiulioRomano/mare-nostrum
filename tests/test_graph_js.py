@@ -486,6 +486,8 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
         "let bps = [], LOOP = null, curBp = -1;\n"
         "let STORIA = [], ISTO = -1, GESTO = false;\n"
         "const SELEZIONE = new Set();\n"
+        "let DURPREC = 30;\n"
+        "function durata() { return 30; }\n"
         "const SCHERMO = {a: 1};\n"
         "const document = {getElementById: id => ({\n"
         "  get value() { return id[0] === 'I' ? 'linear' : SCHERMO[id.slice(2)]; },\n"
@@ -606,3 +608,44 @@ console.log(JSON.stringify([presi, restano, dopo, sel, bps.map(b => b.t), CARICA
     # il punto corrente e' cambiato da solo: i valori a schermo lo seguono,
     # se no `cambiati()` segnerebbe come non salvato quello che c'era prima
     assert caricato == 0
+
+
+@node
+def test_col_lucchetto_i_breakpoint_tengono_il_tempo_in_secondi(tmp_path):
+    """Cambiando la durata, le x si riscalano e i tempi assoluti restano quelli.
+
+    E' il `freezeEnvOnResize` di PGE-ui portato qui: le x sono normalizzate,
+    quindi lo stesso 0.5 vale 15 s in uno stream di 30 e 5 s in uno di 10.
+    Accorciando, chi esce se ne va ma lascia il punto in cui l'inviluppo
+    tagliava la nuova fine — se no la coda resterebbe piatta.
+    """
+    js = _script()
+    p = tmp_path / "r.js"
+    p.write_text(
+        "const AUT = [{path:'a'}, {path:'b'}];\n"
+        "let bps = [{t:0, vals:{a:0, b:0}}, {t:0.5, vals:{a:10, b:0}, ints:{b:'step'}},\n"
+        "           {t:1, vals:{a:20, b:100}}];\n"
+        + _fn(js, "tipoDi") + _fn(js, "bpFra") + _fn(js, "ridimensiona") + """
+const lungo = ridimensiona(30, 60);        // il doppio: tutto si contrae
+const dopoLungo = bps.map(b => [b.t, b.vals.a]);
+const corto = ridimensiona(60, 30);        // e torna dov'era
+const dopoCorto = bps.map(b => [b.t, b.vals.a]);
+const tagliati = ridimensiona(30, 20);     // 1.5x: l'ultimo esce
+console.log(JSON.stringify([lungo, dopoLungo, corto, dopoCorto, tagliati,
+                            bps.map(b => [b.t, b.vals.a, b.vals.b])]));
+"""
+    )
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    lungo, dopoLungo, corto, dopoCorto, tagliati, finale = json.loads(out.stdout)
+    # 30 -> 60 s: 0.5 (15 s) diventa 0.25 (15 s di 60). Nessuno esce.
+    assert lungo == 0 and dopoLungo == [[0, 0], [0.25, 10], [0.5, 20]]
+    assert corto == 0 and dopoCorto == [[0, 0], [0.5, 10], [1, 20]]
+    # 30 -> 20 s: 1 (30 s) cadrebbe a 1.5, fuori. Esce uno e al bordo resta il
+    # valore interpolato: a meta' fra 10 e 20 sul segmento 0.75 -> 1.5.
+    assert tagliati == 1
+    assert [t for t, _, _ in finale] == [0, 0.75, 1]
+    assert finale[-1][1] == pytest.approx(10 + 10 * (1 - 0.75) / (1.5 - 0.75))
+    # `b` ha il tipo step sul punto di partenza: il bordo tiene il suo valore,
+    # non interpola verso i 100 del punto che se n'e' andato
+    assert finale[-1][2] == 0
