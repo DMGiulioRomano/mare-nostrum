@@ -398,6 +398,33 @@ const CAT = L.params.filter(p => p.kind !== "num" && p.path !== EP);
 // I parametri che stanno sui breakpoint: i numerici piu' l'envelope.
 const AUT = NUM.concat(ENVP ? [ENVP] : []);
 
+// Da dove parte il laboratorio. Non sono i valori di `base:` — quello e' lo
+// stream a riposo dello *sweep*, tarato per i render della griglia (volume 12
+// compensa un sample crudo, speed_ratio 0.1 accompagna il passo dello sweep).
+// Qui serve un punto di partenza neutro per l'ascolto: grana media, niente
+// dispersione, niente trasposizione. Un parametro che non e' in questa tabella
+// parte da `base:`, e se manca anche li' dalla sua prima tacca.
+const DEFAULTS = {
+  "grain.duration": 0.064,
+  "grain.duration_range": 0,
+  "grain.envelope": "gaussian",
+  "fill_factor": 2,
+  "pitch.ratio": 1,
+  "pitch.range": 0,
+  "pointer.speed_ratio": 1,
+  "pointer.offset_range": 0,
+  "distribution": 0,
+  "volume": 0,
+};
+
+function iniziale(p) {
+  const d = DEFAULTS[p.path];
+  if (d !== undefined) return d;
+  const b = leggiPath(L.base, p.path);
+  if (b !== undefined && b !== null) return b;
+  return p.values.length ? p.values[0] : (p.free ? 0 : "");
+}
+
 let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
 let curBp = -1;
 
@@ -421,14 +448,17 @@ function labInit() {
       s.step = "any";                       // le frazioni si scrivono lo stesso
       if (p.min != null) s.min = p.min;     // i limiti sono quelli dell'engine
       if (p.max != null) s.max = p.max;
-      const b = leggiPath(L.base, p.path);
-      s.value = b != null ? b : 0;
+      s.value = iniziale(p);
     } else {
       for (const v of p.values) {
         const o = document.createElement("option");
         o.value = v; o.textContent = fmt(v);
         s.appendChild(o);
       }
+      s.value = iniziale(p);
+      // Un default che non e' fra le tacche lascerebbe il menu vuoto: li'
+      // vale la prima, che e' cio' che il menu faceva da solo.
+      if (!s.value && p.values.length) s.value = p.values[0];
     }
     r.appendChild(k); r.appendChild(s); box.appendChild(r);
   };
@@ -492,10 +522,6 @@ function labInit() {
   document.getElementById("fOpen").onclick = fOpen;
   document.getElementById("fSave").onclick = () => fSave(false);
   document.getElementById("fSaveAs").onclick = () => fSave(true);
-  // Il valore di partenza di un fisso e' quello dello stream a riposo, non la
-  // prima tacca della lista: un select che parte da un `sample` diverso da
-  // quello dello studio cambierebbe l'ascolto senza che nessuno l'abbia chiesto.
-  for (const p of CAT) setSel(p.path, leggiPath(L.base, p.path));
   ripristina();
   segna();
 }
@@ -591,7 +617,8 @@ function mkEnv(p, box, ENV) {
   // ogni altro parametro, e la galleria e' solo il modo di sceglierlo.
   const hid = document.createElement("input");
   hid.type = "hidden"; hid.id = "P:" + p.path;
-  hid.value = p.values.includes("hanning") ? "hanning" : Object.keys(ENV)[0];
+  const d = iniziale(p);
+  hid.value = ENV[d] ? d : (p.values.includes("hanning") ? "hanning" : Object.keys(ENV)[0]);
   const box2 = document.createElement("div"); box2.id = "envs";
   for (const [name, pts] of Object.entries(ENV)) {
     const b = document.createElement("button");

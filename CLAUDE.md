@@ -161,6 +161,14 @@ c'e' ancora e i campioni sono in cache, quindi non si rende niente. Il server
 serve `/samples/` dalla cartella dei sample del repo, che sta fuori da quella
 servita.
 
+**Da dove parte il laboratorio.** Non da `base:` — quello e' lo stream a riposo
+dello *sweep*, tarato per i render della griglia — ma da una tabella `DEFAULTS`
+nella pagina: grana media (`grain.duration` 0.064), niente dispersione
+(`*_range` e `distribution` a 0), niente trasposizione (`pitch.ratio` 1),
+`pointer.speed_ratio` 1, `volume` 0, `grain.envelope` gaussian. Un parametro
+fuori da quella tabella parte da `base:`, e se manca anche li' dalla sua prima
+tacca (`iniziale()`, verificata in `tests/test_graph_js.py`).
+
 **Il volume** e' l'unico parametro che si **scrive** invece di sceglierlo: non
 ha tacche da esplorare, e' un aggiustamento continuo. E' un parametro numerico
 come gli altri — sta sui breakpoint, regge gli inviluppi — solo che la sua
