@@ -103,6 +103,9 @@
                                border:1px solid var(--line); padding:1px 8px;
                                margin-left:6px; cursor:pointer; }
  #labFixed .row.audio button:hover { border-color:var(--fg); }
+ /* Il lucchetto chiuso: acceso come il punto corrente, e' uno stato che
+    cambia cosa succede al prossimo cambio di durata. */
+ #labFixed .row.audio button.on { border-color:var(--on); color:var(--on); }
  #lab .row .k { color:var(--dim); text-align:right; white-space:nowrap; }
  #lab select, #lab input { font:inherit; color:inherit; background:var(--panel);
                            border:1px solid var(--line); padding:1px 4px; }
@@ -488,7 +491,10 @@ let LOOP = null;
 let STORIA = [], ISTO = -1, GESTO = false;
 
 function istantanea() {
-  return JSON.stringify({bps, loop: LOOP, cur: curBp,
+  // La durata sta qui perche' col lucchetto chiuso decide dove cadono i
+  // punti: riportare indietro i breakpoint senza di lei lascerebbe i tempi
+  // in secondi diversi da quelli che l'undo doveva ripristinare.
+  return JSON.stringify({bps, loop: LOOP, cur: curBp, dur: durata(),
                          vals: snapshot(), ints: snapInterp()});
 }
 
@@ -515,6 +521,7 @@ function vaiStoria(d) {
   ISTO = i;
   const s = JSON.parse(STORIA[i]);
   bps = s.bps; LOOP = s.loop; SELEZIONE.clear();
+  if (s.dur != null) { document.getElementById("labDur").value = s.dur; DURPREC = s.dur; }
   curBp = Math.min(s.cur, bps.length - 1);
   // A schermo torna quello che c'era a schermo, non i valori del breakpoint:
   // e' `bpLoad` che li riallinea, e qui riallinearli cancellerebbe proprio le
@@ -643,6 +650,7 @@ function labInit() {
     i.id = id; i.type = type; i.value = val;
     r.appendChild(k); r.appendChild(i); fixed.appendChild(r);
   }
+  lucchetto();
   const box = document.getElementById("labParams");
   // Tre livelli, dal piu' largo al piu' stretto: tutti i breakpoint -> questo
   // breakpoint -> il singolo parametro. Si decide in blocco e poi si fanno le
@@ -711,6 +719,33 @@ function labInit() {
   document.getElementById("fSaveAs").onclick = () => fSave(true);
   ripristina();
   segna();
+}
+
+// Il lucchetto vive sulla riga della durata, perche' e' di quella che parla.
+function lucchetto() {
+  const dur = document.getElementById("labDur");
+  DURPREC = durata();
+  const b = document.createElement("button");
+  const segna = () => {
+    b.textContent = LUCCHETTO ? "lucchetto chiuso" : "lucchetto aperto";
+    b.classList.toggle("on", LUCCHETTO);
+    b.title = LUCCHETTO
+      ? "i breakpoint tengono il loro tempo in secondi e si ridispongono"
+      : "i breakpoint restano dove sono e si stirano con la durata";
+  };
+  b.onclick = () => { LUCCHETTO = !LUCCHETTO; segna(); };
+  segna();
+  dur.parentNode.classList.add("audio");   // la riga a tre colonne, col bottone
+  dur.parentNode.appendChild(b);
+  dur.onchange = () => {
+    const n = durata();
+    const persi = LUCCHETTO ? ridimensiona(DURPREC, n) : 0;
+    DURPREC = n;
+    mostraBp();
+    if (persi) document.getElementById("labInfo").textContent =
+      persi + (persi === 1 ? " breakpoint usciva" : " breakpoint uscivano")
+      + " dalla nuova durata: tolti, con il punto di chiusura al bordo";
+  };
 }
 
 // Il sample si sente PRIMA di sceglierlo, come nel browser dei media di
@@ -963,6 +998,56 @@ addEventListener("keydown", e => {
   e.preventDefault();
   bpDel();
 });
+
+// --- il lucchetto della durata --------------------------------------------
+// Cambiare `durata (s)` cambia il significato di ogni x, perche' le x sono
+// normalizzate: lo stesso 0.5 e' 15 s in uno stream di 30 e 5 s in uno di 10.
+// Col lucchetto APERTO i punti restano dove sono e si stirano con lo stream —
+// e' quello che il laboratorio ha sempre fatto. CHIUSO tengono il loro tempo
+// ASSOLUTO e si ridispongono: e' il `freezeEnvOnResize` di PGE-ui, stessa
+// formula (x' = x * durVecchia / durNuova).
+let LUCCHETTO = false;
+let DURPREC = 0;              // la durata da cui si riscala
+
+// Il punto in cui il segmento a->b taglia il tempo t. Serve accorciando:
+// senza, l'ultimo tratto dell'inviluppo sparirebbe con il punto che lo
+// chiudeva e la coda resterebbe piatta sull'ultimo valore rimasto.
+// Come `valoreA`, interpola in linea anche dove il tipo e' `cubic`: e'
+// l'approssimazione che la pagina fa gia' ovunque legga un inviluppo.
+function bpFra(a, b, t) {
+  const k = (t - a.t) / (b.t - a.t);
+  const vals = {}, ints = {};
+  for (const p of AUT) {
+    const tipo = tipoDi(a, p.path);
+    ints[p.path] = tipo;
+    const x = a.vals[p.path], y = b.vals[p.path];
+    vals[p.path] = (tipo !== "step" && typeof x === "number" && typeof y === "number")
+                 ? x + (y - x) * k : x;
+  }
+  return {t, vals, ints};
+}
+
+function durata() {
+  const el = document.getElementById("labDur");
+  return (el && Number(el.value)) || DUR;
+}
+
+function ridimensiona(vecchia, nuova) {
+  if (!bps.length || !(vecchia > 0) || !(nuova > 0) || vecchia === nuova) return 0;
+  for (const b of bps) b.t = +(b.t * (vecchia / nuova)).toFixed(5);
+  const dentro = bps.filter(b => b.t <= 1 + 1e-9);
+  const fuori = bps.length - dentro.length;
+  if (!fuori) return 0;
+  // Allungando non esce nessuno; qui si sta accorciando, e chi e' finito
+  // oltre la fine se ne va — ma lascia il punto dove l'inviluppo tagliava la
+  // nuova fine. Senza un punto rimasto dentro non c'e' segmento da tagliare.
+  if (dentro.length) {
+    const ultimo = dentro[dentro.length - 1], primo = bps[dentro.length];
+    if (ultimo.t < 1 - 1e-9) dentro.push(bpFra(ultimo, primo, 1));
+  }
+  bps = dentro;
+  return fuori;
+}
 
 // --- generare breakpoint a mucchio ----------------------------------------
 // Si sceglie un tratto dell'asse, quanti punti metterci e come si dispongono;
@@ -1278,7 +1363,7 @@ function envA(spec, t) {
 }
 
 function labDoc() {
-  const dur = Number(document.getElementById("labDur").value) || DUR;
+  const dur = durata();
   // stream_id/onset/duration in testa, come nei documenti scritti a mano.
   const st = Object.assign({stream_id: "lab", onset: 0, duration: dur},
                            JSON.parse(JSON.stringify(L.base)));
@@ -1582,6 +1667,7 @@ function carica(doc, path) {
   document.getElementById("labName").value =
     (path || "lab").split("/").pop().replace(/\.ya?ml$/, "");
   document.getElementById("labDur").value = doc.duration || st.duration || DUR;
+  DURPREC = durata();
   storiaReset();
   bpLoad(0);
   SALVATO = statoOra();

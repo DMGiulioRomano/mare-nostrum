@@ -212,6 +212,27 @@ e `delete`. La guardia è una sola, `inCampo()`, chiamata da tutti i gestori:
 mancava a quello della griglia, che si prendeva frecce e spazio su tutta la
 pagina.
 
+**Il lucchetto della durata.** Le x dei breakpoint sono normalizzate, quindi
+cambiare `durata (s)` cambia il significato di ognuna: lo stesso 0.5 è 15 s in
+uno stream di 30 e 5 s in uno di 10. Il bottone sulla riga della durata sceglie
+cosa deve succedere.
+
+- **aperto** (default) — i punti restano dove sono e si stirano con lo stream.
+  È quello che il laboratorio ha sempre fatto.
+- **chiuso** — i punti tengono il loro tempo **in secondi** e si ridispongono:
+  `t' = t * durVecchia / durNuova`. È il `freezeEnvOnResize` di PGE-ui
+  (`rescaleStreamEnvelopes` in `src/lib/envelope-utils.js`), stessa formula.
+
+Accorciando, i punti che finiscono oltre la nuova fine escono, ma lasciano il
+punto in cui l'inviluppo **tagliava** il bordo, interpolato (`bpFra`) — se no
+la coda resterebbe piatta sull'ultimo valore rimasto; è la stessa cura del
+`truncateEnvArray` di PGE-ui. Un `step` sul punto di partenza tiene il suo
+valore invece di interpolare. Quanti ne sono usciti lo dice la riga di stato.
+
+La durata entra nella storia dell'undo: riportare indietro i breakpoint senza
+di lei lascerebbe i tempi in secondi diversi da quelli ripristinati. Verificato
+in `tests/test_graph_js.py`.
+
 **Selezione multipla.** Trascinando sul **vuoto** della linea dei breakpoint
 si disegna una banda, come su una scrivania, e i punti che ci cadono dentro
 (estremi compresi) restano selezionati — anello attorno, e il conto nella riga
