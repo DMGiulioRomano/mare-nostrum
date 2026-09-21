@@ -1508,13 +1508,16 @@ function vociInit(mk) {
     const cap = document.createElement("summary");
     cap.innerHTML = (voce === "voci" ? "voci" : "voci · " + voce) + " <b></b>";
     det.appendChild(cap);
+    // Attaccato PRIMA di riempirlo: le righe cercano i propri controlli con
+    // getElementById, e dentro un sottoalbero staccato dal documento non li
+    // troverebbero (`labInit` moriva li', e con lui tutto cio' che viene dopo).
+    box.appendChild(det);
     for (const p of VOCI.filter(q => q.voce === voce)) {
       mk(p, det);
       p.riga = det.lastChild;
       if (p.bp && !p.noint) p.riga.appendChild(mkInterp(p.path));
       document.getElementById("P:" + p.path).onchange = () => { vociVis(); labInfo(); };
     }
-    box.appendChild(det);
   }
   vociVis();
 }
