@@ -832,3 +832,30 @@ def test_la_lettura_segue_i_grani_vivi_in_quell_istante(tmp_path):
     meta, fine, fuori = json.loads(out.stdout)
     assert meta == {"lo": 0.5, "hi": 2.25, "media": 1.375, "n": 2}
     assert fine is None and fuori is None   # i grani finiscono a t = 1
+
+
+@node
+def test_seguendo_il_render_i_valori_sono_quelli_dell_inviluppo(tmp_path):
+    """`segui` legge gli inviluppi al tempo del cursore, non il punto piu' vicino.
+
+    Fuori dagli estremi vale l'estremo; su un segmento `step` il valore resta
+    quello di partenza fino al punto dopo.
+    """
+    js = _script()
+    p = tmp_path / "segui.js"
+    p.write_text(
+        "const AUT = [{path:'a'}, {path:'b'}];\n"
+        "let bps = [{t:0.2, vals:{a:0,  b:0}, ints:{b:'step'}},\n"
+        "           {t:0.6, vals:{a:10, b:100}},\n"
+        "           {t:1,   vals:{a:20, b:100}}];\n"
+        + _fn(js, "tipoDi") + _fn(js, "bpFra") + _fn(js, "bpA") + """
+const a = x => bpA(x).vals.a, b = x => bpA(x).vals.b;
+console.log(JSON.stringify([a(0), a(0.2), a(0.4), a(0.8), a(1), a(1.5),
+                            b(0.4), b(0.6)]));
+"""
+    )
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    # prima del primo punto e dopo l'ultimo: l'estremo. In mezzo: interpolato.
+    assert got == pytest.approx([0, 0, 5, 15, 20, 20, 0, 100])

@@ -188,3 +188,32 @@ def test_un_nostro_serve_orfano_si_chiude_e_libera_la_porta(monkeypatch):
         if p.poll() is None:
             p.kill()
         p.wait()
+
+
+def test_i_recenti_sopravvivono_al_riavvio_e_restano_autorizzati(tmp_path, monkeypatch):
+    """Gli ultimi tre file usciti da un pannello, il piu' recente in testa.
+
+    La lista e' anche l'autorizzazione: un file gia' scelto in un pannello si
+    riapre al prossimo avvio senza ripassare di li', altrimenti un recente si
+    potrebbe elencare ma non aprire. Chi e' sparito dal disco non e' piu' un
+    recente.
+    """
+    gen = tmp_path / "gen"
+    gen.mkdir()
+    S.recenti_carica(str(gen))
+    scelti = []
+    for n in ("a.yml", "b.yml", "c.yml", "d.yml"):
+        f = tmp_path / n
+        f.write_text("streams: []\n")
+        scelti.append(str(f))
+        monkeypatch.setattr(S.subprocess, "run",
+                            lambda *a, _p=str(f), **k:
+                            subprocess.CompletedProcess(a, 0, _p + "\n", ""))
+        S.pannello("open")
+    assert S._RECENTI == scelti[:0:-1]          # d, c, b: tre, il piu' nuovo primo
+    os.remove(scelti[2])                        # c sparisce dal disco
+    S._AUTORIZZATI.clear()                      # un altro avvio del server
+    S._RECENTI.clear()
+    S.recenti_carica(str(gen))
+    assert S._RECENTI == [scelti[3], scelti[1]]
+    assert S.autorizzato(scelti[3]) and not S.autorizzato(scelti[2])

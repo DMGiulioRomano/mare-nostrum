@@ -92,6 +92,18 @@ La barra file e' quella di sempre: **nuovo · apri… · salva · salva con nome
 col nome del file e un `•  modificato` quando ci sono modifiche non salvate.
 `nuovo` e `apri` chiedono conferma se c'e' del lavoro non salvato.
 
+Accanto ad `apri…` c'e' **`apri recente…`**, gli ultimi tre file passati da un
+pannello. La lista sta sul **server** (`.recenti.json` nella cartella servita),
+non nella pagina, perche' e' anche l'autorizzazione: un file gia' scelto una
+volta in un pannello resta apribile al prossimo avvio, mentre un path inventato
+dalla pagina no. Chi sparisce dal disco esce dalla lista.
+
+**Il laboratorio si apre su un foglio bianco**, chiamato `nuovo stream`, con i
+`DEFAULTS`. La bozza in localStorage porta l'id della sessione del server
+(`POST /stato`) e torna solo se coincide: un **refresh** riprende il lavoro non
+salvato, un `make serve` nuovo no — riaprendo il laboratorio si vuole un banco
+pulito, non l'ultima cosa rimasta a meta'.
+
 I pannelli Apri/Salva sono **quelli nativi di macOS**: li apre il server con
 `osascript` (`POST /pick`), perche' la pagina da sola non sa dove sta un file
 sul disco — Safari non ha le File System Access API, e un `<input type=file>`
@@ -234,6 +246,15 @@ valore invece di interpolare. Quanti ne sono usciti lo dice la riga di stato.
 La durata entra nella storia dell'undo: riportare indietro i breakpoint senza
 di lei lascerebbe i tempi in secondi diversi da quelli ripristinati. Verificato
 in `tests/test_graph_js.py`.
+
+**Seguire il render.** Sotto il lucchetto c'e' `segui il render`: acceso,
+mentre suona i parametri smettono di mostrare il breakpoint selezionato e
+mostrano **dove sono adesso** — gli inviluppi letti al tempo del cursore, con
+la stessa interpolazione dei breakpoint (`bpFra`, via `bpA`), l'estremo fuori
+dagli estremi. E' una lettura: non tocca i breakpoint, non entra nell'undo, e
+spegnendolo si torna al punto selezionato (`mostraBp`). Vale solo sul render
+dello stream, non sull'ascolto di un sample. Verificato in
+`tests/test_graph_js.py`.
 
 **Selezione multipla.** Trascinando sul **vuoto** della linea dei breakpoint
 si disegna una banda, come su una scrivania, e i punti che ci cadono dentro
