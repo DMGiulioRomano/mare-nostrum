@@ -92,6 +92,18 @@ La barra file e' quella di sempre: **nuovo · apri… · salva · salva con nome
 col nome del file e un `•  modificato` quando ci sono modifiche non salvate.
 `nuovo` e `apri` chiedono conferma se c'e' del lavoro non salvato.
 
+Accanto ad `apri…` c'e' **`apri recente…`**, gli ultimi tre file passati da un
+pannello. La lista sta sul **server** (`.recenti.json` nella cartella servita),
+non nella pagina, perche' e' anche l'autorizzazione: un file gia' scelto una
+volta in un pannello resta apribile al prossimo avvio, mentre un path inventato
+dalla pagina no. Chi sparisce dal disco esce dalla lista.
+
+**Il laboratorio si apre su un foglio bianco**, chiamato `nuovo stream`, con i
+`DEFAULTS`. La bozza in localStorage porta l'id della sessione del server
+(`POST /stato`) e torna solo se coincide: un **refresh** riprende il lavoro non
+salvato, un `make serve` nuovo no — riaprendo il laboratorio si vuole un banco
+pulito, non l'ultima cosa rimasta a meta'.
+
 I pannelli Apri/Salva sono **quelli nativi di macOS**: li apre il server con
 `osascript` (`POST /pick`), perche' la pagina da sola non sa dove sta un file
 sul disco — Safari non ha le File System Access API, e un `<input type=file>`

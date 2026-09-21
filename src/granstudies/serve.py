@@ -106,11 +106,51 @@ def pannello(mode: str, name: str = "stream.yml", start: str = "") -> Tuple[str,
     path = p.stdout.strip()
     if path:
         _AUTORIZZATI.add(os.path.abspath(path))
+        recenti_aggiungi(path)
     return path, ""
 
 
 def autorizzato(path: str) -> bool:
     return os.path.abspath(path) in _AUTORIZZATI
+
+
+# Questo avvio del server. La pagina se lo fa dire e ci confronta la bozza in
+# localStorage: un refresh riprende il lavoro non salvato, un `make serve`
+# nuovo parte da foglio bianco — che e' quello che si vuole aprendo il
+# laboratorio, non l'ultima cosa rimasta a meta'.
+SESSIONE = f"{os.getpid()}-{time.time()}"
+
+# I file usciti da un pannello, il piu' recente in testa. La lista sopravvive
+# al riavvio (un JSON accanto alla pagina) ed E' anche l'autorizzazione: un
+# file che l'utente ha gia' scelto in un pannello resta suo, altrimenti un
+# recente si potrebbe elencare ma non aprire.
+RECENTI = 3
+_RECENTI: list = []
+_RECENTI_PATH = ""
+
+
+def recenti_carica(gen_root: str) -> None:
+    global _RECENTI_PATH
+    _RECENTI_PATH = os.path.join(gen_root, ".recenti.json")
+    try:
+        with open(_RECENTI_PATH) as fh:
+            v = json.load(fh)
+    except (OSError, ValueError):
+        v = []
+    # Un file cancellato o spostato non e' piu' un recente: elencarlo
+    # significa offrire un'apertura che fallisce.
+    _RECENTI[:] = [p for p in v if isinstance(p, str) and os.path.isfile(p)][:RECENTI]
+    _AUTORIZZATI.update(os.path.abspath(p) for p in _RECENTI)
+
+
+def recenti_aggiungi(path: str) -> None:
+    p = os.path.abspath(path)
+    _RECENTI[:] = ([p] + [q for q in _RECENTI if q != p])[:RECENTI]
+    try:
+        with open(_RECENTI_PATH, "w") as fh:
+            json.dump(_RECENTI, fh)
+    except OSError:
+        pass            # senza posto dove scriverli restano quelli di adesso
 
 
 class _Dumper(yaml.SafeDumper):
@@ -217,7 +257,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):                      # noqa: N802  (nome dell'API stdlib)
         rotta = self.path.rstrip("/")
-        if rotta not in ("/render", "/pick", "/open"):
+        if rotta not in ("/render", "/pick", "/open", "/stato"):
             self.send_error(404)
             return
         n = int(self.headers.get("Content-Length") or 0)
@@ -225,6 +265,9 @@ class Handler(SimpleHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
         except ValueError as e:
             self._json({"ok": False, "error": f"richiesta non valida: {e}"}, 400)
+            return
+        if rotta == "/stato":
+            self._json({"ok": True, "sessione": SESSIONE, "recenti": list(_RECENTI)})
             return
         if rotta == "/pick":
             # Si parte dalla cartella del file aperto, o da quella dello studio.
@@ -300,6 +343,7 @@ def crea(gen_root: str, repo_root: str, port: int = 8000) -> ThreadingHTTPServer
     singolo bloccherebbe anche il caricamento dell'audio gia' pronto.
     """
     Handler.repo_root = os.path.abspath(repo_root)
+    recenti_carica(gen_root)
     return ThreadingHTTPServer(("127.0.0.1", port), partial(Handler, directory=gen_root))
 
 

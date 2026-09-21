@@ -179,6 +179,7 @@
     <div class="bar" id="fBar">
       <button id="fNew">nuovo</button>
       <button id="fOpen">apri…</button>
+      <select id="fRecent" hidden></select>
       <button id="fSave">salva</button>
       <button id="fSaveAs">salva con nome…</button>
       <span id="fFile"></span>
@@ -630,7 +631,7 @@ function labInit() {
   for (const p of CAT) if (!p.voce) mk(p, fixed);
   ascoltoSample(fixed);
   for (const [id, lab, val, type] of [["labDur", "durata (s)", DUR, "number"],
-                                      ["labName", "nome", "lab", "text"]]) {
+                                      ["labName", "nome", NOME0, "text"]]) {
     const r = document.createElement("div"); r.className = "row";
     const k = document.createElement("div"); k.className = "k"; k.textContent = lab;
     const i = document.createElement("input");
@@ -706,8 +707,8 @@ function labInit() {
   document.getElementById("fOpen").onclick = fOpen;
   document.getElementById("fSave").onclick = () => fSave(false);
   document.getElementById("fSaveAs").onclick = () => fSave(true);
-  ripristina();
   segna();
+  avvio();
 }
 
 // Il lucchetto vive sulla riga della durata, perche' e' di quella che parla.
@@ -808,7 +809,7 @@ function ora(tipo, nome) {
 
 function riprendiStream() {
   if (!ULTIMO) return;
-  ora("stream", document.getElementById("labName").value || "lab");
+  ora("stream", document.getElementById("labName").value || NOME0);
   LAB_AUDIO = true;
   SAMPLE_AUDIO = false;
   audio.src = ULTIMO;
@@ -1927,6 +1928,14 @@ let SALVATO = "";     // com'era il documento all'ultimo salvataggio
 // Rete di sicurezza per il refresh accidentale: il lavoro in corso torna da
 // solo. Non e' un salvataggio — quello e' il file.
 const BOZZA = "lab:" + D.study;
+// Il foglio bianco si chiama cosi' finche' non e' un file.
+const NOME0 = "nuovo stream";
+// Letta subito, prima che qualunque disegno la riscriva: e' la bozza con cui
+// la pagina e' stata aperta.
+const BOZZA0 = (() => {
+  try { return JSON.parse(localStorage.getItem(BOZZA) || "null"); } catch (e) { return null; }
+})();
+let SESSIONE = "";     // l'avvio del server, che risponde /stato
 
 function statoOra() { return JSON.stringify(bps.length ? labDoc() : null); }
 function sporco() { return statoOra() !== SALVATO; }
@@ -1942,7 +1951,7 @@ function segna() {
 function bozzaSalva() {
   try {
     localStorage.setItem(BOZZA, JSON.stringify({
-      bps, file: FILE, salvato: SALVATO, loop: LOOP,
+      bps, file: FILE, salvato: SALVATO, loop: LOOP, sess: SESSIONE,
       name: document.getElementById("labName").value,
       dur: document.getElementById("labDur").value,
       cat: Object.fromEntries(CAT.map(p => [p.path, document.getElementById("P:" + p.path).value])),
@@ -1951,14 +1960,13 @@ function bozzaSalva() {
 }
 
 function ripristina() {
-  let b = null;
-  try { b = JSON.parse(localStorage.getItem(BOZZA) || "null"); } catch (e) { return; }
+  const b = BOZZA0;
   if (!b || !b.bps || !b.bps.length) return;
   bps = b.bps;
   if ("loop" in b) LOOP = b.loop;
   FILE = b.file || "";
   SALVATO = b.salvato || "";
-  document.getElementById("labName").value = b.name || "lab";
+  document.getElementById("labName").value = b.name || NOME0;
   document.getElementById("labDur").value = b.dur || DUR;
   for (const [path, v] of Object.entries(b.cat || {})) setSel(path, v);
   vociVis();
@@ -2023,20 +2031,69 @@ function fNew() {
   LOOP = null;              // il loop si disegna, non si eredita
   FILE = "";
   SALVATO = statoOra();
-  document.getElementById("labName").value = "lab";
+  document.getElementById("labName").value = NOME0;
   document.getElementById("labInfo").textContent = "nuovo stream.";
   drawTl();
 }
 
 async function fOpen() {
   if (!confermaPerdita("aprire un altro file")) return;
-  const info = document.getElementById("labInfo");
   const sc = await post("pick", {mode: "open", start: FILE ? dir(FILE) : ""});
-  if (sc.error) { info.textContent = sc.error; return; }
+  if (sc.error) { document.getElementById("labInfo").textContent = sc.error; return; }
   if (!sc.path) return;                       // annullato nel pannello
-  const out = await post("open", {path: sc.path});
-  if (!out.ok) { info.textContent = out.error; return; }
-  carica(out.doc, sc.path);
+  apriPath(sc.path);
+}
+
+async function apriPath(path) {
+  const out = await post("open", {path});
+  if (!out.ok) { document.getElementById("labInfo").textContent = out.error; return; }
+  carica(out.doc, path);
+  recenti();                                  // il file aperto va in testa
+}
+
+// Cosa dice il server all'apertura: questa sessione e i file recenti. Se non
+// risponde — pagina aperta da file:// — restano foglio bianco e nessun
+// recente, che e' anche la cosa giusta da mostrare.
+async function stato() {
+  try {
+    const r = await fetch("/stato", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: "{}"});
+    if (r.ok) return await r.json();
+  } catch (e) { /* nessun server */ }
+  return null;
+}
+
+async function avvio() {
+  const s = await stato();
+  SESSIONE = (s && s.sessione) || "";
+  recentiMenu((s && s.recenti) || []);
+  // La bozza vale solo per la sessione che l'ha scritta: un refresh riprende
+  // il lavoro non salvato, un `make serve` nuovo apre un foglio bianco.
+  if (BOZZA0 && BOZZA0.sess && BOZZA0.sess === SESSIONE) ripristina();
+  else try { localStorage.removeItem(BOZZA); } catch (e) { /* pazienza */ }
+  segna();
+}
+
+async function recenti() { recentiMenu(((await stato()) || {}).recenti || []); }
+
+// I recenti sono quelli del server, non della pagina: sono i file usciti da
+// un pannello, e solo quelli si possono riaprire senza ripassare di li'.
+function recentiMenu(lista) {
+  const s = document.getElementById("fRecent");
+  s.hidden = !lista.length;
+  s.innerHTML = "";
+  s.appendChild(new Option("apri recente…", ""));
+  for (const p of lista) {
+    const o = new Option(p.split("/").pop(), p);
+    o.title = p;
+    s.appendChild(o);
+  }
+  s.onchange = () => {
+    const p = s.value;
+    s.selectedIndex = 0;                      // resta l'etichetta, non una scelta
+    if (!p || !confermaPerdita("aprire un altro file")) return;
+    apriPath(p);
+  };
 }
 
 function dir(p) { return p.slice(0, p.lastIndexOf("/")); }
@@ -2052,6 +2109,7 @@ async function fSave(chiediDove) {
     path = sc.path;
   }
   await labPost(false, path);
+  recenti();
 }
 
 // Carica un documento nel laboratorio: i breakpoint sono i tempi che
@@ -2101,7 +2159,7 @@ function carica(doc, path) {
   SELEZIONE.clear();        // i breakpoint di prima non esistono piu'
   FILE = path || "";
   document.getElementById("labName").value =
-    (path || "lab").split("/").pop().replace(/\.ya?ml$/, "");
+    (path || NOME0).split("/").pop().replace(/\.ya?ml$/, "");
   document.getElementById("labDur").value = doc.duration || st.duration || DUR;
   DURPREC = durata();
   storiaReset();
@@ -2153,7 +2211,7 @@ function labRender() { return labPost(true); }
 
 async function labPost(render, path) {
   if (!bps.length) { document.getElementById("labInfo").textContent = "nessun breakpoint."; return; }
-  const name = document.getElementById("labName").value || "lab";
+  const name = document.getElementById("labName").value || NOME0;
   const info = document.getElementById("labInfo");
   info.textContent = render ? "render in corso…" : "salvo…";
   try {
