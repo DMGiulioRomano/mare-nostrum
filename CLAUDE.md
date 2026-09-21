@@ -330,6 +330,42 @@ assi spenti spariscono, di ogni blocco restano le chiavi della sua strategia,
 diventa il booleano, e un `voices:` con una voce sola e nessuna strategia non
 si scrive affatto. Il round-trip e' verificato (`tests/test_graph_js.py`).
 
+## Gli inviluppi realizzati (sotto lo spectroscope)
+
+Dopo un render del laboratorio, sotto lo spectroscope compaiono **le curve che
+lo stream ha davvero percorso**, come la corsia di uno stream nella partitura
+(`ScoreVisualizer._draw_envelopes`). Non sono gli inviluppi che hai scritto:
+vengono dalla IR, cioe' dallo stream caricato dall'engine, quindi dentro ci
+sono anche le **curve derivate** — `effective_density`, il quoziente
+fill_factor/grain_duration che il motore calcola a ogni onset e non conserva —
+e gli **offset per-voce** (`voice_pitch_offset__v1`, ...), che non stanno nel
+documento perche' sono il risultato della strategia, non la strategia.
+
+Le due funzioni sono quelle della partitura, non una riscrittura:
+`envelope_extractor.get_stream_envelopes` dice quali curve ha lo stream,
+`envelope_display` quanto sono alte. Ogni curva scala sulla **propria**
+escursione (nessun range fisso: e' l'auto-zoom della partitura), il pan sul
+giro. La legenda sotto dice il colore, il nome e l'escursione vera
+(`10.0ms … 200ms`), che e' l'unica cosa che una curva normalizzata non puo'
+mostrare da se'.
+
+Il conto lo fa il server dopo il render (`engine_bridge.stream_envelopes`,
+chiamato da `_inviluppi` in `serve.py`) ricaricando lo YAML appena scritto, e
+le curve tornano nella risposta di `POST /render` gia' campionate e
+normalizzate: la pagina tira una linea e basta. Le **costanti restano fuori**
+(`show_static=False`), come nella partitura: qui si guarda cio' che si muove.
+
+Il pannello e' l'asse del tempo del file, quindi si clicca per cercare come
+sonogramma e forma d'onda, e il cursore corre anche li'. Sparisce appena suona
+un file della griglia o un sample: la' sarebbero le curve di un altro stream.
+Le curve occupano la frazione di larghezza che lo stream occupa nel file
+(la coda dell'ultimo grano puo' allungarlo), verificata in
+`tests/test_graph_js.py`.
+
+Una cosa non torna esatta: il documento del laboratorio non porta un `seed`,
+quindi le curve di una strategia **stocastica** sono una realizzazione diversa
+da quella che ha suonato. Si aggiusta scrivendo il seed nel documento.
+
 ## Diario di ascolto
 
 Il diario è unico per lo studio e vive in `studies/ascolto/`:

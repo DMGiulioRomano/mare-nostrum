@@ -165,6 +165,17 @@
  #envs button.on .n { color:var(--fg); }
  #fFile { color:var(--dim); font-size:11px; margin-left:6px; }
  #fFile.dirty::after { content:" •  modificato"; color:var(--on); }
+ /* La coppia spectroscope/stereoscope non ha margine sotto: lo mette qui
+    chi le sta sotto. */
+ #envView { margin-top:10px; }
+ /* La legenda degli inviluppi: il colore e il nome, e l'escursione vera
+    (min .. max) che la curva ha percorso — senza, una curva normalizzata
+    sulla propria corsia non dice di che numeri parla. */
+ #envLeg { display:flex; flex-wrap:wrap; gap:2px 12px; font-size:10px;
+           color:var(--dim); margin:4px 0 2px; }
+ #envLeg i { display:inline-block; width:8px; height:2px; margin-right:4px;
+             vertical-align:middle; }
+ #envLeg b { color:var(--fg); font-weight:normal; }
  #labInfo { color:var(--dim); font-size:11px; min-height:1.4em; margin-top:4px; }
  #labYaml { white-space:pre; font-size:11px; color:var(--dim); margin-top:10px;
             max-height:12em; overflow:auto; }
@@ -246,6 +257,15 @@
       <div class="lab">stereoscope</div>
     </div>
   </div>
+  <!-- Gli inviluppi REALIZZATI dallo stream, come la corsia di uno stream
+       nella partitura: le curve della IR, ognuna scalata sulla propria
+       escursione. Compare solo quando a suonare e' un render del laboratorio. -->
+  <div class="view seek" id="envView" hidden>
+    <canvas id="envc" height="200"></canvas>
+    <div class="lab">inviluppi — le curve dello stream, ognuna sulla propria escursione</div>
+    <div class="cur" id="curEnv"></div>
+  </div>
+  <div id="envLeg"></div>
   <div id="status"></div>
 </div>
 
@@ -1690,6 +1710,7 @@ function labInfo() {
 // il render del laboratorio accende.
 function marcaAudio() {
   lpSync();
+  drawEnvs();
   const wv = document.getElementById("waveView");
   for (const v of wv.querySelectorAll(".loopr")) v.remove();
   if (SAMPLE_AUDIO && LOOP) {
@@ -1733,6 +1754,62 @@ function marcaAudio() {
       if (id === "specView") m.innerHTML = "<i>" + (i + 1) + "</i>";
       box.appendChild(m);
     });
+  }
+}
+
+// --- gli inviluppi realizzati --------------------------------------------
+// Quello che la partitura disegna nella corsia di uno stream: non gli
+// inviluppi che hai scritto, ma le curve della IR che l'engine ha davvero
+// percorso — dentro ci sono anche le derivate (`effective_density`, cioe'
+// fill_factor/grain_duration, la densita' vera) e gli offset per-voce. Le
+// calcola il server dopo il render (`engine_bridge.stream_envelopes`) e
+// arrivano gia' normalizzate in [0,1], ognuna sulla propria escursione: qui
+// resta da tirare una linea.
+let ENVS = [];       // [{nome, colore, min, max, da, a, y: [...]}]
+let ENVDUR = 0;      // la durata dello stream: il file reso puo' essere piu'
+                     // lungo (la coda dell'ultimo grano), e le curve non
+                     // devono stirarsi fin la'.
+
+function drawEnvs() {
+  const box = document.getElementById("envView");
+  const leg = document.getElementById("envLeg");
+  // Ha senso solo se a suonare e' il render di QUESTE curve: su un file della
+  // griglia sarebbero le curve di un altro stream (stessa regola dei
+  // breakpoint sul sonogramma).
+  box.hidden = !(LAB_AUDIO && ENVS.length);
+  leg.innerHTML = "";
+  if (box.hidden) return;
+  const c = document.getElementById("envc");
+  c.width = c.parentNode.clientWidth;
+  const g = c.getContext("2d"), W = c.width, H = c.height, m = 8;
+  // La porzione di file occupata dallo stream: senza questo, con una coda di
+  // grani l'ultimo breakpoint cadrebbe prima della fine del disegno.
+  const q = (view && view.duration && ENVDUR) ? Math.min(1, ENVDUR / view.duration) : 1;
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = getComputedStyle(document.body).color;
+  g.globalAlpha = .15;
+  g.beginPath(); g.moveTo(0, H - m); g.lineTo(W, H - m);
+  g.moveTo(0, m); g.lineTo(W, m); g.stroke();
+  g.globalAlpha = 1;
+  g.lineWidth = 1.2;
+  for (const cu of ENVS) {
+    g.strokeStyle = cu.colore;
+    g.beginPath();
+    const n = cu.y.length - 1;
+    cu.y.forEach((v, i) => {
+      const x = (i / n) * q * W, y = H - m - v * (H - 2 * m);
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    });
+    g.stroke();
+    const sp = document.createElement("span");
+    const i = document.createElement("i");
+    i.style.background = cu.colore;
+    sp.appendChild(i);
+    sp.appendChild(document.createTextNode(cu.nome + " "));
+    const b = document.createElement("b");
+    b.textContent = cu.da === cu.a ? cu.da : cu.da + " … " + cu.a;
+    sp.appendChild(b);
+    leg.appendChild(sp);
   }
 }
 
@@ -2014,6 +2091,8 @@ async function labPost(render, path) {
     const src = out.src + "?t=" + Date.now();
     ULTIMO = src;
     if (TORNA) TORNA.disabled = false;
+    ENVS = out.inviluppi || [];
+    ENVDUR = durata();
     LAB_AUDIO = true;
     SAMPLE_AUDIO = false;
     audio.src = src;
@@ -2387,7 +2466,7 @@ function vaiA(t) {
 // Sulla forma d'onda di un sample un trascinamento non e' un seek ma un
 // loop: click = seek, click e trascina = regione. Sotto i 4 pixel e' un
 // click con la mano che trema.
-for (const id of ["specView", "waveView"]) {
+for (const id of ["specView", "waveView", "envView"]) {
   const el = document.getElementById(id);
   let down = false, x0 = 0, disegna = false;
   const frac = e => {
@@ -2473,6 +2552,7 @@ function frame() {
     const p = (t / view.duration) * 100;
     curSpec.style.left = p + "%";
     curWave.style.left = p + "%";
+    curEnv.style.left = p + "%";
   }
   if (!audio.paused) { drawScope(); drawStereo(); }
   requestAnimationFrame(frame);
@@ -2522,6 +2602,7 @@ new ResizeObserver(() => {
     drawWave(waveC, view);
     const sc = document.getElementById("scope");
     sc.width = sc.parentNode.clientWidth;
+    drawEnvs();
   });
 }).observe(document.getElementById("right"));
 

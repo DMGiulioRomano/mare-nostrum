@@ -155,6 +155,80 @@ def render(
     return result.audio_paths
 
 
+def stream_envelopes(
+    yaml_path: str,
+    samples_dir: str,
+    punti: int = 600,
+    log_dir: Optional[str] = None,
+) -> List[dict]:
+    """Le curve *realizzate* di uno stream, campionate e gia' normalizzate.
+
+    E' quello che la partitura disegna nella corsia di uno stream
+    (``ScoreVisualizer._draw_envelopes``), e viene dalle stesse due funzioni:
+    ``envelope_extractor.get_stream_envelopes`` dice QUALI curve ha lo stream,
+    ``envelope_display`` quanto sono alte. Non sono gli envelope scritti nello
+    YAML ma quelli della IR: le costanti restano fuori, in piu' ci sono le
+    curve derivate (``effective_density`` = fill_factor/grain_duration, che il
+    motore calcola a ogni onset e non conserva) e gli offset per-voce, e il
+    pitch e' gia' risolto nell'unita' attiva dello stream.
+
+    Ogni curva scala sulla **propria** escursione (``display_ranges``, come la
+    partitura), il pan sul giro fisso: ``y`` e' in [0, 1] su ``punti`` tempi
+    equispaziati fra 0 e la durata dello stream, e ``min``/``max`` sono i
+    valori veri, per l'etichetta.
+
+    Lo stream e' il primo del documento: il laboratorio ne compone uno solo.
+    """
+    # `load_generator` racconta a voce cosa sta caricando (seed, stream): qui
+    # non sta rendendo niente, e sulla console del server sarebbero due righe
+    # per ogni ascolto.
+    import contextlib
+    import io
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        gen = load_generator(yaml_path, samples_dir=samples_dir, log_dir=log_dir)
+    streams = list(getattr(gen, "streams", None) or [])
+    if not streams:
+        return []
+    stream = streams[0]
+
+    from pge.rendering import envelope_display as display
+    from pge.rendering.envelope_extractor import (
+        ENVELOPE_COLORS, base_param_name, get_stream_envelopes)
+    from pge.rendering.visualizer_config import ENVELOPE_RANGES, EnvelopeDisplay
+
+    curve = get_stream_envelopes(stream, show_static=False,
+                                 show_voice_offsets=True)
+    durata = float(stream.duration)
+    cfg = EnvelopeDisplay()
+    onset = float(stream.onset)
+    ranges = display.display_ranges(curve, onset, onset, onset + durata,
+                                    pad_ratio=cfg.pad_ratio, samples=cfg.samples)
+    unita = getattr(stream, "pitch_unit", None)
+    pan = ENVELOPE_RANGES["pan"]
+    n = max(2, punti)
+    tempi = [durata * i / (n - 1) for i in range(n)]
+    out: List[dict] = []
+    for nome, envelope in curve.items():
+        base = base_param_name(nome)
+        valori = [float(envelope.evaluate(t)) for t in tempi]
+        out.append({
+            "nome": nome,
+            "colore": ENVELOPE_COLORS.get(base, "#888888"),
+            "min": min(valori),
+            "max": max(valori),
+            # L'etichetta e' quella della partitura: millisecondi per la grana,
+            # dB per il volume, il simbolo dell'unita' attiva per il pitch.
+            "da": display.value_label(base, min(valori), unita),
+            "a": display.value_label(base, max(valori), unita),
+            # float() esplicito: `normalize` passa da numpy, e json.dumps
+            # non sa cosa farsene di un np.float64.
+            "y": [round(float(display.normalize(nome, v, ranges, pan_range=pan)), 4)
+                  for v in valori],
+        })
+    return out
+
+
 def score_pdf(
     yaml_path: str,
     pdf_path: str,

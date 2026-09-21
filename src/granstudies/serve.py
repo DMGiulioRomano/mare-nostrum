@@ -10,13 +10,16 @@ render).
 Il server non sa niente di stream: riceve il **documento engine gia' fatto**
 come JSON, lo scrive in YAML e chiama l'engine. Tutta la conoscenza del
 dominio resta nella pagina, che e' dove si compone, e qui non c'e' un secondo
-posto dove la sintassi puo' divergere.
+posto dove la sintassi puo' divergere. L'unica cosa che il server CHIEDE
+all'engine sono le curve realizzate dallo stream (``engine_bridge.
+stream_envelopes``), che tornano nella risposta del render: quelle non stanno
+nel documento — le sa solo chi l'ha caricato.
 
     POST /pick    {"mode": "open"|"save", "name": "..."}
     -> {"path": "/Users/.../stream.yml"}   pannello nativo del Finder
     POST /open    {"path": "..."}   -> {"doc": {...}}
     POST /render  {"doc": {...}, "path": "...", "render": true}
-    -> {"yaml": "...", "src": "..."}   path assoluti o relativi alla pagina
+    -> {"yaml": "...", "src": "...", "inviluppi": [...]}
 
 Il "file di progetto" e' lo YAML stesso: un documento engine puro, che si
 riapre qui, si incolla nel brano o si apre in PGE-ui. Un secondo formato per
@@ -179,7 +182,30 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
         tail = (p.stderr or p.stdout).strip().splitlines()[-12:]
         return {"ok": False, "error": "\n".join(tail)}
     return {"ok": True, "src": _rel(out_path), "yaml": _rel(doc_path),
-            "path": doc_path}
+            "path": doc_path, "inviluppi": _inviluppi(doc_path, repo_root, live)}
+
+
+def _inviluppi(doc_path: str, repo_root: str, live: str) -> list:
+    """Le curve realizzate dallo stream, per il disegno sotto lo spectroscope.
+
+    Le chiede all'engine dopo il render, ricaricando lo YAML appena scritto:
+    sono quelle della IR, non quelle del documento — ci sono dentro anche le
+    derivate (``effective_density``) e gli offset per-voce.
+
+    ponytail: un ascolto non deve fallire perche' il disegno non si sa fare,
+    quindi qualunque inciampo qui vale "nessuna curva". E il documento del
+    laboratorio non porta un ``seed``, quindi le curve di una strategia
+    **stocastica** sono un'altra estrazione rispetto a quella che ha suonato:
+    scrivere il seed nel documento, se dara' fastidio.
+    """
+    from . import engine_bridge
+
+    try:
+        return engine_bridge.stream_envelopes(
+            doc_path, os.path.join(repo_root, "samples"),
+            log_dir=os.path.join(live, "logs"))
+    except Exception:
+        return []
 
 
 class Handler(SimpleHTTPRequestHandler):

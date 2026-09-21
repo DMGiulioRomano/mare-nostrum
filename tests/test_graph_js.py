@@ -743,3 +743,56 @@ console.log(JSON.stringify([doc.pitch, letti]));
     assert "inversion" not in pitch           # sta nei passi, non accanto
     assert pitch.get("interp") is None        # il tipo del PRIMO punto e' linear
     assert [p[1] for p in letti] == ["maj7", "maj7", "min7", "dom7"]
+
+
+@node
+def test_gli_inviluppi_si_fermano_dove_finisce_lo_stream(tmp_path):
+    """Il file reso e' piu' lungo dello stream (la coda dell'ultimo grano).
+
+    Le curve occupano la loro frazione della larghezza, non tutta: se no
+    l'ultimo breakpoint cadrebbe dopo il punto in cui suona. E il pannello
+    resta chiuso quando a suonare non e' un render del laboratorio.
+    """
+    js = _script()
+    stub = """
+const TRATTI = [];
+let _pen = null;
+const CTX = {
+  clearRect(){}, beginPath(){ _pen = []; TRATTI.push(_pen); },
+  moveTo(x, y){ _pen.push([x, y]); }, lineTo(x, y){ _pen.push([x, y]); },
+  stroke(){}, set strokeStyle(v){}, set lineWidth(v){}, set globalAlpha(v){},
+};
+function El(tag) {
+  return {tag, children: [], className: "", textContent: "", innerHTML: "",
+          hidden: false, style: {}, width: 0, height: 200,
+          parentNode: {clientWidth: 500},
+          appendChild(c){ this.children.push(c); return c; },
+          getContext(){ return CTX; }};
+}
+const REG = {envView: El("div"), envLeg: El("div"), envc: El("canvas")};
+const document = {getElementById: id => REG[id] || null, createElement: El,
+                  createTextNode: t => ({t}), body: {}};
+function getComputedStyle() { return {color: "#fff"}; }
+let LAB_AUDIO = false, view = {duration: 10};
+let ENVS = [{nome: "grain_duration", colore: "#377eb8", da: "10ms", a: "200ms",
+             y: [0, 0.5, 1]},
+            {nome: "pitch", colore: "#984ea3", da: "0st", a: "7st", y: [0, 1, 1]}];
+let ENVDUR = 8;
+"""
+    p = tmp_path / "env.js"
+    p.write_text(stub + _fn(js, "drawEnvs") + """
+drawEnvs();
+const chiuso = REG.envView.hidden;
+LAB_AUDIO = true;
+drawEnvs();
+const curve = TRATTI.slice(1);   // il primo tratto e' la cornice
+console.log(JSON.stringify([chiuso, REG.envView.hidden,
+  curve.length, curve[0].map(p => p[0]), REG.envLeg.children.length]));
+""")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    chiuso, aperto, n_curve, xs, n_leg = json.loads(out.stdout)
+    assert chiuso is True and aperto is False
+    assert n_curve == 2 and n_leg == 2
+    # 8 s di stream su 10 di file, canvas 500 px: l'ultimo punto a 400.
+    assert xs == [0, 200, 400]
