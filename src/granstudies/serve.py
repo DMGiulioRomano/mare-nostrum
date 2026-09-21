@@ -84,14 +84,15 @@ def pannello(mode: str, name: str = "stream.yml", start: str = "") -> Tuple[str,
     else:
         scelta = (f'choose file with prompt "Apri uno stream"'
                   f' of type {{"yml", "yaml"}}{loc}')
-    # `tell me to activate` porta il pannello davanti a Safari: il server non
-    # e' un'applicazione in primo piano e il dialogo si aprirebbe dietro,
-    # indistinguibile da un bottone che non fa niente.
+    # Niente `tell me to activate`: `choose file` porta il pannello davanti da
+    # se' (misurato: frontmost in 1.6s), mentre l'activate trasforma prima
+    # l'eseguibile in applicazione con interfaccia e costa altri 3 secondi —
+    # erano i 5 secondi fra il click e il pannello.
     #
     # NON passare da `tell application "System Events"`: senza il permesso di
     # Automazione quello risponde "User cancelled (-128)" dopo due secondi
     # senza aver mostrato niente, che e' esattamente il silenzio da evitare.
-    script = 'tell me to activate\n' + f'POSIX path of ({scelta})'
+    script = f'POSIX path of ({scelta})'
     try:
         p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
     except (OSError, subprocess.SubprocessError) as e:
