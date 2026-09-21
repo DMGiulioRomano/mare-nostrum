@@ -2444,6 +2444,13 @@ async function analyse(url) {
   status.textContent = data.duration.toFixed(2) + " s · " + data.rate + " Hz · " +
     "finestra " + nfft + " campioni (" + (nfft / data.rate * 1000).toFixed(1) + " ms, " +
     (data.rate / nfft).toFixed(1) + " Hz per bin) · " + s.cols + " colonne";
+  // Inviluppi e grani vivono sull'asse dei tempi del FILE, che si sa solo
+  // qui: `analyse` e' asincrona e chi l'ha chiamata (`labPost`, `ascolta`)
+  // ha gia' disegnato con la durata di prima — o con nessuna, al primo
+  // ascolto, e allora non si vedeva niente finche' qualcos'altro non
+  // ridisegnava. Si ridisegna quando il dato c'e'.
+  drawEnvs();
+  drawGrani();
 }
 
 function drawSpec(c, d) {

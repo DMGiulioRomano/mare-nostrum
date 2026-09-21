@@ -444,7 +444,10 @@ valori tipizzati non si sente.
 
 Come il pannello degli inviluppi: compare solo dopo un render del laboratorio,
 si clicca per cercare, il cursore ci corre sopra, e sparisce appena si ascolta
-un sample.
+un sample. Tutti e due si ridisegnano alla fine di `analyse`, non appena chi
+rende li ha chiesti: stanno sull'asse dei tempi del file, e quella durata la
+sa solo l'analisi — che e' asincrona. Disegnati prima, restavano vuoti finche'
+un click su un breakpoint non li ridisegnava.
 
 ## Diario di ascolto
 
