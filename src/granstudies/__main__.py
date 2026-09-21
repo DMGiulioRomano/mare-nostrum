@@ -631,15 +631,11 @@ def cmd_render_final(study: str) -> int:
 
 
 def cmd_graph(study: str) -> int:
-    """Scrive la rete navigabile delle varianti discrete: una pagina per studio.
+    """Scrive la pagina del laboratorio: una per studio.
 
-    Legge i nomi dei file audio, non lo YAML: le coordinate sono gia' nel nome
-    (``o2__grain.duration=0.001__pitch.ratio=0.447``) e cosi' la pagina mostra
-    esattamente cio' che e' stato renderizzato, non cio' che sarebbe da
-    renderizzare. Per la stessa ragione gira **una volta sola** e non una per
-    combinazione (vedi ``_dispatch``): gli assi esterni sono selettori dentro
-    la pagina, non file diversi, e ``COMBO`` ha gia' fatto il suo filtro a
-    monte decidendo cosa renderizzare.
+    Gira **una volta sola** e non una per combinazione (vedi ``_dispatch``):
+    le tacche fra cui si sceglie sono quelle di tutto lo ``study.yml``, assi
+    esterni compresi, non quelle di una combinazione sola.
     """
     from . import bounds
     from .graph import campioni, lab_data, write_graph
@@ -671,15 +667,12 @@ def cmd_graph(study: str) -> int:
         lab["params"].append({"path": path, "values": [], "kind": "num",
                               "free": True, "min": lo, "max": hi})
     os.makedirs(gen_root, exist_ok=True)
-    n_combos, n_nodes = write_graph(study, gen_root, out, _axis_orders(study), lab)
-    if not n_combos and not lab["params"]:
-        print(f"[graph] nessun audio discrete in {gen_root} e nessun parametro "
-              f"per il laboratorio: esegui prima 'render {study}'.", file=sys.stderr)
+    n = write_graph(study, out, lab)
+    if not n:
+        print(f"[graph] lo study.yml di {study} non dichiara parametri con "
+              f"`values`: la pagina resta senza manopole.", file=sys.stderr)
         return 1
-    if not n_combos:
-        print(f"[graph] {out}  (nessun audio: solo il laboratorio)")
-        return 0
-    print(f"[graph] {out}  ({n_nodes} nodi in {n_combos} combinazioni)")
+    print(f"[graph] {out}  ({n} parametri)")
     return 0
 
 
@@ -822,39 +815,6 @@ def cmd_prune(study: str, apply: bool = False, stems: bool = False) -> int:
     print(f"[prune] {len(orfani)} file, {peso / 2**20:.1f} MB"
           + ("" if apply else "  — rilancia con APPLY=1 per cancellarli"))
     return 0
-
-
-def _axis_orders(study: str) -> dict:
-    """label -> ordine degli assi dello spec, una voce per combinazione RESA.
-
-    Con ``for_each:`` gli assi interni li dichiara la combinazione, quindi lo
-    spec del documento base puo' non averne nessuno: si carica uno spec per
-    label, impostando il contesto come fa ``_dispatch``. Le combinazioni che
-    non caricano (studio a meta', spec invalido) si saltano — al massimo la
-    griglia esce con gli assi in ordine alfabetico.
-
-    Solo le cartelle che esistono: le combinazioni dichiarate possono essere
-    un milione (001-41), e caricarne uno spec ciascuna per poi scoprire che
-    non sono mai state rese e' minuti di attesa per niente. La pagina disegna
-    cio' che sta su disco, e l'ordine degli assi serve solo a quello.
-    """
-    global _COMBO
-    was = _COMBO
-    gen_root = os.path.join(REPO_ROOT, "generated", study)
-    su_disco = set(os.listdir(gen_root)) if os.path.isdir(gen_root) else set()
-    orders = {}
-    try:
-        for c in _combos(study, filtra=False):
-            if c.label and c.label not in su_disco:
-                continue
-            _COMBO = c
-            try:
-                orders[c.label] = [ax.name for ax in _load_spec(study).axes]
-            except (SpecError, yaml.YAMLError):
-                continue
-    finally:
-        _COMBO = was
-    return orders
 
 
 def cmd_where(study: str) -> int:

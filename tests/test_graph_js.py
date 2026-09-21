@@ -35,7 +35,7 @@ def _run(extra: str, tmp_path) -> str:
 @node
 def test_il_javascript_della_pagina_e_sintatticamente_valido(tmp_path):
     p = tmp_path / "page.js"
-    p.write_text(_script().replace("__DATA__", "{keys:[],values:{},combos:[]}"))
+    p.write_text(_script().replace("__DATA__", '{study:"s01",lab:{base:{},params:[]}}'))
     out = subprocess.run(["node", "--check", str(p)], capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
 

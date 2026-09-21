@@ -68,15 +68,19 @@ si tocca niente e si dice chi e' (`libera_porta` in `serve.py`, verificata in
 `tests/test_serve.py`).
 
 `make serve STUDY=<scala>` non e' piu' `http.server`: e' `granstudies serve`,
-che serve la pagina e accetta `POST /render`. La pagina ha due schede.
+che serve la pagina e accetta `POST /render`. La pagina **è** il laboratorio:
+si compone UN solo stream e lo si sente subito. Ogni `+ breakpoint` salva uno
+snapshot di tutti i parametri a un tempo; i punti si trascinano sulla linea, e
+cliccarne uno riporta i select ai suoi valori. Il documento esce in
+`generated/<study>/live/<nome>.yml` e viene reso accanto in `.aif`. Un
+parametro diventa una lista `[[t, v], ...]` **solo dove cambia davvero**; se
+non si muove mai resta scalare.
 
-- **griglia** — quello che c'era: si sceglie fra audio gia' renderizzati.
-- **laboratorio** — si compone UN solo stream e lo si sente subito. Ogni
-  `+ breakpoint` salva uno snapshot di tutti i parametri a un tempo; i punti
-  si trascinano sulla linea, e cliccarne uno riporta i select ai suoi valori.
-  Il documento esce in `generated/<study>/live/<nome>.yml` e viene reso
-  accanto in `.aif`. Un parametro diventa una lista `[[t, v], ...]` **solo
-  dove cambia davvero**; se non si muove mai resta scalare.
+**La griglia non c'è più.** C'era una seconda scheda che leggeva i nomi dei
+file audio sotto `audio/sweep/discrete/` e ne faceva una tabella cliccabile:
+è stata tolta, con tutto quello che la reggeva (`collect_combos`, `_grid`,
+`_axis_orders`). `sweep render` continua a produrre quell'audio, ma non ha
+più un browser: si ascolta dal disco. Git la ricorda, se servisse indietro.
 
 ### Il file di progetto
 
@@ -128,8 +132,8 @@ elemento del punto, `[[0, 0.001, cubic], [1, 0.016]]`.
 
 **I breakpoint sul suono.** Dopo un render del laboratorio i punti compaiono
 anche sopra sonogramma e forma d'onda, in giallo e numerati (il cursore di
-riproduzione resta rosso), e si muovono mentre trascini. Spariscono appena
-suona un file della griglia: li' indicherebbero punti a caso.
+riproduzione resta rosso), e si muovono mentre trascini. Spariscono appena si
+ascolta un sample: lì indicherebbero punti a caso.
 
 **`grain.envelope` si automatizza come gli altri**, ma per un'altra strada:
 l'engine non interpola fra due finestre, le **sceglie grano per grano**. Una
@@ -183,7 +187,7 @@ cursore andava fuori passo. Il campo `latenza (ms)` del trasporto ritarda il
 cursore della latenza d'uscita, che Safari non dichiara: si tara a orecchio.
 
 **Da dove parte il laboratorio.** Non da `base:` — quello e' lo stream a riposo
-dello *sweep*, tarato per i render della griglia — ma da una tabella `DEFAULTS`
+dello *sweep*, tarato per i render dello sweep — ma da una tabella `DEFAULTS`
 nella pagina: grana media (`grain.duration` 0.064), niente dispersione
 (`*_range` e `distribution` a 0), niente trasposizione (`pitch.ratio` 1),
 `pointer.speed_ratio` 1, `volume` 0, `grain.envelope` gaussian. Un parametro
@@ -207,10 +211,8 @@ modifica`, che riguarda i valori).
 (o in un menu) gli scorciatoi della pagina si fanno da parte: frecce per
 muovere il cursore, shift+frecce per selezionare, barra spaziatrice per lo
 spazio, backspace per una cifra, `cmd+Z` per l'undo del testo. Fuori dai campi
-tornano a valere trasporto (spazio), navigazione della griglia (frecce), undo
-e `delete`. La guardia è una sola, `inCampo()`, chiamata da tutti i gestori:
-mancava a quello della griglia, che si prendeva frecce e spazio su tutta la
-pagina.
+tornano a valere trasporto (spazio), undo e `delete`. La guardia è una sola,
+`inCampo()`, chiamata da tutti i gestori.
 
 **Il lucchetto della durata.** Le x dei breakpoint sono normalizzate, quindi
 cambiare `durata (s)` cambia il significato di ognuna: lo stesso 0.5 è 15 s in
@@ -356,8 +358,8 @@ normalizzate: la pagina tira una linea e basta. Le **costanti restano fuori**
 (`show_static=False`), come nella partitura: qui si guarda cio' che si muove.
 
 Il pannello e' l'asse del tempo del file, quindi si clicca per cercare come
-sonogramma e forma d'onda, e il cursore corre anche li'. Sparisce appena suona
-un file della griglia o un sample: la' sarebbero le curve di un altro stream.
+sonogramma e forma d'onda, e il cursore corre anche li'. Sparisce appena si
+ascolta un sample: li' non sarebbero le curve di niente.
 Le curve occupano la frazione di larghezza che lo stream occupa nel file
 (la coda dell'ultimo grano puo' allungarlo), verificata in
 `tests/test_graph_js.py`.
