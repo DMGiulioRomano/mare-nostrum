@@ -2056,6 +2056,15 @@ function latenza() {
   return (ctx.outputLatency || 0) + (Number(latEl.value) || 0) / 1000;
 }
 
+// L'altezza di un canvas e' quella del suo attributo, e non dipende dalla
+// larghezza della colonna. Senza, `width:100%` da solo lascia l'altezza al
+// RAPPORTO fra gli attributi (`height:auto` su un elemento rimpiazzato): con
+// la bitmap ancora larga 300 — nessun audio caricato, quindi `analyse` non ha
+// ancora scritto `c.width` — una colonna larga stirava il sonogramma per
+// mezzo schermo. Se lo dicesse il CSS, i numeri sarebbero scritti due volte.
+for (const c of document.querySelectorAll(".view canvas"))
+  c.style.height = c.height + "px";
+
 const FMIN = 20;
 const cache = new Map();      // src -> {peaks, spec} gia' calcolati
 

@@ -368,6 +368,13 @@ Una cosa non torna esatta: il documento del laboratorio non porta un `seed`,
 quindi le curve di una strategia **stocastica** sono una realizzazione diversa
 da quella che ha suonato. Si aggiusta scrivendo il seed nel documento.
 
+**L'altezza dei pannelli di analisi** e' quella dell'attributo `height` del
+canvas e basta: `width:100%` da solo la lascerebbe al rapporto fra gli
+attributi della bitmap (`height:auto` su un elemento rimpiazzato), e con la
+bitmap ancora larga 300 — nessun audio caricato — una colonna larga stirava il
+sonogramma per mezzo schermo. La riga che la fissa sta nel JS, non nel CSS,
+cosi' i numeri restano scritti una volta sola (nell'HTML).
+
 ## Diario di ascolto
 
 Il diario è unico per lo studio e vive in `studies/ascolto/`:
