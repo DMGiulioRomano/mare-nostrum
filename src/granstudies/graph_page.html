@@ -150,7 +150,16 @@
     percentuale sulla loro sola larghezza. */
  #graniRow { display:flex; gap:6px; align-items:flex-start; margin-top:10px; }
  #graniRow .view { flex:1; min-width:0; margin-bottom:0; }
- #granw { display:block; flex:0 0 auto; background:var(--panel); }
+ #granwWrap { position:relative; flex:0 0 auto; }
+ #granw { display:block; background:var(--panel); }
+ /* Dove il pointer legge ADESSO: la banda e' l'escursione fra i grani vivi
+    in questo istante (l'offset_range, le voci, la dispersione), la riga il
+    loro centro. Perpendicolari al cursore rosso, e dello stesso colore:
+    sono lo stesso istante, letto sull'altro asse. */
+ #letturaB { position:absolute; left:0; right:0; background:var(--on);
+             opacity:.2; pointer-events:none; }
+ #letturaL { position:absolute; left:0; right:0; height:1px;
+             background:var(--on); pointer-events:none; }
  #envLeg, #graniLeg { display:flex; flex-wrap:wrap; gap:2px 12px; font-size:10px;
            color:var(--dim); margin:4px 0 2px; }
  #graniLeg { color:var(--dim); }
@@ -241,8 +250,12 @@
        y la posizione di lettura nel sample, il colore l'altezza. Compare solo
        quando a suonare e' un render del laboratorio. -->
   <div id="graniRow" hidden>
-    <canvas id="granw" width="90" height="260"
-            title="forma d'onda del sample — y il tempo nel file, lo stesso asse dei grani accanto"></canvas>
+    <div id="granwWrap">
+      <canvas id="granw" width="90" height="260"
+              title="forma d'onda del sample — y il tempo nel file, lo stesso asse dei grani accanto"></canvas>
+      <div id="letturaB" hidden></div>
+      <div id="letturaL" hidden></div>
+    </div>
     <div class="view seek" id="graniView">
       <canvas id="granic" height="260"></canvas>
       <div class="lab">grani — x tempo, y posizione di lettura nel sample</div>
@@ -1789,6 +1802,49 @@ function drawOnda() {
   g.globalAlpha = 1;
 }
 
+// Il punto del buffer che si sta leggendo adesso: la riga orizzontale sulla
+// forma d'onda, perpendicolare al cursore rosso del tempo. Non e' un dato a
+// parte — sono i grani vivi in questo istante, ognuno col suo pointer.
+//
+// Un grano percorre il suo tratto di buffer mentre dura, quindi al tempo t
+// legge il punto `y + h * (t - onset) / durata`: e' quella la posizione, non
+// il pointer d'attacco. Fra i grani vivi c'e' un'escursione — l'offset_range,
+// le voci, la dispersione del pointer — e la si mostra come banda, con la
+// riga sul centro: cento righe separate sarebbero cento righe attaccate.
+//
+// ponytail: la scansione e' lineare su tutti i grani, a ogni frame. Sono
+// quarantamila confronti su array tipizzati, meno di un millisecondo; se
+// crescesse (o se arrivasse uno zoom che alza il tetto della decimazione)
+// servirebbe un indice ordinato per onset.
+function letturaA(t) {
+  if (!GRANI) return null;
+  const X = GRANI.x, L = GRANI.w, Y = GRANI.y, A = GRANI.h;
+  let lo = Infinity, hi = -Infinity, somma = 0, n = 0;
+  for (let i = 0; i < X.length; i++) {
+    if (X[i] > t || X[i] + L[i] <= t) continue;
+    const p = Y[i] + A[i] * (t - X[i]) / (L[i] || 1);
+    if (p < lo) lo = p;
+    if (p > hi) hi = p;
+    somma += p; n++;
+  }
+  // Nessun grano vivo: silenzio, e niente da indicare.
+  return n ? {lo, hi, media: somma / n, n} : null;
+}
+
+function mostraLettura(t) {
+  const banda = document.getElementById("letturaB");
+  const riga = document.getElementById("letturaL");
+  const l = document.getElementById("graniRow").hidden ? null : letturaA(t);
+  banda.hidden = riga.hidden = !l;
+  if (!l) return;
+  const dur = GRANI.sample_dur || 1;
+  const cima = v => (1 - Math.min(1, Math.max(0, v / dur))) * 100;
+  banda.style.top = cima(l.hi) + "%";
+  // Almeno un pixel: con un grano solo la banda ha altezza zero e sparirebbe.
+  banda.style.height = "max(1px, " + (cima(l.lo) - cima(l.hi)) + "%)";
+  riga.style.top = cima(l.media) + "%";
+}
+
 // Anteprima: solo i parametri mossi, nella forma che finisce nello YAML —
 // terzo elemento compreso, altrimenti due inviluppi che suonano diverso si
 // leggono identici e la scelta dell'interpolazione sembra non aver fatto
@@ -2532,6 +2588,7 @@ function frame() {
     curWave.style.left = p + "%";
     curEnv.style.left = p + "%";
     curGrani.style.left = p + "%";
+    mostraLettura(t);
   }
   if (!audio.paused) { drawScope(); drawStereo(); }
   requestAnimationFrame(frame);

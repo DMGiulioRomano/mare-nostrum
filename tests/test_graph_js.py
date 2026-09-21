@@ -807,3 +807,28 @@ console.log(JSON.stringify([chiuso, REG.envView.hidden,
     # 8 s di stream su 10 di file, canvas 500 px: il fondoscala e' 400. Il
     # gradino ci arriva con due punti allo stesso x, che e' la verticale.
     assert xs == [0, 200, 200, 400]
+
+
+@node
+def test_la_lettura_segue_i_grani_vivi_in_quell_istante(tmp_path):
+    """La riga sulla forma d'onda e' dove i grani leggono ADESSO.
+
+    Un grano percorre il suo tratto di buffer mentre dura, quindi a meta'
+    della sua vita legge a meta' del tratto: la posizione non e' il pointer
+    d'attacco. Fra piu' grani si apre una banda, e fuori da ogni grano non
+    c'e' niente da indicare.
+    """
+    js = _script()
+    frag = js[js.index("function letturaA"):js.index("function mostraLettura")]
+    p = tmp_path / "l.js"
+    #  due grani lunghi 1 s: uno legge da 0 a 1, l'altro da 2 a 2.5.
+    p.write_text(
+        "const GRANI = {sample_dur: 5, x: [0, 0], w: [1, 1],"
+        " y: [0, 2], h: [1, 0.5]};\n"
+        + frag +
+        "console.log(JSON.stringify([letturaA(0.5), letturaA(1), letturaA(3)]));")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    meta, fine, fuori = json.loads(out.stdout)
+    assert meta == {"lo": 0.5, "hi": 2.25, "media": 1.375, "n": 2}
+    assert fine is None and fuori is None   # i grani finiscono a t = 1

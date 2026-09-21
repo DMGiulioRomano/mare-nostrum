@@ -430,6 +430,18 @@ quelli veri, presi da `/samples/` e tenuti nella stessa cache degli ascolti:
 sentire il sample dopo averlo visto non ridecodifica niente. Il nome del file
 viaggia nel payload (`sample`), l'audio no.
 
+**Dove si legge adesso.** Sulla forma d'onda corre una riga orizzontale,
+perpendicolare al cursore rosso del tempo e dello stesso colore: e' lo stesso
+istante letto sull'altro asse. Non e' un dato in piu' — sono i grani vivi in
+quell'istante. Un grano percorre il suo tratto di buffer mentre dura, quindi
+al tempo t legge `y + h * (t - onset) / durata`, non il pointer d'attacco;
+fra i grani vivi c'e' un'escursione (offset_range, voci, dispersione del
+pointer) e quella diventa la **banda**, con la riga sul centro — cento righe
+separate sarebbero cento righe attaccate. Niente grani vivi, niente banda.
+Il conto sta in `letturaA`, verificato in `tests/test_graph_js.py`; la
+scansione e' lineare su tutti i grani a ogni frame, che su quarantamila
+valori tipizzati non si sente.
+
 Come il pannello degli inviluppi: compare solo dopo un render del laboratorio,
 si clicca per cercare, il cursore ci corre sopra, e sparisce appena si ascolta
 un sample.
