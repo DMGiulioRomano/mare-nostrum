@@ -235,6 +235,15 @@ La durata entra nella storia dell'undo: riportare indietro i breakpoint senza
 di lei lascerebbe i tempi in secondi diversi da quelli ripristinati. Verificato
 in `tests/test_graph_js.py`.
 
+**Seguire il render.** Sotto il lucchetto c'e' `segui il render`: acceso,
+mentre suona i parametri smettono di mostrare il breakpoint selezionato e
+mostrano **dove sono adesso** — gli inviluppi letti al tempo del cursore, con
+la stessa interpolazione dei breakpoint (`bpFra`, via `bpA`), l'estremo fuori
+dagli estremi. E' una lettura: non tocca i breakpoint, non entra nell'undo, e
+spegnendolo si torna al punto selezionato (`mostraBp`). Vale solo sul render
+dello stream, non sull'ascolto di un sample. Verificato in
+`tests/test_graph_js.py`.
+
 **Selezione multipla.** Trascinando sul **vuoto** della linea dei breakpoint
 si disegna una banda, come su una scrivania, e i punti che ci cadono dentro
 (estremi compresi) restano selezionati — anello attorno, e il conto nella riga

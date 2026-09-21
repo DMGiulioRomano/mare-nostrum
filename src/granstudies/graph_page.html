@@ -638,6 +638,7 @@ function labInit() {
     r.appendChild(k); r.appendChild(i); fixed.appendChild(r);
   }
   lucchetto();
+  bottoneSegui();
   const box = document.getElementById("labParams");
   // Tre livelli, dal piu' largo al piu' stretto: tutti i breakpoint -> questo
   // breakpoint -> il singolo parametro. Si decide in blocco e poi si fanno le
@@ -734,6 +735,33 @@ function lucchetto() {
       persi + (persi === 1 ? " breakpoint usciva" : " breakpoint uscivano")
       + " dalla nuova durata: tolti, con il punto di chiusura al bordo";
   };
+}
+
+// Sotto il lucchetto, perche' parla anche lui del tempo: acceso, i parametri
+// smettono di mostrare il breakpoint selezionato e mostrano dove sono adesso.
+function bottoneSegui() {
+  const dur = document.getElementById("labDur");
+  const r = document.createElement("div");
+  r.className = "row audio";
+  r.innerHTML = "<div class='k'>segui</div><div></div>";
+  const b = document.createElement("button");
+  b.textContent = "segui il render";
+  b.title = "mentre suona, i parametri mostrano il valore degli inviluppi al cursore";
+  b.onclick = () => {
+    SEGUI = !SEGUI;
+    b.classList.toggle("on", SEGUI);
+    if (!SEGUI) mostraBp();     // si torna al punto selezionato
+  };
+  r.appendChild(b);
+  dur.parentNode.after(r);
+}
+
+// Chiamata a ogni frame dal cursore: scrive e basta, non salva niente.
+function mostraSegui(t) {
+  if (!SEGUI || !LAB_AUDIO) return;
+  const b = bpA(Math.min(1, Math.max(0, t / (ENVDUR || durata()))));
+  if (!b) return;
+  for (const [path, v] of Object.entries(b.vals)) setSel(path, v);
 }
 
 // Il sample si sente PRIMA di sceglierlo, come nel browser dei media di
@@ -1023,6 +1051,24 @@ function bpFra(a, b, t) {
                  ? x + (y - x) * k : x;
   }
   return {t, vals, ints};
+}
+
+// --- seguire gli inviluppi mentre suona ------------------------------------
+// I valori a schermo diventano quelli che lo stream sta percorrendo: gli
+// inviluppi letti al tempo del cursore, con la stessa interpolazione dei
+// breakpoint (`bpFra`). E' una lettura, non una modifica: i breakpoint non si
+// toccano, e spegnendo si torna a quello selezionato.
+let SEGUI = false;
+
+// Il breakpoint virtuale al tempo normalizzato x: fuori dagli estremi vale
+// l'estremo, come fa l'engine con un inviluppo che non arriva fino al bordo.
+function bpA(x) {
+  if (!bps.length) return null;
+  if (x <= bps[0].t) return bps[0];
+  let i = bps.length - 1;
+  while (i > 0 && bps[i].t > x) i--;
+  if (i === bps.length - 1 || bps[i + 1].t - bps[i].t < 1e-9) return bps[i];
+  return bpFra(bps[i], bps[i + 1], x);
 }
 
 function durata() {
@@ -2596,6 +2642,7 @@ function frame() {
     curEnv.style.left = p + "%";
     curGrani.style.left = p + "%";
     mostraLettura(t);
+    mostraSegui(t);
   }
   if (!audio.paused) { drawScope(); drawStereo(); }
   requestAnimationFrame(frame);
