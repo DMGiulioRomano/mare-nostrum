@@ -649,3 +649,97 @@ console.log(JSON.stringify([lungo, dopoLungo, corto, dopoCorto, tagliati,
     # `b` ha il tipo step sul punto di partenza: il bordo tiene il suo valore,
     # non interpola verso i 100 del punto che se n'e' andato
     assert finale[-1][2] == 0
+
+
+def _voci(bps: str, coda: str, tmp_path) -> str:
+    """Il mondo delle voci senza DOM: la tabella, il pruner, la progressione.
+
+    Restano fuori `vociInit`/`vociVis`/`vociCarica`, che leggono i select: qui
+    si prova quello che decide cosa finisce nel documento.
+    """
+    js = _script()
+    tabella = js[js.index("const STRAT = {"):js.index("\n// Dove finisce ogni parametro")]
+    src = "\n".join([
+        "const L = {base: {}, params: []};",
+        tabella,
+        'const PROG = VOCI_DI["voices.pitch.progression"];',
+        _fn(js, "progressione"), _fn(js, "passoA"),
+        _fn(js, "vociDoc"), _fn(js, "setPath"), _fn(js, "tipoDi"),
+        # Come fa labDoc: ogni path scritto, poi il pruner ripulisce.
+        """function docFinto(vals) {
+             const st = {};
+             for (const p of VOCI) {
+               if (p === PROG) continue;
+               setPath(st, p.path, vals[p.path] !== undefined ? vals[p.path] : p.def);
+             }
+             vociDoc(st);
+             return st.voices === undefined ? null : st.voices;
+           }""",
+        "let bps = " + bps + ";", coda,
+    ])
+    p = tmp_path / "voci.js"
+    p.write_text(src)
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    return out.stdout.strip()
+
+
+@node
+def test_il_documento_tiene_solo_le_chiavi_della_strategia_scelta(tmp_path):
+    """Quattro assi spenti = nessun blocco `voices:`; acceso = solo le sue chiavi.
+
+    E' la regola che tiene lo YAML leggibile: a schermo i parametri di tutte
+    le strategie esistono, sul documento ci va solo quello che l'engine legge
+    davvero per la strategia scelta.
+    """
+    got = json.loads(_voci("[{t: 0, vals: {}, ints: {}}]", """
+console.log(JSON.stringify([
+  docFinto({}),
+  docFinto({"voices.num_voices": 3}),
+  docFinto({"voices.num_voices": 4, "voices.pitch.strategy": "chord",
+            "voices.pitch.chord": "min", "voices.pitch.unit": "semitones"}),
+  docFinto({"voices.num_voices": 4, "voices.pitch.strategy": "spectral"}),
+  docFinto({"voices.num_voices": 4, "voices.pitch.strategy": "step",
+            "voices.pitch.unit": "edo", "voices.pitch.edo": 19}),
+  docFinto({"voices.num_voices": 2, "voices.pointer.strategy": "linear",
+            "voices.pointer.normalized": "si"}),
+  docFinto({"voices.num_voices": 2, "voices.pan.strategy": "range",
+            "voices.scatter": 0.5}),
+]));
+""", tmp_path))
+    spento, sole, accordo, spettro, edo, puntatore, pan = got
+    assert spento is None                       # una voce, nessuna strategia
+    assert sole == {"num_voices": 3}            # tre voci all'unisono
+    assert accordo["pitch"] == {"strategy": "chord", "chord": "min"}
+    assert spettro["pitch"] == {"strategy": "spectral", "max_partial": 16}
+    assert edo["pitch"] == {"strategy": "step", "unit": {"edo": 19}, "step": 3}
+    assert puntatore["pointer"] == {"strategy": "linear", "step": 0.1, "normalized": True}
+    assert pan == {"num_voices": 2, "scatter": 0.5,
+                   "pan": {"strategy": "range", "spread": 60}}
+
+
+@node
+def test_la_progressione_di_accordi_e_i_breakpoint(tmp_path):
+    """L'accordo cambia di colpo e resta: un ripetuto non apre un passo nuovo.
+
+    Il rivolto viaggia dentro il passo (terzo elemento) e solo se non e' lo
+    stato fondamentale; rileggendo, `passoA` rida' a ogni tempo l'accordo che
+    ci valeva.
+    """
+    bps = """[
+      {t: 0,   vals: {"voices.pitch.progression": "maj7", "voices.pitch.inversion": 0}, ints: {}},
+      {t: 0.3, vals: {"voices.pitch.progression": "maj7", "voices.pitch.inversion": 0}, ints: {}},
+      {t: 0.6, vals: {"voices.pitch.progression": "min7", "voices.pitch.inversion": 1},
+       ints: {"voices.pitch.progression": "step"}},
+      {t: 1,   vals: {"voices.pitch.progression": "dom7", "voices.pitch.inversion": 9}, ints: {}}]"""
+    got = json.loads(_voci(bps, """
+const doc = docFinto({"voices.num_voices": 4,
+                      "voices.pitch.strategy": "chord_progression"});
+const letti = [0, 0.3, 0.6, 1].map(t => passoA(doc.pitch.progression, t));
+console.log(JSON.stringify([doc.pitch, letti]));
+""", tmp_path))
+    pitch, letti = got
+    assert pitch["progression"] == [[0, "maj7"], [0.6, "min7", 1], [1, "dom7", 3]]
+    assert "inversion" not in pitch           # sta nei passi, non accanto
+    assert pitch.get("interp") is None        # il tipo del PRIMO punto e' linear
+    assert [p[1] for p in letti] == ["maj7", "maj7", "min7", "dom7"]

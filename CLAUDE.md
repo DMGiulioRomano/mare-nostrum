@@ -283,15 +283,52 @@ in `tests/test_graph_js.py`.
 **I numerici si scelgono E si scrivono.** Ogni parametro numerico
 (`grain.duration`, `grain.duration_range`, `fill_factor`, `pitch.ratio`,
 `pitch.range`, `pointer.speed_ratio`, `pointer.offset_range`, `distribution`,
-`volume`) ha due controlli sulla stessa riga: il **campo** che tiene il valore
+`volume`, `pan`, `pan_range`) ha due controlli sulla stessa riga: il **campo** che tiene il valore
 e, accanto, il **menu `▾` delle tacche** dello `study.yml`. Sceglierne una la
 scrive nel campo e il menu torna al suo `▾`: il valore buono e' uno solo,
 quello scritto. Nel campo si puo' digitare anche un valore che fra le tacche
 non c'e'; la virgola vale il punto, e un campo vuoto o illeggibile tiene il
 valore del breakpoint invece di scrivere NaN (`tests/test_graph_js.py`).
 I limiti di `bounds_for` non bloccano il campo, restano come tooltip.
-**Il volume** resta l'unico senza menu (`free: true`): non ha tacche, e' un
-aggiustamento continuo. I categoriali (sample, finestre) restano menu chiusi.
+**Volume, pan e pan_range** sono i tre senza menu (`free: true`): non hanno
+tacche, sono aggiustamenti continui. I categoriali (sample, finestre) restano
+menu chiusi.
+
+## Le voci nel laboratorio
+
+Il blocco `voices:` dell'engine sta sotto i parametri, un `<details>` chiuso
+per asse: `voci` (num_voices, scatter) e poi pitch, onset_offset, pointer, pan.
+Ogni asse ha il suo menu `strategy`, dove `off` non e' una strategia
+dell'engine ma **l'assenza del blocco**, ed e' il valore di partenza. Sulla
+linguetta compare la strategia accesa, cosi' si vede cosa e' in gioco senza
+aprire. Le righe che la strategia scelta non usa spariscono: `base` sotto una
+`linear` non e' una manopola morbida, e' la manopola di un'altra strategia.
+
+Strategie e parametri sono quelli di PGE-ui (`src/components/VoicesSection.jsx`)
+— pitch `step | range | chord | chord_progression | stochastic | spectral`,
+onset `linear | geometric | stochastic`, pointer `linear | stochastic`, pan
+`range | stochastic | step`. **Cosa si automatizza lo decide l'engine, non
+l'estetica:** `_parse_strategy_kwarg` (`core/stream.py`) fa diventare envelope
+qualunque kwarg envelope-like, quindi `step`, `pitch_range`, `max_offset`,
+`base`, `pointer_range`, `spread`, piu' `num_voices` e `scatter`, stanno sui
+breakpoint come tutti gli altri numerici, col loro menu di interpolazione.
+`strategy`, `unit`, `chord`, `voice_leading`, `max_partial` e il flag
+`normalized` sono struttura, e restano fissi per lo stream.
+
+L'eccezione e' **`chord_progression`**, dove l'accordo E' una funzione del
+tempo: si sceglie per breakpoint come `grain.envelope`, e sul documento diventa
+`progression: [[t, accordo], ...]`. Un accordo ripetuto non apre un passo
+nuovo — dura finche' non cambia — e il **rivolto** e' il terzo elemento del
+passo, scritto solo quando non e' lo stato fondamentale e limitato alle note
+che quell'accordo ha. Con `chord` invece il rivolto e' uno scalare: vale
+quello del primo breakpoint. Il tipo di interpolazione del punto diventa
+l'`interp` della progressione (`linear`/`cubic` glissando, `step` a blocchi).
+
+Sul documento ci va solo quello che l'engine legge davvero (`vociDoc`): gli
+assi spenti spariscono, di ogni blocco restano le chiavi della sua strategia,
+`unit: edo` diventa `{edo: N}` col numero del campo accanto, `normalized`
+diventa il booleano, e un `voices:` con una voce sola e nessuna strategia non
+si scrive affatto. Il round-trip e' verificato (`tests/test_graph_js.py`).
 
 ## Diario di ascolto
 
