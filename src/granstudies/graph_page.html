@@ -1600,9 +1600,14 @@ function marcaAudio() {
 // percorso — dentro ci sono anche le derivate (`effective_density`, cioe'
 // fill_factor/grain_duration, la densita' vera) e gli offset per-voce. Le
 // calcola il server dopo il render (`engine_bridge.stream_envelopes`) e
-// arrivano gia' normalizzate in [0,1], ognuna sulla propria escursione: qui
-// resta da tirare una linea.
-let ENVS = [];       // [{nome, colore, min, max, da, a, y: [...]}]
+// arrivano gia' normalizzate in [0,1] su tutte e due le coordinate, ognuna
+// sulla propria escursione: qui resta da tirare una linea.
+//
+// `pts` e' la spezzata da disegnare, non una griglia di campioni: e' il
+// server a metterci l'angolo esatto dei gradini (vedi `_spezzata`), perche'
+// un `step` campionato fitto resterebbe una rampa ripidissima. `bp` sono i
+// breakpoint, i punti in cui la curva e' scritta.
+let ENVS = [];       // [{nome, colore, min, max, da, a, pts, bp}]
 let ENVDUR = 0;      // la durata dello stream: il file reso puo' essere piu'
                      // lungo (la coda dell'ultimo grano), e le curve non
                      // devono stirarsi fin la'.
@@ -1629,15 +1634,22 @@ function drawEnvs() {
   g.moveTo(0, m); g.lineTo(W, m); g.stroke();
   g.globalAlpha = 1;
   g.lineWidth = 1.2;
+  const px = t => t * q * W;
+  const py = v => H - m - v * (H - 2 * m);
   for (const cu of ENVS) {
     g.strokeStyle = cu.colore;
     g.beginPath();
-    const n = cu.y.length - 1;
-    cu.y.forEach((v, i) => {
-      const x = (i / n) * q * W, y = H - m - v * (H - 2 * m);
-      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    (cu.pts || []).forEach(([t, v], i) => {
+      i ? g.lineTo(px(t), py(v)) : g.moveTo(px(t), py(v));
     });
     g.stroke();
+    // I breakpoint: dove la curva e' scritta. Sulle curve che l'engine
+    // campiona da se' — `effective_density`, gli offset per-voce — sono
+    // fitti, ed e' giusto che si veda che sono campionate e non scritte.
+    g.fillStyle = cu.colore;
+    g.globalAlpha = .55;
+    for (const [t, v] of cu.bp || []) g.fillRect(px(t) - 1.5, py(v) - 1.5, 3, 3);
+    g.globalAlpha = 1;
     const sp = document.createElement("span");
     const i = document.createElement("i");
     i.style.background = cu.colore;

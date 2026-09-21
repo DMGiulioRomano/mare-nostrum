@@ -130,3 +130,40 @@ def test_parameter_bounds_dynamic_output_sr():
     assert pb["grain_duration"].min_val == 1.0 / 48000
     # gli altri parametri restano statici
     assert pb["density"].max_val == 4000.0
+
+
+def _env(punti):
+    engine_bridge._ensure_engine_on_path()
+    from pge.envelopes.envelope import Envelope
+
+    return Envelope(punti)
+
+
+def test_la_spezzata_tiene_il_gradino_esatto():
+    """Un `step` campionato fitto resterebbe una rampa ripidissima.
+
+    Il salto e' due punti allo stesso tempo, come il `steps-post` della
+    partitura; il segmento lineare che segue resta campionato.
+    """
+    sp = engine_bridge._spezzata(_env([[0, 1, "step"], [5, 4], [10, 1]]), 10.0, 20)
+    assert sp[0] == (0.0, 1.0)
+    assert sp[1] == (5.0, 1.0) and sp[2] == (5.0, 4.0)   # l'angolo, poi il salto
+    assert sp[-1] == (10.0, 1.0)
+    # La rampa dopo il gradino e' campionata, non due punti soli.
+    assert len([p for p in sp if 5 < p[0] <= 10]) > 5
+
+
+def test_la_spezzata_campiona_la_cubica_e_copre_lo_stream():
+    """Una cubica non e' una retta fra i suoi breakpoint, e va guardata in mezzo.
+
+    E fuori dai breakpoint la curva tiene il primo e l'ultimo valore, come fa
+    `evaluate`: la spezzata arriva comunque a fine stream.
+    """
+    cub = engine_bridge._spezzata(_env([[0, 0, "cubic"], [4, 1]]), 8.0, 40)
+    lin = engine_bridge._spezzata(_env([[0, 0], [4, 1]]), 8.0, 40)
+    # A meta' segmento la S ci passa lo stesso (e' simmetrica): il confronto
+    # va fatto a un quarto, dove la cubica e' ancora seduta sulla partenza.
+    a = lambda sp, t0: [v for t, v in sp if abs(t - t0) < 1e-9][0]
+    assert a(cub, 1.0) < a(lin, 1.0) / 1.5
+    assert abs(a(cub, 2.0) - a(lin, 2.0)) < 1e-9
+    assert cub[-1][0] == 8.0 and cub[-1][1] == 1.0   # tiene fino in fondo

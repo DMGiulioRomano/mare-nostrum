@@ -357,6 +357,21 @@ le curve tornano nella risposta di `POST /render` gia' campionate e
 normalizzate: la pagina tira una linea e basta. Le **costanti restano fuori**
 (`show_static=False`), come nella partitura: qui si guarda cio' che si muove.
 
+**Gradini esatti, e i breakpoint.** La curva non arriva come una griglia di
+campioni ma come la spezzata gia' fatta (`pts`), perche' un segmento `step`
+campionato fitto resterebbe una rampa ripidissima — due pixel di pendenza
+invece di una verticale. La regola e' quella della partitura
+(`drawstyle='steps-post'`) ma applicata **per segmento**, perche' l'engine
+tiene l'interpolazione sul segmento (`Envelope.segments`): un `step` da' due
+punti, l'angolo, e il salto lo chiude il primo punto del segmento dopo; una
+`linear` o una `cubic` restano campionate fitte, tante quanto la loro quota
+dei 600 punti, cosi' la S di una cubica corta non diventa una spezzata.
+Tutto in `_spezzata` (`engine_bridge.py`), verificata in
+`tests/test_engine_bridge.py`. Arrivano anche i **breakpoint** (`bp`), che la
+pagina segna con un quadratino: sulle curve che l'engine campiona da se'
+(`effective_density`, gli offset per-voce) sono fitti, ed e' giusto che si
+veda che sono campionate e non scritte.
+
 Il pannello e' l'asse del tempo del file, quindi si clicca per cercare come
 sonogramma e forma d'onda, e il cursore corre anche li'. Sparisce appena si
 ascolta un sample: li' non sarebbero le curve di niente.

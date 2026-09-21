@@ -752,15 +752,21 @@ def test_gli_inviluppi_si_fermano_dove_finisce_lo_stream(tmp_path):
     Le curve occupano la loro frazione della larghezza, non tutta: se no
     l'ultimo breakpoint cadrebbe dopo il punto in cui suona. E il pannello
     resta chiuso quando a suonare non e' un render del laboratorio.
+
+    La spezzata si disegna com'e' arrivata, angoli compresi: due punti allo
+    stesso x sono il salto verticale di un gradino.
     """
     js = _script()
     stub = """
 const TRATTI = [];
 let _pen = null;
+const PUNTI = [];
 const CTX = {
   clearRect(){}, beginPath(){ _pen = []; TRATTI.push(_pen); },
   moveTo(x, y){ _pen.push([x, y]); }, lineTo(x, y){ _pen.push([x, y]); },
+  fillRect(x, y){ PUNTI.push([x, y]); },
   stroke(){}, set strokeStyle(v){}, set lineWidth(v){}, set globalAlpha(v){},
+  set fillStyle(v){},
 };
 function El(tag) {
   return {tag, children: [], className: "", textContent: "", innerHTML: "",
@@ -775,8 +781,9 @@ const document = {getElementById: id => REG[id] || null, createElement: El,
 function getComputedStyle() { return {color: "#fff"}; }
 let LAB_AUDIO = false, view = {duration: 10};
 let ENVS = [{nome: "grain_duration", colore: "#377eb8", da: "10ms", a: "200ms",
-             y: [0, 0.5, 1]},
-            {nome: "pitch", colore: "#984ea3", da: "0st", a: "7st", y: [0, 1, 1]}];
+             pts: [[0, 0], [0.5, 0], [0.5, 1], [1, 1]], bp: [[0, 0], [1, 1]]},
+            {nome: "pitch", colore: "#984ea3", da: "0st", a: "7st",
+             pts: [[0, 0], [0.5, 1], [1, 1]], bp: [[0, 0], [1, 1]]}];
 let ENVDUR = 8;
 """
     p = tmp_path / "env.js"
@@ -787,12 +794,16 @@ LAB_AUDIO = true;
 drawEnvs();
 const curve = TRATTI.slice(1);   // il primo tratto e' la cornice
 console.log(JSON.stringify([chiuso, REG.envView.hidden,
-  curve.length, curve[0].map(p => p[0]), REG.envLeg.children.length]));
+  curve.length, curve[0].map(p => p[0]), REG.envLeg.children.length,
+  PUNTI.map(p => p[0])]));
 """)
     out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
-    chiuso, aperto, n_curve, xs, n_leg = json.loads(out.stdout)
+    chiuso, aperto, n_curve, xs, n_leg, bp = json.loads(out.stdout)
     assert chiuso is True and aperto is False
     assert n_curve == 2 and n_leg == 2
-    # 8 s di stream su 10 di file, canvas 500 px: l'ultimo punto a 400.
-    assert xs == [0, 200, 400]
+    # I breakpoint delle due curve, sullo stesso asse (meno il raggio del punto).
+    assert bp == [-1.5, 398.5, -1.5, 398.5]
+    # 8 s di stream su 10 di file, canvas 500 px: il fondoscala e' 400. Il
+    # gradino ci arriva con due punti allo stesso x, che e' la verticale.
+    assert xs == [0, 200, 200, 400]
