@@ -390,6 +390,41 @@ bitmap ancora larga 300 — nessun audio caricato — una colonna larga stirava 
 sonogramma per mezzo schermo. La riga che la fissa sta nel JS, non nel CSS,
 cosi' i numeri restano scritti una volta sola (nell'HTML).
 
+## I grani (sotto gli inviluppi)
+
+Sotto le curve, l'altro pannello della partitura: il **piano dei grani**
+(`ScoreVisualizer._draw_grains_full`). x e' il tempo d'uscita, y la posizione
+di lettura nel sample — l'asse su cui la partitura mette la forma d'onda del
+file — l'altezza di un grano e' la porzione di buffer che percorre davvero
+(`read_span`, durata per |pitch_ratio|, verso il basso se legge all'indietro),
+il colore la sua altezza sulla stessa colormap divergente auto-zoomata, e
+l'opacita' il volume. Tutto da `grain_visuals`, che e' dove quella mappa vive:
+qui non si riscrive.
+
+Il conto lo fa il server dopo il render, nello **stesso caricamento** delle
+curve (`engine_bridge.stream_analysis`, che ha preso il posto di
+`stream_envelopes`): materializzare gli stream e' la parte cara, e chiederlo
+due volte raddoppierebbe l'attesa di ogni ascolto.
+
+Sono decine di migliaia di grani, e per questo:
+
+- non arrivano come oggetti ma come **colonne parallele** di numeri (`x`, `w`,
+  `y`, `h`) piu' un indice `k`; il colore non viaggia per grano, e' una
+  `palette` di 128 tinte (32 tacche di pitch x 4 di volume) mandata una volta;
+- sopra `GRANI_MAX` (40000) si **decima** — uno ogni N, e la legenda dice
+  quanti erano: un canvas largo mille pixel non ha dove mettere il
+  centomillesimo grano;
+- il grano e' una **colonna**, non la freccia ne' la silhouette della finestra:
+  a questa scala e' largo un paio di pixel, e la partitura stessa ripiega sulla
+  freccia sotto i tre (`window_shape_min_px`). La freccia tornerebbe utile solo
+  con uno zoom sull'asse dei tempi, che il pannello non ha;
+- si disegna **un `Path2D` per tinta**, non per grano: `fillStyle` cambia 128
+  volte invece di 40000, ed e' li' che sta il costo di un canvas 2D.
+
+Come il pannello degli inviluppi: compare solo dopo un render del laboratorio,
+si clicca per cercare, il cursore ci corre sopra, e sparisce appena si ascolta
+un sample.
+
 ## Diario di ascolto
 
 Il diario è unico per lo studio e vive in `studies/ascolto/`:

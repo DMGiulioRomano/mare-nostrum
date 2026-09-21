@@ -167,3 +167,36 @@ def test_la_spezzata_campiona_la_cubica_e_copre_lo_stream():
     assert a(cub, 1.0) < a(lin, 1.0) / 1.5
     assert abs(a(cub, 2.0) - a(lin, 2.0)) < 1e-9
     assert cub[-1][0] == 8.0 and cub[-1][1] == 1.0   # tiene fino in fondo
+
+
+def test_i_grani_escono_disegnabili(studio):
+    """Le colonne parallele sono la geometria della partitura, indice compreso.
+
+    Il grano sta dentro il suo tempo (x .. x+w) e dentro il sample sull'asse
+    di lettura; l'indice di palette e' un indice vero, non un colore da
+    interpretare.
+    """
+    _tmp, samples, yaml_path = studio
+    grani = engine_bridge.stream_analysis(
+        str(yaml_path), str(samples))["grani"]
+    assert grani["n"] == grani["tot"] > 0     # pochi grani: nessuna decimazione
+    assert grani["passo"] == 1
+    n = grani["n"]
+    assert all(len(grani[c]) == n for c in ("x", "w", "y", "h", "k"))
+    assert max(grani["x"]) + max(grani["w"]) <= 1.5   # stream di 1 s
+    assert all(0 <= y <= grani["sample_dur"] for y in grani["y"])
+    # pitch 0 semitoni: lettura in avanti, altezza = durata del grano.
+    assert all(h > 0 for h in grani["h"])
+    assert all(0 <= k < len(grani["palette"]) for k in grani["k"])
+
+
+def test_i_grani_si_decimano_sopra_il_tetto(studio):
+    """Sopra il tetto si manda un grano ogni N, e si dice quanti erano."""
+    _tmp, samples, yaml_path = studio
+    from granstudies import engine_bridge as eb
+
+    grani = eb._grani(
+        eb.load_generator(str(yaml_path), samples_dir=str(samples)).streams[0],
+        massimo=5)
+    assert grani["n"] <= 5 and grani["tot"] > 5
+    assert grani["passo"] == -(-grani["tot"] // 5)

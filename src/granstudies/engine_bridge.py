@@ -155,12 +155,38 @@ def render(
     return result.audio_paths
 
 
-def stream_envelopes(
+def stream_analysis(
     yaml_path: str,
     samples_dir: str,
     punti: int = 600,
     log_dir: Optional[str] = None,
-) -> List[dict]:
+) -> dict:
+    """Cosa lo stream ha davvero fatto: le curve realizzate e i suoi grani.
+
+    Un caricamento solo per tutte e due: materializzare gli stream e' la parte
+    cara (decine di migliaia di grani), e chiederlo due volte al server dopo
+    ogni ascolto raddoppierebbe l'attesa per niente.
+
+    Returns: ``{"inviluppi": [...], "grani": {...} | None}`` — vedi ``_curve``
+    e ``_grani``.
+    """
+    # `load_generator` racconta a voce cosa sta caricando (seed, stream): qui
+    # non sta rendendo niente, e sulla console del server sarebbero due righe
+    # per ogni ascolto.
+    import contextlib
+    import io
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        gen = load_generator(yaml_path, samples_dir=samples_dir, log_dir=log_dir)
+    streams = list(getattr(gen, "streams", None) or [])
+    if not streams:
+        return {"inviluppi": [], "grani": None}
+    # Lo stream e' il primo del documento: il laboratorio ne compone uno solo.
+    stream = streams[0]
+    return {"inviluppi": _curve(stream, punti), "grani": _grani(stream)}
+
+
+def _curve(stream, punti: int = 600) -> List[dict]:
     """Le curve *realizzate* di uno stream, campionate e gia' normalizzate.
 
     E' quello che la partitura disegna nella corsia di uno stream
@@ -178,21 +204,7 @@ def stream_envelopes(
     disegnare (vedi ``_spezzata``), e ``bp``, i breakpoint dove la curva e'
     scritta. ``min``/``max`` sono i valori veri, per l'etichetta.
 
-    Lo stream e' il primo del documento: il laboratorio ne compone uno solo.
     """
-    # `load_generator` racconta a voce cosa sta caricando (seed, stream): qui
-    # non sta rendendo niente, e sulla console del server sarebbero due righe
-    # per ogni ascolto.
-    import contextlib
-    import io
-
-    with contextlib.redirect_stdout(io.StringIO()):
-        gen = load_generator(yaml_path, samples_dir=samples_dir, log_dir=log_dir)
-    streams = list(getattr(gen, "streams", None) or [])
-    if not streams:
-        return []
-    stream = streams[0]
-
     from pge.rendering import envelope_display as display
     from pge.rendering.envelope_extractor import (
         ENVELOPE_COLORS, base_param_name, get_stream_envelopes)
@@ -233,6 +245,114 @@ def stream_envelopes(
             "bp": [xy((float(t), float(v))) for t, v in envelope.breakpoints],
         })
     return out
+
+
+# Quanti grani si spediscono alla pagina, al massimo. Sopra questo tetto si
+# decima (uno ogni N): un canvas largo mille pixel non ha dove mettere il
+# centomillesimo grano, e il JSON che lo porta si legge e si parsa lo stesso.
+GRANI_MAX = 40000
+# Tacche della scala di colore (pitch) e dell'opacita' (volume). Il grano non
+# porta il suo colore ma l'indice di una tacca: la pagina cambia `fillStyle`
+# una volta per tacca invece che una volta per grano, ed e' quello a fare la
+# differenza fra un disegno istantaneo e mezzo secondo di attesa.
+GRANI_TACCHE = 32
+GRANI_ALPHA = 4
+
+
+def _grani(stream, massimo: int = GRANI_MAX) -> Optional[dict]:
+    """I grani dello stream come li disegna la partitura, in forma disegnabile.
+
+    Stessa geometria di ``ScoreVisualizer._draw_grains_full``: sull'asse X il
+    grano occupa il tempo che dura, sull'asse Y la porzione di buffer che
+    percorre davvero (``grain_visuals.grain_height`` in modo ``read_span``,
+    negativa quando il pointer legge all'indietro). Colore e opacita' sono le
+    stesse funzioni — ``pitch_position`` sul range auto-zoomato in cent,
+    ``volume_alpha`` — perche' la mappa fra un grano e il suo aspetto vive in
+    ``grain_visuals`` e qui non si riscrive.
+
+    La forma e' pero' quella del laboratorio: **colonne verticali**, non
+    frecce ne' silhouette. Alla scala del pannello un grano e' largo un paio
+    di pixel — la partitura stessa ripiega sulla freccia sotto i
+    ``window_shape_min_px`` — e decine di migliaia di poligoni a cinque
+    vertici costerebbero il disegno senza aggiungere niente da vedere.
+    ponytail: la freccia torna utile solo con uno zoom sull'asse dei tempi,
+    che il pannello non ha.
+
+    Returns: le colonne parallele ``x`` (onset), ``w`` (durata), ``y``
+    (pointer), ``h`` (porzione letta, con segno) in secondi, piu' ``k``,
+    l'indice nella ``palette`` di colori gia' pronti. ``None`` se lo stream
+    non ha prodotto grani.
+    """
+    from pge.rendering import grain_visuals as gv
+    from pge.rendering.visualizer_config import VisualizerConfig
+
+    grani = [g for voce in stream.voices for g in voce]
+    tot = len(grani)
+    if not tot:
+        return None
+    passo = max(1, -(-tot // massimo))
+    grani = grani[::passo]
+
+    cfg = VisualizerConfig()
+    az = cfg.pitch_color_autozoom
+    t0 = float(stream.onset)
+    t1 = t0 + float(stream.duration)
+    cents = (gv.pitch_cents_range([stream], t0, t1,
+                                  min_span_cents=az.min_span_cents,
+                                  pad_ratio=az.pad_ratio)
+             if az.enabled else None)
+
+    x, w, y, h, k = [], [], [], [], []
+    for g in grani:
+        x.append(round(g.onset, 6))
+        w.append(round(g.duration, 6))
+        y.append(round(g.pointer_pos, 6))
+        alto = gv.grain_height(g, gv.GRAIN_HEIGHT_READ_SPAN)
+        h.append(round(-alto if g.pitch_ratio < 0 else alto, 6))
+        tacca = min(GRANI_TACCHE - 1, int(gv.pitch_position(
+            abs(g.pitch_ratio), cents, pitch_range=cfg.pitch_range)
+            * GRANI_TACCHE))
+        alpha = gv.volume_alpha(g.volume, volume_range=cfg.volume_range,
+                                alpha_range=cfg.grain_alpha_range)
+        a_min, a_max = cfg.grain_alpha_range
+        liv = 0 if a_max <= a_min else min(GRANI_ALPHA - 1, int(
+            (alpha - a_min) / (a_max - a_min) * GRANI_ALPHA))
+        k.append(tacca * GRANI_ALPHA + liv)
+
+    return {
+        "n": len(grani), "tot": tot, "passo": passo,
+        "sample_dur": round(float(stream.sample_dur_sec), 6),
+        "x": x, "w": w, "y": y, "h": h, "k": k,
+        "palette": _palette(cfg),
+        "colore": _etichetta_colore(cents, cfg.pitch_range),
+    }
+
+
+def _palette(cfg) -> List[str]:
+    """Le ``GRANI_TACCHE x GRANI_ALPHA`` tinte, nell'ordine degli indici ``k``.
+
+    La colormap e' quella della partitura (``PITCH_DIVERGING``), importata e
+    non ricopiata: se la partitura cambia tinte, cambiano anche qui.
+    """
+    from pge.rendering.score_visualizer import PITCH_DIVERGING
+
+    a_min, a_max = cfg.grain_alpha_range
+    out = []
+    for t in range(GRANI_TACCHE):
+        r, g, b, _ = PITCH_DIVERGING((t + 0.5) / GRANI_TACCHE)
+        rgb = f"{round(r * 255)},{round(g * 255)},{round(b * 255)}"
+        for liv in range(GRANI_ALPHA):
+            a = a_min + (liv + 0.5) / GRANI_ALPHA * (a_max - a_min)
+            out.append(f"rgba({rgb},{a:.2f})")
+    return out
+
+
+def _etichetta_colore(cents, pitch_range) -> str:
+    """Che cosa dice la scala di colore: l'escursione su cui e' tarata."""
+    if cents is None:
+        return f"pitch {pitch_range[0]}x … {pitch_range[1]}x"
+    lo, hi = cents
+    return f"pitch {lo:+.0f} … {hi:+.0f} cent"
 
 
 def _spezzata(envelope, durata: float, punti: int) -> List[tuple]:

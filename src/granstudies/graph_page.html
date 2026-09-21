@@ -145,8 +145,10 @@
  /* La legenda degli inviluppi: il colore e il nome, e l'escursione vera
     (min .. max) che la curva ha percorso — senza, una curva normalizzata
     sulla propria corsia non dice di che numeri parla. */
- #envLeg { display:flex; flex-wrap:wrap; gap:2px 12px; font-size:10px;
+ #graniView { margin-top:10px; }
+ #envLeg, #graniLeg { display:flex; flex-wrap:wrap; gap:2px 12px; font-size:10px;
            color:var(--dim); margin:4px 0 2px; }
+ #graniLeg { color:var(--dim); }
  #envLeg i { display:inline-block; width:8px; height:2px; margin-right:4px;
              vertical-align:middle; }
  #envLeg b { color:var(--fg); font-weight:normal; }
@@ -230,6 +232,15 @@
     <div class="cur" id="curEnv"></div>
   </div>
   <div id="envLeg"></div>
+  <!-- I GRANI, come nel piano dei grani della partitura: x il tempo d'uscita,
+       y la posizione di lettura nel sample, il colore l'altezza. Compare solo
+       quando a suonare e' un render del laboratorio. -->
+  <div class="view seek" id="graniView" hidden>
+    <canvas id="granic" height="260"></canvas>
+    <div class="lab">grani — x tempo, y posizione di lettura nel sample</div>
+    <div class="cur" id="curGrani"></div>
+  </div>
+  <div id="graniLeg"></div>
   <div id="status"></div>
 </div>
 
@@ -1548,6 +1559,7 @@ function labInfo() {
 function marcaAudio() {
   lpSync();
   drawEnvs();
+  drawGrani();
   const wv = document.getElementById("waveView");
   for (const v of wv.querySelectorAll(".loopr")) v.remove();
   if (SAMPLE_AUDIO && LOOP) {
@@ -1660,6 +1672,57 @@ function drawEnvs() {
     sp.appendChild(b);
     leg.appendChild(sp);
   }
+}
+
+// --- i grani -------------------------------------------------------------
+// Il piano dei grani della partitura (`ScoreVisualizer._draw_grains_full`),
+// qui sotto gli inviluppi: x il tempo d'uscita, y la posizione di lettura nel
+// sample — l'asse su cui la partitura mette la forma d'onda del file — il
+// colore l'altezza (la stessa colormap divergente, auto-zoomata sull'
+// escursione vera) e l'opacita' il volume.
+//
+// Il conto e' tutto del server (`engine_bridge._grani`): qui arrivano colonne
+// parallele di numeri e un indice di palette per grano. Due scelte, e sono
+// entrambe per il peso:
+//
+//   - il grano e' una COLONNA, non la freccia o la silhouette della finestra:
+//     a questa scala e' largo un paio di pixel, e la partitura stessa ripiega
+//     sulla freccia sotto i tre (`window_shape_min_px`);
+//   - si disegna un Path2D per TINTA, non per grano: `fillStyle` cambia
+//     centoventotto volte invece di quarantamila, ed e' quello il costo vero
+//     di un canvas 2D.
+let GRANI = null;    // {n, tot, passo, sample_dur, x, w, y, h, k, palette, colore}
+
+function drawGrani() {
+  const box = document.getElementById("graniView");
+  const leg = document.getElementById("graniLeg");
+  // Come per gli inviluppi: sull'ascolto di un sample questi grani non sono
+  // i grani di niente.
+  box.hidden = !(LAB_AUDIO && GRANI);
+  leg.textContent = "";
+  if (box.hidden) return;
+  const c = document.getElementById("granic");
+  c.width = c.parentNode.clientWidth;
+  const g = c.getContext("2d"), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  const dur = (view && view.duration) || 1;
+  const sx = W / dur, sy = H / (GRANI.sample_dur || 1);
+  const X = GRANI.x, L = GRANI.w, Y = GRANI.y, A = GRANI.h, K = GRANI.k;
+  const paths = [];
+  for (let i = 0; i < X.length; i++) {
+    const p = paths[K[i]] || (paths[K[i]] = new Path2D());
+    // Almeno un pixel per lato: un grano di un campione esiste e si deve
+    // vedere, come il `min_grain_width_pts` della partitura.
+    const h = A[i] * sy, y = H - Y[i] * sy;
+    p.rect(X[i] * sx, h >= 0 ? y - h : y,
+           Math.max(1, L[i] * sx), Math.max(1, Math.abs(h)));
+  }
+  paths.forEach((p, k) => { g.fillStyle = GRANI.palette[k]; g.fill(p); });
+  leg.textContent = GRANI.n.toLocaleString("it") + " grani" +
+    (GRANI.passo > 1 ? " (uno ogni " + GRANI.passo + " dei " +
+                       GRANI.tot.toLocaleString("it") + ")" : "") +
+    "  ·  " + GRANI.colore +
+    "  ·  sample " + GRANI.sample_dur.toFixed(3) + " s";
 }
 
 // Anteprima: solo i parametri mossi, nella forma che finisce nello YAML —
@@ -1942,6 +2005,7 @@ async function labPost(render, path) {
     ora("stream", name);
     if (TORNA) TORNA.disabled = false;
     ENVS = out.inviluppi || [];
+    GRANI = out.grani || null;
     ENVDUR = durata();
     LAB_AUDIO = true;
     SAMPLE_AUDIO = false;
@@ -2316,7 +2380,7 @@ function vaiA(t) {
 // Sulla forma d'onda di un sample un trascinamento non e' un seek ma un
 // loop: click = seek, click e trascina = regione. Sotto i 4 pixel e' un
 // click con la mano che trema.
-for (const id of ["specView", "waveView", "envView"]) {
+for (const id of ["specView", "waveView", "envView", "graniView"]) {
   const el = document.getElementById(id);
   let down = false, x0 = 0, disegna = false;
   const frac = e => {
@@ -2403,6 +2467,7 @@ function frame() {
     curSpec.style.left = p + "%";
     curWave.style.left = p + "%";
     curEnv.style.left = p + "%";
+    curGrani.style.left = p + "%";
   }
   if (!audio.paused) { drawScope(); drawStereo(); }
   requestAnimationFrame(frame);
@@ -2453,6 +2518,7 @@ new ResizeObserver(() => {
     const sc = document.getElementById("scope");
     sc.width = sc.parentNode.clientWidth;
     drawEnvs();
+    drawGrani();
   });
 }).observe(document.getElementById("right"));
 </script>
