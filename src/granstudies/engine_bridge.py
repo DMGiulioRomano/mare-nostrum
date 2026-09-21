@@ -155,6 +155,137 @@ def render(
     return result.audio_paths
 
 
+def stream_envelopes(
+    yaml_path: str,
+    samples_dir: str,
+    punti: int = 600,
+    log_dir: Optional[str] = None,
+) -> List[dict]:
+    """Le curve *realizzate* di uno stream, campionate e gia' normalizzate.
+
+    E' quello che la partitura disegna nella corsia di uno stream
+    (``ScoreVisualizer._draw_envelopes``), e viene dalle stesse due funzioni:
+    ``envelope_extractor.get_stream_envelopes`` dice QUALI curve ha lo stream,
+    ``envelope_display`` quanto sono alte. Non sono gli envelope scritti nello
+    YAML ma quelli della IR: le costanti restano fuori, in piu' ci sono le
+    curve derivate (``effective_density`` = fill_factor/grain_duration, che il
+    motore calcola a ogni onset e non conserva) e gli offset per-voce, e il
+    pitch e' gia' risolto nell'unita' attiva dello stream.
+
+    Ogni curva scala sulla **propria** escursione (``display_ranges``, come la
+    partitura), il pan sul giro fisso. Escono due spezzate, entrambe in
+    coordinate [0, 1] sia sul tempo sia sul valore: ``pts``, quella da
+    disegnare (vedi ``_spezzata``), e ``bp``, i breakpoint dove la curva e'
+    scritta. ``min``/``max`` sono i valori veri, per l'etichetta.
+
+    Lo stream e' il primo del documento: il laboratorio ne compone uno solo.
+    """
+    # `load_generator` racconta a voce cosa sta caricando (seed, stream): qui
+    # non sta rendendo niente, e sulla console del server sarebbero due righe
+    # per ogni ascolto.
+    import contextlib
+    import io
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        gen = load_generator(yaml_path, samples_dir=samples_dir, log_dir=log_dir)
+    streams = list(getattr(gen, "streams", None) or [])
+    if not streams:
+        return []
+    stream = streams[0]
+
+    from pge.rendering import envelope_display as display
+    from pge.rendering.envelope_extractor import (
+        ENVELOPE_COLORS, base_param_name, get_stream_envelopes)
+    from pge.rendering.visualizer_config import ENVELOPE_RANGES, EnvelopeDisplay
+
+    curve = get_stream_envelopes(stream, show_static=False,
+                                 show_voice_offsets=True)
+    durata = float(stream.duration)
+    cfg = EnvelopeDisplay()
+    onset = float(stream.onset)
+    ranges = display.display_ranges(curve, onset, onset, onset + durata,
+                                    pad_ratio=cfg.pad_ratio, samples=cfg.samples)
+    unita = getattr(stream, "pitch_unit", None)
+    pan = ENVELOPE_RANGES["pan"]
+    out: List[dict] = []
+    for nome, envelope in curve.items():
+        base = base_param_name(nome)
+        spezzata = _spezzata(envelope, durata, max(2, punti))
+        valori = [v for _t, v in spezzata]
+
+        def xy(punto):
+            t, v = punto
+            # float() esplicito: `normalize` passa da numpy, e json.dumps non
+            # sa cosa farsene di un np.float64.
+            return [round(t / durata, 5) if durata else 0.0,
+                    round(float(display.normalize(nome, v, ranges, pan_range=pan)), 4)]
+
+        out.append({
+            "nome": nome,
+            "colore": ENVELOPE_COLORS.get(base, "#888888"),
+            "min": min(valori),
+            "max": max(valori),
+            # L'etichetta e' quella della partitura: millisecondi per la grana,
+            # dB per il volume, il simbolo dell'unita' attiva per il pitch.
+            "da": display.value_label(base, min(valori), unita),
+            "a": display.value_label(base, max(valori), unita),
+            "pts": [xy(p) for p in spezzata],
+            "bp": [xy((float(t), float(v))) for t, v in envelope.breakpoints],
+        })
+    return out
+
+
+def _spezzata(envelope, durata: float, punti: int) -> List[tuple]:
+    """La spezzata da disegnare: fitta dove la curva e' curva, esatta sul gradino.
+
+    Un gradino campionato fitto resta una rampa ripidissima — due pixel di
+    pendenza invece di una verticale — ed e' per questo che la partitura
+    disegna gli envelope ``step`` con ``drawstyle='steps-post'`` invece che
+    per campioni. Qui vale la stessa regola, ma **per segmento**: l'engine
+    tiene l'interpolazione sul segmento (``Envelope.segments``, ognuno con la
+    sua ``strategy``), quindi una curva che mescola step e cubic prende il
+    trattamento giusto su ognuno dei due.
+
+    - segmento ``step`` -> due punti, l'angolo; il salto verticale lo chiude
+      il primo punto del segmento dopo, che sta allo stesso tempo;
+    - segmento ``linear``/``cubic`` -> campioni fitti, tanti quanto la sua
+      quota di ``punti``: cosi' una cubica corta non diventa una spezzata.
+
+    Fuori dai suoi breakpoint la curva tiene il primo e l'ultimo valore, come
+    fa ``Envelope.evaluate``: la spezzata copre sempre tutto lo stream.
+    """
+    from pge.rendering.envelope_display import segment_strategy_name
+
+    out: List[tuple] = []
+
+    def metti(t, v):
+        p = (float(t), float(v))
+        if not out or out[-1] != p:
+            out.append(p)
+
+    for seg in getattr(envelope, "segments", None) or []:
+        tipo = segment_strategy_name(seg)
+        bps = list(seg.breakpoints)
+        for (t0, v0), (t1, _v1) in zip(bps, bps[1:]):
+            if tipo == "step":
+                metti(t0, v0)
+                metti(t1, v0)
+                continue
+            k = max(1, round(punti * (t1 - t0) / durata)) if durata else 1
+            for i in range(k):
+                t = t0 + (t1 - t0) * i / k
+                metti(t, envelope.evaluate(t))
+        if bps:
+            metti(*bps[-1][:2])
+    if not out:
+        return [(0.0, float(envelope.evaluate(0))), (durata, float(envelope.evaluate(durata)))]
+    if out[0][0] > 0:
+        out.insert(0, (0.0, out[0][1]))
+    if out[-1][0] < durata:
+        out.append((durata, out[-1][1]))
+    return out
+
+
 def score_pdf(
     yaml_path: str,
     pdf_path: str,

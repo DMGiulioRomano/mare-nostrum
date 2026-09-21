@@ -10,33 +10,12 @@
  #left { flex:0 0 auto; width:52%; min-width:220px; padding:22px; overflow:auto; }
  #right { flex:1 1 0; min-width:260px; padding:22px 22px 22px 0; overflow:auto; }
  /* Divisore trascinabile. La larghezza vive in localStorage, cosi' la
-    proporzione fra griglia e analisi resta quella scelta. */
+    proporzione fra il laboratorio e l'analisi resta quella scelta. */
  #gutter { flex:0 0 9px; cursor:col-resize; background:var(--panel);
            border-left:1px solid var(--line); border-right:1px solid var(--line); }
  #gutter:hover, #gutter.drag { background:var(--line); }
  body.dragging { user-select:none; cursor:col-resize; }
- h1 { font-size:14px; font-weight:600; margin:0 0 14px; }
- .sel { display:grid; grid-template-columns:max-content 1fr; gap:4px 10px; align-items:center;
-        margin-bottom:18px; }
- .sel .k { color:var(--dim); text-align:right; }
- .sel button { font:inherit; color:inherit; background:none; border:1px solid var(--line);
-               padding:1px 8px; margin-right:4px; cursor:pointer; }
- .sel button.on { border-color:var(--fg); background:var(--fg); color:var(--bg); }
- .sel button:disabled { opacity:.25; cursor:default; }
- table { border-collapse:collapse; }
- th { font-weight:400; color:var(--dim); padding:2px 8px 2px 0; text-align:right; white-space:nowrap; }
- td { padding:0; text-align:center; }
- /* La colonna e' larga quanto serve alla piu' lunga delle etichette X, uguale
-    per tutte: i numeri sotto la griglia restano equidistanziati e leggibili.
-    --cw lo calcola drawGrid in caratteri (font monospace, unita' ch). */
- #grid { overflow-x:auto; }
- col.v { width:calc(var(--cw) * 1ch + 10px); }
- .cell { width:32px; height:32px; border:1px solid var(--line); background:none;
-         color:inherit; font:inherit; cursor:pointer; padding:0; }
- .cell:hover { border-color:var(--fg); }
- .cell.on { background:var(--on); border-color:var(--on); }
- .cell.void { border-style:dotted; opacity:.25; cursor:default; }
- .xlab { font-size:10px; color:var(--dim); text-align:center; padding-top:5px; white-space:nowrap; }
+ h1 { font-size:14px; font-weight:600; margin:0 0 14px; color:var(--dim); }
  #now { margin-top:18px; min-height:3em; }
  #now .file { color:var(--dim); word-break:break-all; }
  audio { margin-top:6px; width:340px; display:block; }
@@ -55,7 +34,7 @@
  .seek { cursor:col-resize; }
  /* I breakpoint proiettati sull'audio: giallo, per non confonderli col
     cursore di riproduzione (rosso). Si vedono solo quando quello che suona
-    e' il render del laboratorio — su un file della griglia non vorrebbero
+    e' il render del laboratorio — sull'ascolto di un sample non vorrebbero
     dire niente. */
  .bpm { position:absolute; top:0; bottom:0; width:1px; background:#e8c000;
         opacity:.55; pointer-events:none; }
@@ -81,11 +60,6 @@
  #ctl #res { margin-right:14px; }
 
  /* --- laboratorio del singolo stream ------------------------------------- */
- #tabs { margin-bottom:14px; }
- #tabs button { font:inherit; color:var(--dim); background:none; border:none;
-                border-bottom:2px solid transparent; padding:2px 0; margin-right:16px;
-                cursor:pointer; }
- #tabs button.on { color:var(--fg); border-bottom-color:var(--on); }
  #lab .row { display:grid; grid-template-columns:max-content 1fr; gap:4px 10px;
              align-items:center; margin-bottom:4px; }
  /* Terza colonna: il tipo di interpolazione, largo uguale per tutti cosi' i
@@ -123,6 +97,12 @@
                     cursor:pointer; }
  #lab .bar button:hover { border-color:var(--fg); }
  #lab .bar button:disabled { opacity:.35; cursor:default; border-color:var(--line); }
+ /* Le voci: un blocco per asse, chiuso finche' non serve. Le righe dentro
+    restano quelle di sempre, stessa griglia a tre colonne. */
+ #labParams details.voce { margin:4px 0 6px; }
+ #labParams details.voce > summary { cursor:pointer; color:var(--dim); }
+ #labParams details.voce > summary b { color:var(--on); font-weight:normal; }
+ #labParams details.voce[open] > summary { margin-bottom:6px; }
  /* Generare breakpoint a mucchio: chiuso finche' non serve. */
  #gen { margin:10px 0; }
  #gen summary { cursor:pointer; color:var(--dim); }
@@ -159,25 +139,27 @@
  #envs button.on .n { color:var(--fg); }
  #fFile { color:var(--dim); font-size:11px; margin-left:6px; }
  #fFile.dirty::after { content:" •  modificato"; color:var(--on); }
+ /* La coppia spectroscope/stereoscope non ha margine sotto: lo mette qui
+    chi le sta sotto. */
+ #envView { margin-top:10px; }
+ /* La legenda degli inviluppi: il colore e il nome, e l'escursione vera
+    (min .. max) che la curva ha percorso — senza, una curva normalizzata
+    sulla propria corsia non dice di che numeri parla. */
+ #envLeg { display:flex; flex-wrap:wrap; gap:2px 12px; font-size:10px;
+           color:var(--dim); margin:4px 0 2px; }
+ #envLeg i { display:inline-block; width:8px; height:2px; margin-right:4px;
+             vertical-align:middle; }
+ #envLeg b { color:var(--fg); font-weight:normal; }
  #labInfo { color:var(--dim); font-size:11px; min-height:1.4em; margin-top:4px; }
  #labYaml { white-space:pre; font-size:11px; color:var(--dim); margin-top:10px;
             max-height:12em; overflow:auto; }
 </style>
 
 <div id="left">
-  <div id="tabs">
-    <button id="tabGrid" class="on">griglia</button><button id="tabLab">laboratorio</button>
-  </div>
-  <div id="griglia">
-  <h1 id="h"></h1>
-  <div class="sel" id="sel"></div>
-  <div id="grid"></div>
-  </div>
-
   <!-- Il laboratorio: si compone UNO stream, breakpoint per breakpoint, e lo
-       si rende al volo. La griglia esplora combinazioni gia' rese; qui si
-       scrive il documento che poi va nella timeline di PGE-ui. -->
-  <div id="lab" hidden>
+       si rende al volo. E' il documento che poi va nella timeline di PGE-ui. -->
+  <div id="lab">
+    <h1 id="h"></h1>
     <div class="bar" id="fBar">
       <button id="fNew">nuovo</button>
       <button id="fOpen">apri…</button>
@@ -207,7 +189,6 @@
   <div id="now"></div>
   <audio id="a" controls></audio>
   <div id="transport">
-    <label><input type="checkbox" id="hold"> continua dal punto in cui era</label>
     <label><input type="checkbox" id="loop"> loop</label>
     <label title="ritardo fra l'audio prodotto e quello che senti: il cursore resta indietro di tanto">latenza <input type="number" id="lat" min="0" max="1000" step="5" style="width:4.5em"> ms</label>
   </div>
@@ -240,55 +221,26 @@
       <div class="lab">stereoscope</div>
     </div>
   </div>
+  <!-- Gli inviluppi REALIZZATI dallo stream, come la corsia di uno stream
+       nella partitura: le curve della IR, ognuna scalata sulla propria
+       escursione. Compare solo quando a suonare e' un render del laboratorio. -->
+  <div class="view seek" id="envView" hidden>
+    <canvas id="envc" height="200"></canvas>
+    <div class="lab">inviluppi — le curve dello stream, ognuna sulla propria escursione</div>
+    <div class="cur" id="curEnv"></div>
+  </div>
+  <div id="envLeg"></div>
   <div id="status"></div>
 </div>
 
 <script>
 const D = __DATA__;
 // Vero quando l'audio caricato e' il render del laboratorio: solo allora i
-// breakpoint si possono proiettare sul sonogramma (vedi `marcaAudio`).
+// breakpoint e gli inviluppi si possono proiettare sul suono (`marcaAudio`).
 let LAB_AUDIO = false;
 // Vero quando suona un sample (`ascolta`): solo li' la forma d'onda e' il
 // sample stesso, e una regione disegnata sopra e' un loop_start/loop_end.
 let SAMPLE_AUDIO = false;
-const byLabel = {};
-for (const c of D.combos) byLabel[c.label] = c;
-
-// Senza audio su disco (studio appena ripulito) la griglia e' vuota e la
-// pagina resta utile lo stesso: c'e' il laboratorio.
-const VUOTA = {label:"", sel:{}, axX:"", axY:"", xs:[], ys:[0], nodes:[], at:{}};
-let sel = Object.assign({}, (D.combos[0] || VUOTA).sel);
-let cur = D.combos[0] || VUOTA;
-let cx = 0, cy = 0;
-
-function match(s) {
-  return D.combos.find(c => D.keys.every(k => c.sel[k] === s[k]));
-}
-
-function drawSel() {
-  const box = document.getElementById("sel");
-  box.innerHTML = "";
-  for (const k of D.keys) {
-    const kd = document.createElement("div");
-    kd.className = "k"; kd.textContent = k;
-    const vd = document.createElement("div");
-    for (const v of D.values[k]) {
-      const b = document.createElement("button");
-      b.textContent = v;
-      if (sel[k] === v) b.classList.add("on");
-      // Disabilitato se cambiando SOLO questa chiave non esiste una
-      // combinazione renderizzata: il disco decide cosa e' raggiungibile.
-      const probe = Object.assign({}, sel); probe[k] = v;
-      if (!match(probe)) b.disabled = true;
-      else b.onclick = () => { sel[k] = v; show(match(sel)); };
-      vd.appendChild(b);
-    }
-    box.appendChild(kd); box.appendChild(vd);
-  }
-}
-
-function key(x, y) { return x + "|" + y; }
-
 // Etichette: cinque decimali, senza zeri di coda. `0.000020833333333333333`
 // diventa `0.00002` — il valore esatto resta nel nome del file, che e' la
 // fonte di verita'. Sotto i cinque decimali si passa all'esponenziale invece
@@ -300,104 +252,13 @@ function fmt(v) {
   return r === 0 ? v.toExponential(1) : String(r);
 }
 
-function drawGrid() {
-  const at = {};
-  for (const n of cur.nodes) at[key(n.coords[cur.axX], cur.axY ? n.coords[cur.axY] : 0)] = n;
-  cur.at = at;
-  const t = document.createElement("table");
-  const labels = cur.xs.map(fmt);
-  t.style.setProperty("--cw", Math.max(...labels.map(l => l.length)));
-  // Una <col> per colonna: la larghezza vale sia per le celle sia per le
-  // etichette, cosi' le due file restano allineate.
-  const cg = document.createElement("colgroup");
-  cg.appendChild(document.createElement("col"));
-  for (let i = 0; i < cur.xs.length; i++) {
-    const c = document.createElement("col");
-    c.className = "v";
-    cg.appendChild(c);
-  }
-  t.appendChild(cg);
-  // Riga per riga dall'alto: y cresce verso l'alto, come su un grafico.
-  for (let j = cur.ys.length - 1; j >= 0; j--) {
-    const tr = t.insertRow();
-    const th = document.createElement("th");
-    th.textContent = cur.axY ? fmt(cur.ys[j]) : "";
-    tr.appendChild(th);
-    for (let i = 0; i < cur.xs.length; i++) {
-      const b = document.createElement("button");
-      b.className = "cell";
-      const n = at[key(cur.xs[i], cur.ys[j])];
-      if (!n) { b.classList.add("void"); b.disabled = true; }
-      else { b.title = n.name; b.onclick = () => go(i, j); }
-      b.dataset.i = i; b.dataset.j = j;
-      tr.insertCell().appendChild(b);
-    }
-  }
-  const foot = t.insertRow();
-  foot.appendChild(document.createElement("th"));
-  for (const l of labels) {
-    const td = foot.insertCell();
-    td.className = "xlab";
-    td.textContent = l;
-  }
-  const box = document.getElementById("grid");
-  box.innerHTML = "";
-  box.appendChild(t);
-}
-
 const audio = document.getElementById("a");
 const status = document.getElementById("status");
-
-function go(i, j, play) {
-  if (!cur.xs.length) return;
-  // Suona un file della griglia: i breakpoint non c'entrano piu' niente.
-  LAB_AUDIO = SAMPLE_AUDIO = false;
-  marcaAudio();
-  const n = cur.at[key(cur.xs[i], cur.ys[j])];
-  cx = i; cy = j;
-  // Posizione e stato del trasporto PRIMA di cambiare file: con "continua"
-  // attivo il confronto fra due grani si fa restando fermi nel tempo, che e'
-  // l'unico modo di sentire la differenza invece della partenza.
-  const wasAt = audio.currentTime, wasPlaying = !audio.paused;
-  for (const b of document.querySelectorAll(".cell")) b.classList.remove("on");
-  const b = document.querySelector(`.cell[data-i="${i}"][data-j="${j}"]`);
-  if (b) b.classList.add("on");
-  if (!n) { document.getElementById("now").textContent = "(non renderizzato)"; return; }
-  document.getElementById("now").innerHTML =
-    "<b>" + cur.axX + " = " + fmt(cur.xs[i]) + "</b>" +
-    (cur.axY ? " &nbsp; <b>" + cur.axY + " = " + fmt(cur.ys[j]) + "</b>" : "") +
-    "<br><span class='file'>" + n.name + "</span>";
-  audio.src = n.src;
-  if (hold.checked) {
-    // La durata non c'e' finche' il file non e' caricato, e la posizione va
-    // limitata a quella: le clip di una griglia hanno la stessa durata, ma
-    // fra griglie diverse no.
-    audio.addEventListener("loadedmetadata", () => {
-      audio.currentTime = Math.min(wasAt, audio.duration || wasAt);
-      if (wasPlaying) audio.play();
-    }, {once: true});
-  } else if (play !== false) {
-    audio.play();
-  }
-  analyse(n.src);
-}
-
-function show(c) {
-  if (!c) return;
-  cur = c;
-  document.getElementById("h").textContent =
-    D.study + "   " + cur.axX + (cur.axY ? " x " + cur.axY : "");
-  drawSel();
-  drawGrid();
-  // La cella resta dov'era, clampata alla nuova griglia: cambiare un asse
-  // esterno e' un A/B sullo stesso punto, non un salto altrove.
-  go(Math.min(cx, cur.xs.length - 1), Math.min(cy, cur.ys.length - 1), false);
-}
 
 // Dove si sta scrivendo, la tastiera e' di chi scrive: le frecce muovono il
 // cursore, shift+frecce selezionano, la barra spaziatrice fa uno spazio e
 // backspace cancella una cifra. Gli scorciatoi della pagina — trasporto,
-// navigazione della griglia, undo, delete — si fanno da parte.
+// undo, delete — si fanno da parte.
 function inCampo(t) {
   return /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable;
 }
@@ -410,39 +271,124 @@ addEventListener("keydown", e => {
   if (e.key === " ") {
     e.preventDefault();
     if (audio.paused) audio.play(); else audio.pause();
-    return;
   }
-  const d = {ArrowRight:[1,0], ArrowLeft:[-1,0], ArrowUp:[0,1], ArrowDown:[0,-1]}[e.key];
-  if (!d) return;
-  e.preventDefault();
-  go(Math.min(cur.xs.length - 1, Math.max(0, cx + d[0])),
-     Math.min(cur.ys.length - 1, Math.max(0, cy + d[1])));
 });
 
 
 // ===========================================================================
-// Laboratorio: comporre UNO stream e sentirlo, invece di scegliere fra audio
-// gia' resi. Ogni breakpoint e' uno snapshot di tutti i parametri a un tempo;
+// Laboratorio: si compone UNO stream e lo si sente.
+// Ogni breakpoint e' uno snapshot di tutti i parametri a un tempo;
 // il documento YAML lo ricava da se', mettendo una lista di punti solo dove
 // il valore cambia davvero (vedi `serie`).
 const L = D.lab || {base:{}, params:[]};
 // I tre tipi che l'engine conosce (InterpolationStrategyFactory). Il tipo sta
 // sul punto e vale per il segmento che PARTE da li'; l'ultimo non ne ha uno.
 const INTERP = ["linear", "cubic", "step"];
-const NUM = L.params.filter(p => p.kind === "num");
 // `grain.envelope` si automatizza come gli altri, ma il suo valore e' un nome
 // e non un numero: l'engine non interpola fra due finestre, le sceglie grano
 // per grano. Sul documento diventa {states, curve} — la MultiStateWindowStrategy
 // che l'engine gia' conosce — dove `step` da' il cambio netto e `linear` il
 // morphing progressivo. Gli altri categoriali restano fissi per lo stream.
 const EP = "grain.envelope";
+
+// --- le voci ---------------------------------------------------------------
+// Il blocco `voices:` dell'engine: quattro assi ortogonali — pitch, onset,
+// pointer, pan — ognuno con la sua strategia, e la voce 0 sempre riferimento
+// (offset zero su ogni asse). Strategie e parametri sono quelli che PGE-ui
+// tiene in `src/components/VoicesSection.jsx`; qui non c'e' un pannello a
+// parte, sono righe del laboratorio come tutte le altre.
+//
+// Cosa sta sui breakpoint e cosa no lo decide l'engine, non l'estetica:
+// `_parse_strategy_kwarg` (core/stream.py) fa diventare Envelope qualunque
+// kwarg envelope-like, quindi step / pitch_range / max_offset / base /
+// pointer_range / spread — piu' num_voices e scatter — si automatizzano.
+// strategy, unit, chord, max_partial e il flag normalized sono struttura e
+// restano fissi per lo stream. L'eccezione e' `chord_progression`: li'
+// l'accordo E' funzione del tempo, e lo fa coi breakpoint come `grain.envelope`.
+const STRAT = {
+  pitch: ["step", "range", "chord", "chord_progression", "stochastic", "spectral"],
+  onset_offset: ["linear", "geometric", "stochastic"],
+  pointer: ["linear", "stochastic"],
+  pan: ["range", "stochastic", "step"],
+};
+// Gli accordi (CHORD_INTERVALS dell'engine), raggruppati per numero di note:
+// il gruppo dice quanti rivolti ha l'accordo.
+const CORDE = {
+  "3 voci": ["maj", "min", "dim", "aug", "sus2", "sus4"],
+  "4 voci": ["dom7", "maj7", "min7", "dim7", "minmaj7"],
+  "5 voci": ["dom9", "maj9", "min9", "9sus4"],
+  "6 voci": ["dom9s11", "maj9s11", "min11"],
+  "7 voci": ["dom13", "min13", "maj13s11", "altered"],
+};
+const ACCORDI = [].concat(...Object.values(CORDE));
+const NOTE_DI = {};
+Object.values(CORDE).forEach((cs, i) => cs.forEach(c => { NOTE_DI[c] = i + 3; }));
+// Le unita' di pitch (PITCH_UNIT_PRESETS): `edo` e' l'unica che porta un
+// numero con se' (`unit: {edo: N}`), e ha percio' il suo campo accanto.
+// chord / chord_progression / spectral sono semitone-locked: li' l'unita' non
+// si sceglie, e infatti non compare.
+const UNITA = ["semitones", "cents", "quarter_tone", "eighth_tone", "edo", "ratio"];
+// [asse, chiave, {def, cat: tacche, bp: sta sui breakpoint, str: strategie che la usano}]
+const VOCI_P = [
+  ["", "num_voices", {def: 1, bp: 1, min: 1, max: 256}],
+  ["", "scatter", {def: 0, bp: 1, min: 0, max: 1}],
+
+  ["pitch", "strategy", {cat: STRAT.pitch, def: "off"}],
+  ["pitch", "unit", {cat: UNITA, def: "semitones", str: ["step", "range", "stochastic"]}],
+  ["pitch", "edo", {def: 12, str: ["step", "range", "stochastic"], nome: "edo · divisioni"}],
+  ["pitch", "step", {def: 3, bp: 1, str: ["step"]}],
+  ["pitch", "pitch_range", {def: 12, bp: 1, str: ["range", "stochastic"]}],
+  ["pitch", "chord", {cat: ACCORDI, def: "dom7", str: ["chord"]}],
+  ["pitch", "progression", {cat: ACCORDI, def: "maj7", bp: 1, str: ["chord_progression"],
+                            nome: "accordo · nel tempo"}],
+  ["pitch", "inversion", {def: 0, bp: 1, noint: 1, str: ["chord", "chord_progression"],
+                          nome: "rivolto"}],
+  ["pitch", "voice_leading", {cat: ["nearest", "positional"], def: "nearest",
+                              str: ["chord_progression"]}],
+  ["pitch", "max_partial", {def: 16, str: ["spectral"]}],
+
+  ["onset_offset", "strategy", {cat: STRAT.onset_offset, def: "off"}],
+  ["onset_offset", "step", {def: 0.05, bp: 1, str: ["linear", "geometric"]}],
+  ["onset_offset", "base", {def: 2, bp: 1, str: ["geometric"]}],
+  ["onset_offset", "max_offset", {def: 0.1, bp: 1, str: ["stochastic"]}],
+
+  ["pointer", "strategy", {cat: STRAT.pointer, def: "off"}],
+  ["pointer", "step", {def: 0.1, bp: 1, str: ["linear"]}],
+  ["pointer", "pointer_range", {def: 0.02, bp: 1, str: ["stochastic"]}],
+  ["pointer", "normalized", {cat: ["no", "si"], def: "no", str: STRAT.pointer,
+                             nome: "normalized · frazione del sample"}],
+
+  ["pan", "strategy", {cat: STRAT.pan, def: "off"}],
+  ["pan", "spread", {def: 60, bp: 1, str: ["range", "stochastic"]}],
+  ["pan", "step", {def: 15, bp: 1, str: ["step"]}],
+];
+const VOCI = VOCI_P.map(([dim, k, o]) => ({
+  path: "voices." + (dim ? dim + "." : "") + k,
+  voce: dim || "voci", dim: dim, chiave: k, nome: o.nome || k,
+  kind: o.cat ? "cat" : "num",
+  // `off` non e' una strategia dell'engine: e' l'assenza del blocco, ed e'
+  // `vociDoc` a toglierlo dal documento.
+  values: k === "strategy" ? ["off"].concat(o.cat) : (o.cat || []),
+  bp: !!o.bp, noint: !!o.noint, str: o.str || null,
+  def: o.def, min: o.min, max: o.max,
+}));
+L.params = L.params.concat(VOCI);
+const VOCI_DI = Object.fromEntries(VOCI.map(p => [p.path, p]));
+
+// Dove finisce ogni parametro: sui breakpoint (`bp`) o fisso per lo stream.
+// I numerici dello study.yml ci stanno tutti; fra i categoriali ci arrivano
+// solo i due che l'engine sa far cambiare nel tempo senza interpolare — la
+// finestra e l'accordo della progressione.
+for (const p of L.params) if (p.bp === undefined) p.bp = p.kind === "num" || p.path === EP;
+const NUM = L.params.filter(p => p.bp && p.kind === "num");
 const ENVP = L.params.find(p => p.path === EP && p.kind !== "num") || null;
-const CAT = L.params.filter(p => p.kind !== "num" && p.path !== EP);
-// I parametri che stanno sui breakpoint: i numerici piu' l'envelope.
-const AUT = NUM.concat(ENVP ? [ENVP] : []);
+const PROG = VOCI_DI["voices.pitch.progression"];
+const CAT = L.params.filter(p => !p.bp);
+// I parametri che stanno sui breakpoint: i numerici, l'envelope, l'accordo.
+const AUT = L.params.filter(p => p.bp);
 
 // Da dove parte il laboratorio. Non sono i valori di `base:` — quello e' lo
-// stream a riposo dello *sweep*, tarato per i render della griglia (volume 12
+// stream a riposo dello *sweep*, tarato per i render del sweep (volume 12
 // compensa un sample crudo, speed_ratio 0.1 accompagna il passo dello sweep).
 // Qui serve un punto di partenza neutro per l'ascolto: grana media, niente
 // dispersione, niente trasposizione. Un parametro che non e' in questa tabella
@@ -461,9 +407,13 @@ const DEFAULTS = {
   "pointer.offset_range": 0,
   "distribution": 0,
   "volume": 0,
+  "pan_range": 0,
 };
 
 function iniziale(p) {
+  // I parametri delle voci portano il proprio default nella tabella: non
+  // stanno nello study.yml, e in `base:` non c'e' niente da ereditare.
+  if (p.def !== undefined) return p.def;
   const d = DEFAULTS[p.path];
   if (d !== undefined) return d;
   const b = leggiPath(L.base, p.path);
@@ -574,6 +524,7 @@ function scriviLoop(st, loop) {
 let curBp = -1;
 
 function labInit() {
+  document.getElementById("h").textContent = D.study;
   if (!L.params.length) {
     document.getElementById("lab").innerHTML =
       "<p>lo study.yml non dichiara parametri con <code>values</code>.</p>";
@@ -581,7 +532,10 @@ function labInit() {
   }
   const mk = (p, box) => {
     const r = document.createElement("div"); r.className = "row";
-    const k = document.createElement("div"); k.className = "k"; k.textContent = p.path;
+    const k = document.createElement("div"); k.className = "k";
+    // Dentro il blocco di un asse delle voci il path per intero sarebbe
+    // ridondante: la linguetta dice gia' di che asse si parla.
+    k.textContent = p.nome || p.path;
     // Un numerico si sceglie E si scrive: il campo tiene il valore, il menu
     // accanto offre le tacche dello study.yml. `free` (il volume) e' lo
     // stesso campo senza menu, perche' tacche non ne ha. Il resto del
@@ -640,7 +594,7 @@ function labInit() {
   // suo profilo disegnato, che e' l'unica cosa che le distingue davvero.
   const ENV = L.envelopes || {};
   fixed.innerHTML = "<h2>fissi per lo stream</h2>";
-  for (const p of CAT) mk(p, fixed);
+  for (const p of CAT) if (!p.voce) mk(p, fixed);
   ascoltoSample(fixed);
   for (const [id, lab, val, type] of [["labDur", "durata (s)", DUR, "number"],
                                       ["labName", "nome", "lab", "text"]]) {
@@ -682,9 +636,9 @@ function labInit() {
     // e' la decisione che azzera le eccezioni fatte finora.
     for (const b of bps) {
       b.ints = b.ints || {};
-      for (const p of AUT) b.ints[p.path] = ovunque.value;
+      for (const p of AUT) if (!p.noint) b.ints[p.path] = ovunque.value;
     }
-    for (const p of AUT) document.getElementById("I:" + p.path).value = ovunque.value;
+    for (const p of AUT) if (!p.noint) document.getElementById("I:" + p.path).value = ovunque.value;
     drawTl();
     document.getElementById("labInfo").textContent =
       "interpolazione " + ovunque.value + " su tutti i " + bps.length + " breakpoint";
@@ -693,15 +647,16 @@ function labInit() {
 
   const tutti = mkInterp("*");
   tutti.onchange = () => {
-    for (const p of AUT) document.getElementById("I:" + p.path).value = tutti.value;
+    for (const p of AUT) if (!p.noint) document.getElementById("I:" + p.path).value = tutti.value;
     labInfo();
   };
   box.appendChild(riga("interpolazione (questo bp)", tutti, "capo"));
-  for (const p of NUM) { mk(p, box); box.lastChild.appendChild(mkInterp(p.path)); }
+  for (const p of NUM) if (!p.voce) { mk(p, box); box.lastChild.appendChild(mkInterp(p.path)); }
   if (ENVP) {
     if (Object.keys(ENV).length) mkEnv(ENVP, box, ENV); else mk(ENVP, box);
     box.lastChild.appendChild(mkInterp(EP));
   }
+  vociInit(mk);
   document.getElementById("bpAdd").onclick = bpAdd;
   document.getElementById("bpSave").onclick = bpSave;
   document.getElementById("bpAll").onclick = bpAll;
@@ -710,7 +665,7 @@ function labInit() {
   // Cambiare un select su un breakpoint selezionato non lo modifica da solo:
   // finche' non si salva, i valori a schermo e quelli del punto divergono, e
   // e' l'unica cosa che si puo' guardare senza accorgersene. Lo dice l'info.
-  for (const p of NUM) document.getElementById("P:" + p.path).onchange = labInfo;
+  for (const p of NUM) if (!p.voce) document.getElementById("P:" + p.path).onchange = labInfo;
   if (ENVP) ENVCB = labInfo;
   document.getElementById("labRender").onclick = labRender;
   document.getElementById("fNew").onclick = fNew;
@@ -783,11 +738,16 @@ function ascoltoSample(fixed) {
 let ULTIMO = "";
 let TORNA = null;
 
+// Che cosa sta suonando. Lo scriveva anche la griglia, che non c'e' piu':
+// restano lo stream reso e il sample che si sta provando.
+function ora(tipo, nome) {
+  document.getElementById("now").innerHTML =
+    "<b>" + tipo + "</b><br><span class='file'>" + nome + "</span>";
+}
+
 function riprendiStream() {
   if (!ULTIMO) return;
-  document.getElementById("now").innerHTML =
-    "<b>stream</b><br><span class='file'>" +
-    (document.getElementById("labName").value || "lab") + "</span>";
+  ora("stream", document.getElementById("labName").value || "lab");
   LAB_AUDIO = true;
   SAMPLE_AUDIO = false;
   audio.src = ULTIMO;
@@ -815,8 +775,7 @@ async function ascolta(nome) {
   LAB_AUDIO = false;
   SAMPLE_AUDIO = true;
   marcaAudio();
-  document.getElementById("now").innerHTML =
-    "<b>sample</b><br><span class='file'>" + nome + "</span>";
+  ora("sample", nome);
   audio.src = url;
   audio.play();
   analyse(url);
@@ -900,7 +859,13 @@ function snapshot() {
 // Il tipo di interpolazione scelto ora, parametro per parametro.
 function snapInterp() {
   const v = {};
-  for (const p of AUT) v[p.path] = document.getElementById("I:" + p.path).value;
+  // Il rivolto non ha un menu: sulla progressione e' il terzo elemento del
+  // passo, non un segmento che si interpola. Vale `linear` come i punti
+  // salvati prima che i tipi esistessero.
+  for (const p of AUT) {
+    const el = document.getElementById("I:" + p.path);
+    v[p.path] = el ? el.value : "linear";
+  }
   return v;
 }
 
@@ -1362,6 +1327,165 @@ function envA(spec, t) {
   return best[1];
 }
 
+// --- le voci: schermo e documento ------------------------------------------
+
+// Un blocco per asse, chiuso finche' non serve: le voci sono quattro strategie
+// piu' due manopole, e aperte da sole occuperebbero quanto il resto del
+// pannello. Le righe dentro sono quelle di sempre — campo, tacche, menu
+// dell'interpolazione — perche' dal documento in giu' non c'e' niente di
+// diverso: `voices.pan.spread` e' un path come `grain.duration`.
+function vociInit(mk) {
+  const box = document.getElementById("labParams");
+  for (const voce of ["voci"].concat(Object.keys(STRAT))) {
+    const det = document.createElement("details");
+    det.className = "voce";
+    const cap = document.createElement("summary");
+    cap.innerHTML = (voce === "voci" ? "voci" : "voci · " + voce) + " <b></b>";
+    det.appendChild(cap);
+    // Attaccato PRIMA di riempirlo: le righe cercano i propri controlli con
+    // getElementById, e dentro un sottoalbero staccato dal documento non li
+    // troverebbero (`labInit` moriva li', e con lui tutto cio' che viene dopo).
+    box.appendChild(det);
+    for (const p of VOCI.filter(q => q.voce === voce)) {
+      mk(p, det);
+      p.riga = det.lastChild;
+      if (p.bp && !p.noint) p.riga.appendChild(mkInterp(p.path));
+      document.getElementById("P:" + p.path).onchange = () => { vociVis(); labInfo(); };
+    }
+  }
+  vociVis();
+}
+
+function valFisso(path) {
+  const el = document.getElementById("P:" + path);
+  return el ? el.value : "";
+}
+
+// Le righe che la strategia scelta non usa spariscono. Nel documento non ci
+// finiscono comunque (ci pensa `vociDoc`), ma vederle a schermo farebbe
+// credere che contino: `base` sotto una `linear` non e' una manopola morbida,
+// e' una manopola di un'altra strategia.
+function vociVis() {
+  for (const p of VOCI) {
+    if (!p.riga) continue;
+    const s = p.dim ? valFisso("voices." + p.dim + ".strategy") : "";
+    let ok = !p.str || p.str.includes(s);
+    // L'unica unita' che porta un numero con se'.
+    if (p.chiave === "edo") ok = ok && valFisso("voices.pitch.unit") === "edo";
+    p.riga.hidden = !ok;
+  }
+  // Il riassunto sulla linguetta: la strategia accesa, o il numero di voci.
+  for (const dim of Object.keys(STRAT)) {
+    const s = valFisso("voices." + dim + ".strategy");
+    VOCI_DI["voices." + dim + ".strategy"].riga.parentNode
+      .querySelector("summary b").textContent = s === "off" ? "" : s;
+  }
+  const n = Number(valFisso("voices.num_voices"));
+  VOCI_DI["voices.num_voices"].riga.parentNode.querySelector("summary b")
+    .textContent = n > 1 ? n + " voci" : "";
+}
+
+// La progressione di accordi: un accordo per breakpoint. Un accordo ripetuto
+// non apre un passo nuovo — dura finche' non cambia — e il rivolto e' il terzo
+// elemento, scritto solo quando non e' lo stato fondamentale.
+function progressione() {
+  const out = [];
+  for (const b of bps) {
+    const c = b.vals[PROG.path];
+    if (!c) continue;
+    const inv = Math.min(Math.max(0, Math.round(Number(b.vals["voices.pitch.inversion"]) || 0)),
+                         (NOTE_DI[c] || 1) - 1);
+    const prec = out[out.length - 1];
+    if (prec && prec[1] === c && (prec[2] || 0) === inv) continue;
+    out.push(inv ? [b.t, c, inv] : [b.t, c]);
+  }
+  return out;
+}
+
+// Il passo che vale al tempo t. L'accordo cambia di colpo e resta: fra due
+// accordi non si interpola (l'interpolazione, quella si', decide come le voci
+// ci arrivano — ed e' `interp`, che sta sul blocco).
+function passoA(prog, t) {
+  let out = null;
+  for (const st of prog) { if (st[0] > t + 1e-9) break; out = st; }
+  return out || prog[0] || null;
+}
+
+// Le voci sul documento. Quattro cose che le righe da sole non sanno fare:
+// togliere gli assi spenti, tenere del blocco solo le chiavi che la strategia
+// scelta usa, portare nella forma dell'engine le due che non sono un numero
+// (`unit: {edo: N}` e il flag `normalized`), e montare la progressione dai
+// breakpoint.
+function vociDoc(st) {
+  const v = st.voices;
+  if (!v) return;
+  for (const dim of Object.keys(STRAT)) {
+    const b = v[dim];
+    if (!b) continue;
+    if (!STRAT[dim].includes(b.strategy)) { delete v[dim]; continue; }
+    for (const k of Object.keys(b)) {
+      const p = VOCI_DI["voices." + dim + "." + k];
+      if (k !== "strategy" && p && p.str && !p.str.includes(b.strategy)) delete b[k];
+    }
+  }
+  const p = v.pitch;
+  if (p) {
+    if (p.unit === "edo") p.unit = {edo: Math.max(1, Math.round(p.edo))};
+    else if (p.unit === "semitones") delete p.unit;   // e' il default dell'engine
+    delete p.edo;
+    if (p.max_partial != null) p.max_partial = Math.max(1, Math.round(p.max_partial));
+    if (p.voice_leading === "nearest") delete p.voice_leading;
+    const inv0 = Math.max(0, Math.round(
+      Number((bps[0] || {vals: {}}).vals["voices.pitch.inversion"]) || 0));
+    if (p.strategy === "chord") {
+      // Qui il rivolto e' uno scalare, non un inviluppo: vale quello del primo
+      // breakpoint, che e' l'accordo da cui si parte.
+      const inv = Math.min(inv0, (NOTE_DI[p.chord] || 1) - 1);
+      if (inv) p.inversion = inv; else delete p.inversion;
+    } else if (p.strategy === "chord_progression") {
+      p.progression = progressione();
+      const t = tipoDi(bps[0] || {}, PROG.path);
+      if (t !== "linear") p.interp = t;   // linear e' il default, non si scrive
+      delete p.inversion;                 // sta nei passi della progressione
+    }
+  }
+  if (v.pointer) {
+    if (v.pointer.normalized === "si") v.pointer.normalized = true;
+    else delete v.pointer.normalized;
+  }
+  // Un blocco che non dice niente non si scrive: una voce sola, nessuno
+  // sparpaglio, nessuna strategia.
+  if (v.scatter === 0) delete v.scatter;
+  if (v.num_voices === 1 && !Object.keys(STRAT).some(d => v[d])) delete st.voices;
+}
+
+// L'inverso, riaprendo un documento: le chiavi che non sono un numero. Le
+// strategie si rileggono anche quando il blocco manca — il documento aperto e'
+// la verita', non quello che c'era a schermo prima.
+function vociCarica(st) {
+  const p = leggiPath(st, "voices.pitch") || {};
+  for (const dim of Object.keys(STRAT))
+    setSel("voices." + dim + ".strategy",
+           (leggiPath(st, "voices." + dim) || {}).strategy || "off");
+  if (p.unit && typeof p.unit === "object") {
+    setSel("voices.pitch.unit", "edo");
+    setSel("voices.pitch.edo", p.unit.edo);
+  }
+  setSel("voices.pointer.normalized",
+         leggiPath(st, "voices.pointer.normalized") === true ? "si" : "no");
+  // L'accordo lo ha gia' messo `carica` (e' un valore di breakpoint); qui
+  // tornano il rivolto, che viaggia dentro il passo, e l'interpolazione, che
+  // sul documento e' una sola per tutta la progressione.
+  if (Array.isArray(p.progression))
+    for (const b of bps) {
+      const passo = passoA(p.progression, b.t);
+      if (!passo) continue;
+      b.vals["voices.pitch.inversion"] = passo[2] || 0;
+      (b.ints = b.ints || {})[PROG.path] = p.interp || "linear";
+    }
+  vociVis();
+}
+
 function labDoc() {
   const dur = durata();
   // stream_id/onset/duration in testa, come nei documenti scritti a mano.
@@ -1369,7 +1493,12 @@ function labDoc() {
                            JSON.parse(JSON.stringify(L.base)));
   st.onset = 0;
   st.duration = dur;
-  for (const p of CAT) setPath(st, p.path, document.getElementById("P:" + p.path).value);
+  for (const p of CAT) {
+    const raw = document.getElementById("P:" + p.path).value;
+    // I fissi sono quasi tutti nomi; i pochi numerici — max_partial, le
+    // divisioni dell'edo — vanno scritti numeri, non stringhe.
+    setPath(st, p.path, p.kind === "num" ? Number(raw) : raw);
+  }
   for (const p of NUM) {
     const v = serie(p.path);
     if (v !== null) setPath(st, p.path, v);
@@ -1378,6 +1507,7 @@ function labDoc() {
     const v = serieEnv();
     if (v !== null) setPath(st, EP, v);
   }
+  vociDoc(st);
   scriviLoop(st, LOOP);
   return {duration: dur, bpm: 120, streams: [st]};
 }
@@ -1411,12 +1541,13 @@ function labInfo() {
 // I breakpoint disegnati sopra sonogramma e forma d'onda: trascinando un
 // punto si vede dove cade nel suono, non solo su una linea astratta.
 //
-// Ha senso solo se quello che suona e' il render di QUESTI breakpoint: su un
-// file della griglia le stesse righe indicherebbero punti a caso. Lo dice
-// LAB_AUDIO (dichiarato in cima, dove `go` lo vede), che la griglia spegne e
-// il render del laboratorio accende.
+// Ha senso solo se quello che suona e' il render di QUESTI breakpoint:
+// sull'ascolto di un sample le stesse righe indicherebbero punti a caso. Lo
+// dice LAB_AUDIO, che il render del laboratorio accende e l'ascolto di un
+// sample spegne.
 function marcaAudio() {
   lpSync();
+  drawEnvs();
   const wv = document.getElementById("waveView");
   for (const v of wv.querySelectorAll(".loopr")) v.remove();
   if (SAMPLE_AUDIO && LOOP) {
@@ -1460,6 +1591,74 @@ function marcaAudio() {
       if (id === "specView") m.innerHTML = "<i>" + (i + 1) + "</i>";
       box.appendChild(m);
     });
+  }
+}
+
+// --- gli inviluppi realizzati --------------------------------------------
+// Quello che la partitura disegna nella corsia di uno stream: non gli
+// inviluppi che hai scritto, ma le curve della IR che l'engine ha davvero
+// percorso — dentro ci sono anche le derivate (`effective_density`, cioe'
+// fill_factor/grain_duration, la densita' vera) e gli offset per-voce. Le
+// calcola il server dopo il render (`engine_bridge.stream_envelopes`) e
+// arrivano gia' normalizzate in [0,1] su tutte e due le coordinate, ognuna
+// sulla propria escursione: qui resta da tirare una linea.
+//
+// `pts` e' la spezzata da disegnare, non una griglia di campioni: e' il
+// server a metterci l'angolo esatto dei gradini (vedi `_spezzata`), perche'
+// un `step` campionato fitto resterebbe una rampa ripidissima. `bp` sono i
+// breakpoint, i punti in cui la curva e' scritta.
+let ENVS = [];       // [{nome, colore, min, max, da, a, pts, bp}]
+let ENVDUR = 0;      // la durata dello stream: il file reso puo' essere piu'
+                     // lungo (la coda dell'ultimo grano), e le curve non
+                     // devono stirarsi fin la'.
+
+function drawEnvs() {
+  const box = document.getElementById("envView");
+  const leg = document.getElementById("envLeg");
+  // Ha senso solo se a suonare e' il render di QUESTE curve: sull'ascolto di
+  // un sample non sono le curve di niente (stessa regola dei breakpoint sul
+  // sonogramma).
+  box.hidden = !(LAB_AUDIO && ENVS.length);
+  leg.innerHTML = "";
+  if (box.hidden) return;
+  const c = document.getElementById("envc");
+  c.width = c.parentNode.clientWidth;
+  const g = c.getContext("2d"), W = c.width, H = c.height, m = 8;
+  // La porzione di file occupata dallo stream: senza questo, con una coda di
+  // grani l'ultimo breakpoint cadrebbe prima della fine del disegno.
+  const q = (view && view.duration && ENVDUR) ? Math.min(1, ENVDUR / view.duration) : 1;
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = getComputedStyle(document.body).color;
+  g.globalAlpha = .15;
+  g.beginPath(); g.moveTo(0, H - m); g.lineTo(W, H - m);
+  g.moveTo(0, m); g.lineTo(W, m); g.stroke();
+  g.globalAlpha = 1;
+  g.lineWidth = 1.2;
+  const px = t => t * q * W;
+  const py = v => H - m - v * (H - 2 * m);
+  for (const cu of ENVS) {
+    g.strokeStyle = cu.colore;
+    g.beginPath();
+    (cu.pts || []).forEach(([t, v], i) => {
+      i ? g.lineTo(px(t), py(v)) : g.moveTo(px(t), py(v));
+    });
+    g.stroke();
+    // I breakpoint: dove la curva e' scritta. Sulle curve che l'engine
+    // campiona da se' — `effective_density`, gli offset per-voce — sono
+    // fitti, ed e' giusto che si veda che sono campionate e non scritte.
+    g.fillStyle = cu.colore;
+    g.globalAlpha = .55;
+    for (const [t, v] of cu.bp || []) g.fillRect(px(t) - 1.5, py(v) - 1.5, 3, 3);
+    g.globalAlpha = 1;
+    const sp = document.createElement("span");
+    const i = document.createElement("i");
+    i.style.background = cu.colore;
+    sp.appendChild(i);
+    sp.appendChild(document.createTextNode(cu.nome + " "));
+    const b = document.createElement("b");
+    b.textContent = cu.da === cu.a ? cu.da : cu.da + " … " + cu.a;
+    sp.appendChild(b);
+    leg.appendChild(sp);
   }
 }
 
@@ -1533,6 +1732,7 @@ function ripristina() {
   document.getElementById("labName").value = b.name || "lab";
   document.getElementById("labDur").value = b.dur || DUR;
   for (const [path, v] of Object.entries(b.cat || {})) setSel(path, v);
+  vociVis();
   storiaReset();
   bpLoad(0);
   document.getElementById("labInfo").textContent =
@@ -1642,6 +1842,10 @@ function carica(doc, path) {
   // stessa unione, altrimenti riaprendo un cambio di finestra sparirebbe.
   const espec = ENVP ? leggiPath(st, EP) : null;
   if (espec && Array.isArray(espec.curve)) for (const [t] of espec.curve) ts.add(t);
+  // E i tempi della progressione di accordi, per la stessa ragione.
+  const prog = leggiPath(st, "voices.pitch.progression");
+  if (Array.isArray(prog)) for (const passo of prog)
+    if (Number.isFinite(passo[0])) ts.add(passo[0]);
   const envOra = () => ENVP ? document.getElementById("P:" + EP).value : null;
   bps = [...ts].sort((a, b) => a - b).map(t => ({
     t,
@@ -1652,6 +1856,8 @@ function carica(doc, path) {
                     : tipoA(leggiPath(st, p.path), t)])),
     vals: Object.fromEntries(AUT.map(p => {
       if (p.path === EP) return [EP, (espec ? envA(espec, t) : null) || envOra()];
+      if (p === PROG) return [p.path, (Array.isArray(prog) && (passoA(prog, t) || [])[1])
+                                      || document.getElementById("P:" + p.path).value];
       // Il documento puo' non avere affatto la chiave (un parametro lasciato
       // al default dell'engine): li' vale quello che dice il select, non NaN.
       const v = leggiPath(st, p.path);
@@ -1661,6 +1867,7 @@ function carica(doc, path) {
     })),
   }));
   for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
+  vociCarica(st);
   LOOP = loopDi(st);
   SELEZIONE.clear();        // i breakpoint di prima non esistono piu'
   FILE = path || "";
@@ -1732,7 +1939,10 @@ async function labPost(render, path) {
     // file vecchio dalla cache.
     const src = out.src + "?t=" + Date.now();
     ULTIMO = src;
+    ora("stream", name);
     if (TORNA) TORNA.disabled = false;
+    ENVS = out.inviluppi || [];
+    ENVDUR = durata();
     LAB_AUDIO = true;
     SAMPLE_AUDIO = false;
     audio.src = src;
@@ -1744,16 +1954,7 @@ async function labPost(render, path) {
   }
 }
 
-for (const [id, on] of [["tabGrid", false], ["tabLab", true]]) {
-  document.getElementById(id).onclick = () => {
-    document.getElementById("lab").hidden = !on;
-    document.getElementById("griglia").hidden = on;
-    document.getElementById("tabGrid").classList.toggle("on", !on);
-    document.getElementById("tabLab").classList.toggle("on", on);
-  };
-}
 labInit();
-if (!D.combos.length) document.getElementById("tabLab").click();
 
 // ===========================================================================
 // Analisi. Due strade diverse, per due domande diverse:
@@ -1845,8 +2046,8 @@ function lpSync() {
 }
 
 // --- spunte del trasporto, ricordate fra una sessione e l'altra -----------
-const hold = document.getElementById("hold"), loop = document.getElementById("loop");
-for (const [el, k] of [[hold, "graph.hold"], [loop, "graph.loop"]]) {
+const loop = document.getElementById("loop");
+for (const [el, k] of [[loop, "graph.loop"]]) {
   try { el.checked = localStorage.getItem(k) === "1"; } catch (e) {}
   el.addEventListener("change", () => {
     try { localStorage.setItem(k, el.checked ? "1" : "0"); } catch (e) {}
@@ -1866,6 +2067,15 @@ latEl.addEventListener("change", () => {
 function latenza() {
   return (ctx.outputLatency || 0) + (Number(latEl.value) || 0) / 1000;
 }
+
+// L'altezza di un canvas e' quella del suo attributo, e non dipende dalla
+// larghezza della colonna. Senza, `width:100%` da solo lascia l'altezza al
+// RAPPORTO fra gli attributi (`height:auto` su un elemento rimpiazzato): con
+// la bitmap ancora larga 300 — nessun audio caricato, quindi `analyse` non ha
+// ancora scritto `c.width` — una colonna larga stirava il sonogramma per
+// mezzo schermo. Se lo dicesse il CSS, i numeri sarebbero scritti due volte.
+for (const c of document.querySelectorAll(".view canvas"))
+  c.style.height = c.height + "px";
 
 const FMIN = 20;
 const cache = new Map();      // src -> {peaks, spec} gia' calcolati
@@ -2106,7 +2316,7 @@ function vaiA(t) {
 // Sulla forma d'onda di un sample un trascinamento non e' un seek ma un
 // loop: click = seek, click e trascina = regione. Sotto i 4 pixel e' un
 // click con la mano che trema.
-for (const id of ["specView", "waveView"]) {
+for (const id of ["specView", "waveView", "envView"]) {
   const el = document.getElementById(id);
   let down = false, x0 = 0, disegna = false;
   const frac = e => {
@@ -2192,6 +2402,7 @@ function frame() {
     const p = (t / view.duration) * 100;
     curSpec.style.left = p + "%";
     curWave.style.left = p + "%";
+    curEnv.style.left = p + "%";
   }
   if (!audio.paused) { drawScope(); drawStereo(); }
   requestAnimationFrame(frame);
@@ -2241,8 +2452,7 @@ new ResizeObserver(() => {
     drawWave(waveC, view);
     const sc = document.getElementById("scope");
     sc.width = sc.parentNode.clientWidth;
+    drawEnvs();
   });
 }).observe(document.getElementById("right"));
-
-show(cur);
 </script>

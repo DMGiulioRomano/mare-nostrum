@@ -68,15 +68,19 @@ si tocca niente e si dice chi e' (`libera_porta` in `serve.py`, verificata in
 `tests/test_serve.py`).
 
 `make serve STUDY=<scala>` non e' piu' `http.server`: e' `granstudies serve`,
-che serve la pagina e accetta `POST /render`. La pagina ha due schede.
+che serve la pagina e accetta `POST /render`. La pagina **è** il laboratorio:
+si compone UN solo stream e lo si sente subito. Ogni `+ breakpoint` salva uno
+snapshot di tutti i parametri a un tempo; i punti si trascinano sulla linea, e
+cliccarne uno riporta i select ai suoi valori. Il documento esce in
+`generated/<study>/live/<nome>.yml` e viene reso accanto in `.aif`. Un
+parametro diventa una lista `[[t, v], ...]` **solo dove cambia davvero**; se
+non si muove mai resta scalare.
 
-- **griglia** — quello che c'era: si sceglie fra audio gia' renderizzati.
-- **laboratorio** — si compone UN solo stream e lo si sente subito. Ogni
-  `+ breakpoint` salva uno snapshot di tutti i parametri a un tempo; i punti
-  si trascinano sulla linea, e cliccarne uno riporta i select ai suoi valori.
-  Il documento esce in `generated/<study>/live/<nome>.yml` e viene reso
-  accanto in `.aif`. Un parametro diventa una lista `[[t, v], ...]` **solo
-  dove cambia davvero**; se non si muove mai resta scalare.
+**La griglia non c'è più.** C'era una seconda scheda che leggeva i nomi dei
+file audio sotto `audio/sweep/discrete/` e ne faceva una tabella cliccabile:
+è stata tolta, con tutto quello che la reggeva (`collect_combos`, `_grid`,
+`_axis_orders`). `sweep render` continua a produrre quell'audio, ma non ha
+più un browser: si ascolta dal disco. Git la ricorda, se servisse indietro.
 
 ### Il file di progetto
 
@@ -128,8 +132,8 @@ elemento del punto, `[[0, 0.001, cubic], [1, 0.016]]`.
 
 **I breakpoint sul suono.** Dopo un render del laboratorio i punti compaiono
 anche sopra sonogramma e forma d'onda, in giallo e numerati (il cursore di
-riproduzione resta rosso), e si muovono mentre trascini. Spariscono appena
-suona un file della griglia: li' indicherebbero punti a caso.
+riproduzione resta rosso), e si muovono mentre trascini. Spariscono appena si
+ascolta un sample: lì indicherebbero punti a caso.
 
 **`grain.envelope` si automatizza come gli altri**, ma per un'altra strada:
 l'engine non interpola fra due finestre, le **sceglie grano per grano**. Una
@@ -183,7 +187,7 @@ cursore andava fuori passo. Il campo `latenza (ms)` del trasporto ritarda il
 cursore della latenza d'uscita, che Safari non dichiara: si tara a orecchio.
 
 **Da dove parte il laboratorio.** Non da `base:` — quello e' lo stream a riposo
-dello *sweep*, tarato per i render della griglia — ma da una tabella `DEFAULTS`
+dello *sweep*, tarato per i render dello sweep — ma da una tabella `DEFAULTS`
 nella pagina: grana media (`grain.duration` 0.064), niente dispersione
 (`*_range` e `distribution` a 0), niente trasposizione (`pitch.ratio` 1),
 `pointer.speed_ratio` 1, `volume` 0, `grain.envelope` gaussian. Un parametro
@@ -207,10 +211,8 @@ modifica`, che riguarda i valori).
 (o in un menu) gli scorciatoi della pagina si fanno da parte: frecce per
 muovere il cursore, shift+frecce per selezionare, barra spaziatrice per lo
 spazio, backspace per una cifra, `cmd+Z` per l'undo del testo. Fuori dai campi
-tornano a valere trasporto (spazio), navigazione della griglia (frecce), undo
-e `delete`. La guardia è una sola, `inCampo()`, chiamata da tutti i gestori:
-mancava a quello della griglia, che si prendeva frecce e spazio su tutta la
-pagina.
+tornano a valere trasporto (spazio), undo e `delete`. La guardia è una sola,
+`inCampo()`, chiamata da tutti i gestori.
 
 **Il lucchetto della durata.** Le x dei breakpoint sono normalizzate, quindi
 cambiare `durata (s)` cambia il significato di ognuna: lo stesso 0.5 è 15 s in
@@ -283,15 +285,110 @@ in `tests/test_graph_js.py`.
 **I numerici si scelgono E si scrivono.** Ogni parametro numerico
 (`grain.duration`, `grain.duration_range`, `fill_factor`, `pitch.ratio`,
 `pitch.range`, `pointer.speed_ratio`, `pointer.offset_range`, `distribution`,
-`volume`) ha due controlli sulla stessa riga: il **campo** che tiene il valore
+`volume`, `pan`, `pan_range`) ha due controlli sulla stessa riga: il **campo** che tiene il valore
 e, accanto, il **menu `▾` delle tacche** dello `study.yml`. Sceglierne una la
 scrive nel campo e il menu torna al suo `▾`: il valore buono e' uno solo,
 quello scritto. Nel campo si puo' digitare anche un valore che fra le tacche
 non c'e'; la virgola vale il punto, e un campo vuoto o illeggibile tiene il
 valore del breakpoint invece di scrivere NaN (`tests/test_graph_js.py`).
 I limiti di `bounds_for` non bloccano il campo, restano come tooltip.
-**Il volume** resta l'unico senza menu (`free: true`): non ha tacche, e' un
-aggiustamento continuo. I categoriali (sample, finestre) restano menu chiusi.
+**Volume, pan e pan_range** sono i tre senza menu (`free: true`): non hanno
+tacche, sono aggiustamenti continui. I categoriali (sample, finestre) restano
+menu chiusi.
+
+## Le voci nel laboratorio
+
+Il blocco `voices:` dell'engine sta sotto i parametri, un `<details>` chiuso
+per asse: `voci` (num_voices, scatter) e poi pitch, onset_offset, pointer, pan.
+Ogni asse ha il suo menu `strategy`, dove `off` non e' una strategia
+dell'engine ma **l'assenza del blocco**, ed e' il valore di partenza. Sulla
+linguetta compare la strategia accesa, cosi' si vede cosa e' in gioco senza
+aprire. Le righe che la strategia scelta non usa spariscono: `base` sotto una
+`linear` non e' una manopola morbida, e' la manopola di un'altra strategia.
+
+Strategie e parametri sono quelli di PGE-ui (`src/components/VoicesSection.jsx`)
+— pitch `step | range | chord | chord_progression | stochastic | spectral`,
+onset `linear | geometric | stochastic`, pointer `linear | stochastic`, pan
+`range | stochastic | step`. **Cosa si automatizza lo decide l'engine, non
+l'estetica:** `_parse_strategy_kwarg` (`core/stream.py`) fa diventare envelope
+qualunque kwarg envelope-like, quindi `step`, `pitch_range`, `max_offset`,
+`base`, `pointer_range`, `spread`, piu' `num_voices` e `scatter`, stanno sui
+breakpoint come tutti gli altri numerici, col loro menu di interpolazione.
+`strategy`, `unit`, `chord`, `voice_leading`, `max_partial` e il flag
+`normalized` sono struttura, e restano fissi per lo stream.
+
+L'eccezione e' **`chord_progression`**, dove l'accordo E' una funzione del
+tempo: si sceglie per breakpoint come `grain.envelope`, e sul documento diventa
+`progression: [[t, accordo], ...]`. Un accordo ripetuto non apre un passo
+nuovo — dura finche' non cambia — e il **rivolto** e' il terzo elemento del
+passo, scritto solo quando non e' lo stato fondamentale e limitato alle note
+che quell'accordo ha. Con `chord` invece il rivolto e' uno scalare: vale
+quello del primo breakpoint. Il tipo di interpolazione del punto diventa
+l'`interp` della progressione (`linear`/`cubic` glissando, `step` a blocchi).
+
+Sul documento ci va solo quello che l'engine legge davvero (`vociDoc`): gli
+assi spenti spariscono, di ogni blocco restano le chiavi della sua strategia,
+`unit: edo` diventa `{edo: N}` col numero del campo accanto, `normalized`
+diventa il booleano, e un `voices:` con una voce sola e nessuna strategia non
+si scrive affatto. Il round-trip e' verificato (`tests/test_graph_js.py`).
+
+## Gli inviluppi realizzati (sotto lo spectroscope)
+
+Dopo un render del laboratorio, sotto lo spectroscope compaiono **le curve che
+lo stream ha davvero percorso**, come la corsia di uno stream nella partitura
+(`ScoreVisualizer._draw_envelopes`). Non sono gli inviluppi che hai scritto:
+vengono dalla IR, cioe' dallo stream caricato dall'engine, quindi dentro ci
+sono anche le **curve derivate** — `effective_density`, il quoziente
+fill_factor/grain_duration che il motore calcola a ogni onset e non conserva —
+e gli **offset per-voce** (`voice_pitch_offset__v1`, ...), che non stanno nel
+documento perche' sono il risultato della strategia, non la strategia.
+
+Le due funzioni sono quelle della partitura, non una riscrittura:
+`envelope_extractor.get_stream_envelopes` dice quali curve ha lo stream,
+`envelope_display` quanto sono alte. Ogni curva scala sulla **propria**
+escursione (nessun range fisso: e' l'auto-zoom della partitura), il pan sul
+giro. La legenda sotto dice il colore, il nome e l'escursione vera
+(`10.0ms … 200ms`), che e' l'unica cosa che una curva normalizzata non puo'
+mostrare da se'.
+
+Il conto lo fa il server dopo il render (`engine_bridge.stream_envelopes`,
+chiamato da `_inviluppi` in `serve.py`) ricaricando lo YAML appena scritto, e
+le curve tornano nella risposta di `POST /render` gia' campionate e
+normalizzate: la pagina tira una linea e basta. Le **costanti restano fuori**
+(`show_static=False`), come nella partitura: qui si guarda cio' che si muove.
+
+**Gradini esatti, e i breakpoint.** La curva non arriva come una griglia di
+campioni ma come la spezzata gia' fatta (`pts`), perche' un segmento `step`
+campionato fitto resterebbe una rampa ripidissima — due pixel di pendenza
+invece di una verticale. La regola e' quella della partitura
+(`drawstyle='steps-post'`) ma applicata **per segmento**, perche' l'engine
+tiene l'interpolazione sul segmento (`Envelope.segments`): un `step` da' due
+punti, l'angolo, e il salto lo chiude il primo punto del segmento dopo; una
+`linear` o una `cubic` restano campionate fitte, tante quanto la loro quota
+dei 600 punti, cosi' la S di una cubica corta non diventa una spezzata.
+Tutto in `_spezzata` (`engine_bridge.py`), verificata in
+`tests/test_engine_bridge.py`. Arrivano anche i **breakpoint** (`bp`), che la
+pagina segna con un quadratino: sulle curve che l'engine campiona da se'
+(`effective_density`, gli offset per-voce) sono fitti, ed e' giusto che si
+veda che sono campionate e non scritte.
+
+Il pannello e' l'asse del tempo del file, quindi si clicca per cercare come
+sonogramma e forma d'onda, e il cursore corre anche li'. Sparisce appena si
+ascolta un sample: li' non sarebbero le curve di niente.
+Le curve occupano la frazione di larghezza che lo stream occupa nel file
+(la coda dell'ultimo grano puo' allungarlo), verificata in
+`tests/test_graph_js.py`.
+
+Una cosa non torna esatta: il documento del laboratorio non porta un `seed`,
+quindi le curve di una strategia **stocastica** sono una realizzazione diversa
+da quella che ha suonato. Si aggiusta scrivendo il seed nel documento.
+
+**L'altezza dei pannelli di analisi** e' quella dell'attributo `height` del
+canvas e basta: `width:100%` da solo la lascerebbe al rapporto fra gli
+attributi della bitmap (`height:auto` su un elemento rimpiazzato), e con la
+bitmap ancora larga 300 — nessun audio caricato — una colonna larga stirava il
+sonogramma per mezzo schermo. La riga che la fissa sta nel JS, non nel CSS,
+cosi' i numeri restano scritti una volta sola (nell'HTML).
 
 ## Diario di ascolto
 
