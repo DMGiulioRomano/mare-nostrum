@@ -659,11 +659,16 @@ def cmd_graph(study: str) -> int:
     camp = campioni(samples_dir(_load_spec(study).samples_dir))
     if camp and "sample" not in noti:
         lab["params"].append({"path": "sample", "values": camp, "kind": "cat"})
-    # Il volume non ha tacche: e' un aggiustamento continuo, si scrive a mano.
-    # I limiti li sa l'engine (bounds.bounds_for), non li riscriviamo qui.
-    if "volume" not in noti:
-        lo, hi = bounds.bounds_for("volume") or (None, None)
-        lab["params"].append({"path": "volume", "values": [], "kind": "num",
+    # Volume, pan e pan_range non hanno tacche: sono aggiustamenti continui e
+    # si scrivono a mano. `pan` serve anche come punto da cui partono gli
+    # offset delle voci (voice 0 sta li'), `pan_range` come dispersione del
+    # singolo grano. I limiti li sa l'engine (bounds.bounds_for), non li
+    # riscriviamo qui; dove non li conosce (pan_range) restano None.
+    for path in ("volume", "pan", "pan_range"):
+        if path in noti:
+            continue
+        lo, hi = bounds.bounds_for(path) or (None, None)
+        lab["params"].append({"path": path, "values": [], "kind": "num",
                               "free": True, "min": lo, "max": hi})
     os.makedirs(gen_root, exist_ok=True)
     n_combos, n_nodes = write_graph(study, gen_root, out, _axis_orders(study), lab)
