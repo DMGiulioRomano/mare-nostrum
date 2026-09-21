@@ -322,6 +322,10 @@ def _grani(stream, massimo: int = GRANI_MAX) -> Optional[dict]:
     return {
         "n": len(grani), "tot": tot, "passo": passo,
         "sample_dur": round(float(stream.sample_dur_sec), 6),
+        # Il nome del file: la pagina ci disegna accanto la forma d'onda,
+        # come la corsia `ax_wave` della partitura. Il suono lo prende da
+        # `/samples/`, che gia' serve gli ascolti — qui non viaggia audio.
+        "sample": str(getattr(stream, "sample", "") or ""),
         "x": x, "w": w, "y": y, "h": h, "k": k,
         "palette": _palette(cfg),
         "colore": _etichetta_colore(cents, cfg.pitch_range),

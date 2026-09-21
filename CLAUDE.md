@@ -421,6 +421,15 @@ Sono decine di migliaia di grani, e per questo:
 - si disegna **un `Path2D` per tinta**, non per grano: `fillStyle` cambia 128
   volte invece di 40000, ed e' li' che sta il costo di un canvas 2D.
 
+A sinistra, in verticale, c'e' la **forma d'onda del sample**: senza, il piano
+dice dove il pointer legge ma non cosa c'e' li'. E' la corsia `ax_wave` della
+partitura (`_draw_waveform_full`) — stesso asse y dei grani, x l'ampiezza —
+disegnata su un canvas suo accanto a quello dei grani, cosi' il cursore e il
+seek restano in percentuale sulla sola larghezza del piano. I campioni sono
+quelli veri, presi da `/samples/` e tenuti nella stessa cache degli ascolti:
+sentire il sample dopo averlo visto non ridecodifica niente. Il nome del file
+viaggia nel payload (`sample`), l'audio no.
+
 Come il pannello degli inviluppi: compare solo dopo un render del laboratorio,
 si clicca per cercare, il cursore ci corre sopra, e sparisce appena si ascolta
 un sample.

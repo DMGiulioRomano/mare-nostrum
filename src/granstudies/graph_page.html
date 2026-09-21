@@ -145,7 +145,12 @@
  /* La legenda degli inviluppi: il colore e il nome, e l'escursione vera
     (min .. max) che la curva ha percorso — senza, una curva normalizzata
     sulla propria corsia non dice di che numeri parla. */
- #graniView { margin-top:10px; }
+ /* I grani e, a sinistra, la forma d'onda del sample: due canvas affiancati
+    invece di uno solo, cosi' il cursore e il seek dei grani restano in
+    percentuale sulla loro sola larghezza. */
+ #graniRow { display:flex; gap:6px; align-items:flex-start; margin-top:10px; }
+ #graniRow .view { flex:1; min-width:0; margin-bottom:0; }
+ #granw { display:block; flex:0 0 auto; background:var(--panel); }
  #envLeg, #graniLeg { display:flex; flex-wrap:wrap; gap:2px 12px; font-size:10px;
            color:var(--dim); margin:4px 0 2px; }
  #graniLeg { color:var(--dim); }
@@ -235,10 +240,14 @@
   <!-- I GRANI, come nel piano dei grani della partitura: x il tempo d'uscita,
        y la posizione di lettura nel sample, il colore l'altezza. Compare solo
        quando a suonare e' un render del laboratorio. -->
-  <div class="view seek" id="graniView" hidden>
-    <canvas id="granic" height="260"></canvas>
-    <div class="lab">grani — x tempo, y posizione di lettura nel sample</div>
-    <div class="cur" id="curGrani"></div>
+  <div id="graniRow" hidden>
+    <canvas id="granw" width="90" height="260"
+            title="forma d'onda del sample — y il tempo nel file, lo stesso asse dei grani accanto"></canvas>
+    <div class="view seek" id="graniView">
+      <canvas id="granic" height="260"></canvas>
+      <div class="lab">grani — x tempo, y posizione di lettura nel sample</div>
+      <div class="cur" id="curGrani"></div>
+    </div>
   </div>
   <div id="graniLeg"></div>
   <div id="status"></div>
@@ -1694,7 +1703,7 @@ function drawEnvs() {
 let GRANI = null;    // {n, tot, passo, sample_dur, x, w, y, h, k, palette, colore}
 
 function drawGrani() {
-  const box = document.getElementById("graniView");
+  const box = document.getElementById("graniRow");
   const leg = document.getElementById("graniLeg");
   // Come per gli inviluppi: sull'ascolto di un sample questi grani non sono
   // i grani di niente.
@@ -1718,11 +1727,66 @@ function drawGrani() {
            Math.max(1, L[i] * sx), Math.max(1, Math.abs(h)));
   }
   paths.forEach((p, k) => { g.fillStyle = GRANI.palette[k]; g.fill(p); });
+  // La forma d'onda accanto: arriva quando il sample e' decodificato, e
+  // subito se era gia' in cache.
+  caricaSample(GRANI.sample).then(drawOnda);
   leg.textContent = GRANI.n.toLocaleString("it") + " grani" +
     (GRANI.passo > 1 ? " (uno ogni " + GRANI.passo + " dei " +
                        GRANI.tot.toLocaleString("it") + ")" : "") +
     "  ·  " + GRANI.colore +
     "  ·  sample " + GRANI.sample_dur.toFixed(3) + " s";
+}
+
+// La forma d'onda del sample, in verticale a sinistra dei grani: senza, il
+// piano dice DOVE il pointer legge ma non COSA c'e' li'. E' la corsia
+// `ax_wave` della partitura (`_draw_waveform_full`), che disegna lo stesso
+// asse dei grani — y il tempo nel file, x l'ampiezza.
+//
+// I campioni sono quelli del sample vero, presi da `/samples/` e tenuti nella
+// stessa cache degli ascolti: sentire il sample dopo averlo visto non
+// ridecodifica niente. I picchi sono la stessa `peaks` della forma d'onda del
+// render, solo letta per righe invece che per colonne.
+let SAMPLEBUF = null;   // {nome, mono} del sample dello stream reso
+
+async function caricaSample(nome) {
+  if (!nome) { SAMPLEBUF = null; return; }
+  if (SAMPLEBUF && SAMPLEBUF.nome === nome) return;
+  const url = "/samples/" + nome.split("/").map(encodeURIComponent).join("/");
+  let d = cache.get(url);
+  if (!d) {
+    try {
+      const buf = await ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+      d = {duration: buf.duration, rate: buf.sampleRate, mono: mixdown(buf), buf, url};
+      cache.set(url, d);
+    } catch (e) {
+      // Il sample non si legge: restano i grani, senza la corsia accanto.
+      SAMPLEBUF = null;
+      return;
+    }
+  }
+  SAMPLEBUF = {nome, mono: d.mono};
+}
+
+function drawOnda() {
+  const c = document.getElementById("granw");
+  const g = c.getContext("2d"), W = c.width, H = c.height, mid = W / 2;
+  g.clearRect(0, 0, W, H);
+  if (!SAMPLEBUF) return;
+  const p = peaks(SAMPLEBUF.mono, H);
+  g.strokeStyle = getComputedStyle(document.body).color;
+  g.globalAlpha = .25;
+  g.beginPath(); g.moveTo(mid, 0); g.lineTo(mid, H); g.stroke();
+  g.globalAlpha = .8;
+  g.beginPath();
+  for (let y = 0; y < H; y++) {
+    // In alto la fine del file: lo stesso verso dell'asse dei grani, dove y
+    // cresce verso l'alto.
+    const i = H - 1 - y;
+    g.moveTo(mid + p.lo[i] * mid, y + .5);
+    g.lineTo(mid + p.hi[i] * mid, y + .5);
+  }
+  g.stroke();
+  g.globalAlpha = 1;
 }
 
 // Anteprima: solo i parametri mossi, nella forma che finisce nello YAML —
