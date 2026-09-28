@@ -311,6 +311,13 @@ Con `+ parametro` si aggiunge una **regola**: parametro, `min`, `max` (la
 maschera, prefillata con le tacche dello `study.yml`), lo stesso menu dei
 quattro modi, e un `passo` facoltativo che quantizza a multipli — il passo
 comanda, quindi con un `max` che non è multiplo l'ultimo punto resta sotto.
+Nelle regole c'e' un quarto modo, **`tacche dello study.yml`**: niente passo
+da indovinare, i valori sono le tacche di quel parametro, una per breakpoint
+nell'ordine della lista, a partire dalla prima che non sta sotto `min`
+(`max` resta la maschera; min > max va all'indietro). Finite le tacche, i
+punti che avanzano tengono l'ultima. Lì `passo` e `ratio` si spengono, e sui
+parametri senza tacche (volume, pan) il modo non c'e'. Verificato in
+`tests/test_graph_js.py` (`tacche()`).
 Un parametro senza regola prende il valore che ha a schermo, come `+ breakpoint`.
 I punti generati si aggiungono a quelli che ci sono (non li sostituiscono) e
 sono **un passo solo di undo**. La matematica è tutta in `riempi()`, verificata

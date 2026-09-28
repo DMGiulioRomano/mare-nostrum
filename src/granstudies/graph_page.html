@@ -1210,6 +1210,19 @@ function riempi(modo, n, a, b, passo, ratio) {
   return out;
 }
 
+// Le tacche dello study.yml, una per breakpoint, nell'ordine della lista: si
+// parte dalla prima che non sta sotto `min` e si va avanti. Niente passo da
+// indovinare — rigenerare da' gli stessi valori dello sweep. `max` resta la
+// maschera, e con min > max si cammina all'indietro. Finite le tacche,
+// i punti che avanzano tengono l'ultima.
+function tacche(vs, n, a, b) {
+  const lo = Math.min(a, b), hi = Math.max(a, b), eps = 1e-12;
+  const t = vs.map(Number).filter(v => v >= lo - eps && v <= hi + eps);
+  if (a > b) t.reverse();
+  if (!t.length) return null;
+  return Array.from({length: n}, (_, i) => t[Math.min(i, t.length - 1)]);
+}
+
 function numero(s, d) {
   const v = Number(String(s).trim().replace(",", "."));
   return Number.isFinite(v) ? v : d;
@@ -1245,6 +1258,12 @@ function genRule() {
   for (const q of NUM) p.appendChild(new Option(q.path, q.path));
   const min = genNum("", "min"), max = genNum("", "max"), passo = genNum("", "passo");
   const modo = genModo(), ratio = genRatio(modo);
+  const opt = new Option("tacche dello study.yml", "tacche");
+  modo.appendChild(opt);
+  modo.onchange = () => {
+    ratio.disabled = modo.value !== "regolare";
+    passo.disabled = modo.value === "tacche";
+  };
   const via = document.createElement("button");
   via.textContent = "×"; via.title = "togli la regola";
   via.onclick = () => r.remove();
@@ -1254,6 +1273,9 @@ function genRule() {
     const q = NUM.find(x => x.path === p.value);
     min.value = q.values.length ? Math.min(...q.values) : iniziale(q);
     max.value = q.values.length ? Math.max(...q.values) : iniziale(q);
+    // Un parametro senza tacche (il volume) non ha una lista da cui pescare.
+    opt.disabled = !q.values.length;
+    if (opt.disabled && modo.value === "tacche") { modo.value = "regolare"; modo.onchange(); }
   };
   p.onchange();
   r.append(p, min, max, modo, ratio, passo, via);
@@ -1276,9 +1298,10 @@ function genBps() {
     const [p, min, max, modo, ratio, passo] = r.children;
     const A = numero(min.value, NaN), B = numero(max.value, NaN);
     if (!Number.isFinite(A) || !Number.isFinite(B)) return null;
-    return {path: p.value,
-            vals: riempi(modo.value, n, A, B, numero(passo.value, 0),
-                         numero(ratio.value, 1))};
+    const vals = modo.value === "tacche"
+      ? tacche(NUM.find(q => q.path === p.value).values, n, A, B)
+      : riempi(modo.value, n, A, B, numero(passo.value, 0), numero(ratio.value, 1));
+    return vals && {path: p.value, vals};
   }).filter(Boolean);
   const base = snapshot(), ints = snapInterp();
   let ultimo = null;

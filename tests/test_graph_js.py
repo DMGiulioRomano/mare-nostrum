@@ -526,6 +526,31 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
 
 
 @node
+def test_le_tacche_si_pescano_in_ordine_dal_minimo(tmp_path):
+    """Modo `tacche`: una per breakpoint, dalla prima non sotto `min`.
+
+    `max` e' la maschera, min > max cammina all'indietro, e finite le tacche
+    i punti che avanzano tengono l'ultima. Nessuna tacca nella maschera: null.
+    """
+    js = _script()
+    p = tmp_path / "t.js"
+    p.write_text(_fn(js, "tacche") + """
+const vs = [0.000020833, 0.0000417, 0.001, 0.004, 0.016];
+console.log(JSON.stringify([tacche(vs, 3, 0.00002, 0.016), tacche(vs, 4, 0.002, 1),
+  tacche(vs, 3, 0.016, 0.001), tacche(vs, 2, 0.001, 0.001), tacche(vs, 2, 5, 6)]));
+""")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout) == [
+        [0.000020833, 0.0000417, 0.001],
+        [0.004, 0.016, 0.016, 0.016],
+        [0.016, 0.004, 0.001],
+        [0.001, 0.001],
+        None,
+    ]
+
+
+@node
 def test_i_valori_generati_riempiono_l_intervallo_come_si_e_chiesto(tmp_path):
     """`riempi` riempie [a, b] nei quattro modi, e il passo quantizza.
 
