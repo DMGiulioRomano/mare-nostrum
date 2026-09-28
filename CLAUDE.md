@@ -315,7 +315,8 @@ Nelle regole c'e' un quarto modo, **`tacche dello study.yml`**: niente passo
 da indovinare, i valori sono le tacche di quel parametro, una per breakpoint
 nell'ordine della lista, a partire dalla prima che non sta sotto `min`.
 Dove si arriva lo dice `quanti`, non un `max`: finite le tacche, i punti che
-avanzano tengono l'ultima. Lì `max`, `passo` e `ratio` si spengono, e sui
+avanzano tengono l'ultima. Il `passo` li' e' un salto sull'indice della
+lista (2 = una tacca si' e una no; vuoto = 1). `max` e `ratio` si spengono, e sui
 parametri senza tacche (volume, pan) il modo non c'e'. Verificato in
 `tests/test_graph_js.py` (`tacche()`).
 Un parametro senza regola prende il valore che ha a schermo, come `+ breakpoint`.

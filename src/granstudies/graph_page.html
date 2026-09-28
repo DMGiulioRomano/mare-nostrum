@@ -1213,12 +1213,14 @@ function riempi(modo, n, a, b, passo, ratio) {
 // Le tacche dello study.yml, una per breakpoint, nell'ordine della lista: si
 // parte dalla prima che non sta sotto `min` e si va avanti. Niente passo da
 // indovinare — rigenerare da' gli stessi valori dello sweep — e niente `max`:
-// dove si arriva lo dice `quanti`. Finite le tacche, i punti che avanzano
-// tengono l'ultima.
-function tacche(vs, n, a) {
+// dove si arriva lo dice `quanti`. Il passo qui e' un salto sull'indice
+// della lista: 2 prende una tacca si' e una no. Finite le tacche, i punti che
+// avanzano tengono l'ultima.
+function tacche(vs, n, a, passo) {
   const t = vs.map(Number).filter(v => v >= a - 1e-12);
   if (!t.length) return null;
-  return Array.from({length: n}, (_, i) => t[Math.min(i, t.length - 1)]);
+  const k = Math.max(1, Math.round(passo) || 1);
+  return Array.from({length: n}, (_, i) => t[Math.min(i * k, t.length - 1)]);
 }
 
 function numero(s, d) {
@@ -1260,7 +1262,9 @@ function genRule() {
   modo.appendChild(opt);
   modo.onchange = () => {
     ratio.disabled = modo.value !== "regolare";
-    passo.disabled = max.disabled = modo.value === "tacche";
+    max.disabled = modo.value === "tacche";
+    // Sulle tacche il passo non e' un valore ma un salto di indice.
+    passo.placeholder = modo.value === "tacche" ? "ogni n" : "passo";
   };
   const via = document.createElement("button");
   via.textContent = "×"; via.title = "togli la regola";
@@ -1297,7 +1301,7 @@ function genBps() {
     const A = numero(min.value, NaN), B = numero(max.value, NaN);
     if (!Number.isFinite(A)) return null;
     const vals = modo.value === "tacche"
-      ? tacche(NUM.find(q => q.path === p.value).values, n, A)
+      ? tacche(NUM.find(q => q.path === p.value).values, n, A, numero(passo.value, 1))
       : !Number.isFinite(B) ? null
       : riempi(modo.value, n, A, B, numero(passo.value, 0), numero(ratio.value, 1));
     return vals && {path: p.value, vals};

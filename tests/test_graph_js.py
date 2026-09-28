@@ -529,7 +529,8 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
 def test_le_tacche_si_pescano_in_ordine_dal_minimo(tmp_path):
     """Modo `tacche`: una per breakpoint, dalla prima non sotto `min`.
 
-    Dove si arriva lo dice il numero di punti, non un `max`. Finite le
+    Dove si arriva lo dice il numero di punti, non un `max`; il passo e' un
+    salto sull'indice della lista. Finite le
     tacche, i punti che avanzano tengono l'ultima. Nessuna tacca: null.
     """
     js = _script()
@@ -537,7 +538,7 @@ def test_le_tacche_si_pescano_in_ordine_dal_minimo(tmp_path):
     p.write_text(_fn(js, "tacche") + """
 const vs = [0.000020833, 0.0000417, 0.001, 0.004, 0.016];
 console.log(JSON.stringify([tacche(vs, 3, 0.00002), tacche(vs, 4, 0.002),
-  tacche(vs, 2, 0.001), tacche(vs, 2, 5)]));
+  tacche(vs, 2, 0.001), tacche(vs, 2, 5), tacche(vs, 3, 0, 2), tacche(vs, 3, 0, 3)]));
 """)
     out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
@@ -546,6 +547,8 @@ console.log(JSON.stringify([tacche(vs, 3, 0.00002), tacche(vs, 4, 0.002),
         [0.004, 0.016, 0.016, 0.016],
         [0.001, 0.004],
         None,
+        [0.000020833, 0.001, 0.016],      # passo 2: una si' e una no
+        [0.000020833, 0.004, 0.016],      # passo 3: oltre la fine tiene l'ultima
     ]
 
 
