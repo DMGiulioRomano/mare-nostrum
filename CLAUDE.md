@@ -184,15 +184,28 @@ c'e' ancora e i campioni sono in cache, quindi non si rende niente. Il server
 serve `/samples/` dalla cartella dei sample del repo, che sta fuori da quella
 servita.
 
-**Il loop sul sample.** Quando la forma d'onda mostra un sample (`▶ ascolta`),
-click e trascina disegna una regione: e' il loop del pointer, e gli estremi si
-prendono per allargarlo o stringerlo; doppio click lo toglie. Il sample si
-riascolta dentro il loop. Sul documento diventa `pointer.loop_unit: normalized`
-+ `loop_start`/`loop_end` (frazioni del file), e `pointer.start` sparisce cosi'
-il pointer parte da loop_start. Si parte sempre **senza loop** — il pointer
-percorre il file intero: quello di `base:` e' una scelta dello sweep, non il
-punto di partenza di un ascolto. Senza regione le chiavi di loop spariscono. Sul render dello stream non si disegna:
-li' l'asse e' il tempo d'uscita, non la posizione nel sample.
+**Start e loop del pointer.** Fra i fissi ci sono `pointer.start`,
+`pointer.loop` (`off`/`on`) e `pointer.loop_unit` (`normalized`/`seconds`);
+fra i parametri sui breakpoint `pointer.loop_start` e `pointer.loop_end`, che
+compaiono solo col loop acceso. Cosa si automatizza lo dice l'engine
+(`pointer_controller.py`, `POINTER_PARAMETER_SCHEMA`): loop_start/loop_end
+reggono inviluppi (loop mobile), `start` e' scalare e un envelope lo rifiuta,
+`loop_unit` e' la meta-chiave che legge tutti e tre. `pointer.loop` non e'
+dell'engine: e' la presenza delle chiavi, e spento le toglie (`scriviLoop`).
+`start` a 0 non si scrive: col loop il pointer parte cosi' da loop_start.
+Si parte sempre **senza loop** — quello di `base:` e' una scelta dello
+sweep, non il punto di partenza di un ascolto. Riaprendo (`leggiLoop`), un
+documento senza `loop_unit` si legge in secondi come fa l'engine, e un
+`loop_dur` scalare diventa `loop_end`.
+
+**La regione sul sample e' quella coppia di campi.** Quando la forma d'onda
+mostra un sample (`▶ ascolta`), click e trascina disegna il loop e lo scrive
+in loop_start/loop_end (accendendo `pointer.loop`); gli estremi si prendono
+per allargarlo o stringerlo; doppio click lo spegne. Scrivere i campi sposta
+la regione. Un loop fermo si sposta su tutti i breakpoint, uno che si muove
+gia' cambia solo sul punto corrente. In `seconds` la regione si vede solo
+ascoltando il sample, perche' serve la sua durata. Sul render dello stream
+non si disegna: li' l'asse e' il tempo d'uscita, non la posizione nel sample.
 Il loop suona con un `AudioBufferSourceNode` (loop nativo, preciso al
 campione), non spostando `audio.currentTime`: quel seek e' asincrono e il
 cursore andava fuori passo. Il campo `latenza (ms)` del trasporto ritarda il
@@ -298,6 +311,14 @@ Con `+ parametro` si aggiunge una **regola**: parametro, `min`, `max` (la
 maschera, prefillata con le tacche dello `study.yml`), lo stesso menu dei
 quattro modi, e un `passo` facoltativo che quantizza a multipli — il passo
 comanda, quindi con un `max` che non è multiplo l'ultimo punto resta sotto.
+Nelle regole c'e' un quarto modo, **`tacche dello study.yml`**: niente passo
+da indovinare, i valori sono le tacche di quel parametro, una per breakpoint
+nell'ordine della lista, a partire dalla prima che non sta sotto `min`.
+Dove si arriva lo dice `quanti`, non un `max`: finite le tacche, i punti che
+avanzano tengono l'ultima. Il `passo` li' e' un salto sull'indice della
+lista (2 = una tacca si' e una no; vuoto = 1). `max` e `ratio` si spengono, e sui
+parametri senza tacche (volume, pan) il modo non c'e'. Verificato in
+`tests/test_graph_js.py` (`tacche()`).
 Un parametro senza regola prende il valore che ha a schermo, come `+ breakpoint`.
 I punti generati si aggiungono a quelli che ci sono (non li sostituiscono) e
 sono **un passo solo di undo**. La matematica è tutta in `riempi()`, verificata

@@ -421,35 +421,41 @@ def test_da_dove_parte_ogni_parametro(tmp_path):
 
 
 @node
-def test_il_loop_disegnato_sul_sample_torna_riaprendo(tmp_path):
-    """La regione sulla forma d'onda diventa loop_start/loop_end normalizzati.
+def test_start_e_loop_del_pointer_sul_documento_e_ritorno(tmp_path):
+    """I campi del pointer diventano chiavi dell'engine, e riaprendo tornano.
 
-    Senza loop le chiavi spariscono (il pointer legge tutto il file); con il
-    loop sparisce `start`, cosi' il pointer parte da loop_start. Un loop in
-    secondi non si sa disegnare e resta fuori.
+    `pointer.loop` non e' dell'engine: spento porta via loop_start/loop_end.
+    `start` a 0 non si scrive (col loop il pointer parte da loop_start),
+    `loop_unit` resta solo se c'e' qualcosa da leggere con lui, `loop_dur`
+    di `base:` sparisce. Senza `loop_unit` l'engine legge in secondi.
     """
     js = _script()
-    frag = _fn(js, "loopDi") + _fn(js, "scriviLoop")
+    frag = _fn(js, "scriviLoop") + _fn(js, "leggiLoop")
     p = tmp_path / "l.js"
     p.write_text(frag + """
-const base = {pointer: {start: 0, speed_ratio: 0.1, loop_unit: 'normalized', loop_start: 0, loop_end: 0.3636}};
-const st = JSON.parse(JSON.stringify(base));
-scriviLoop(st, [0.123456, 0.5]);
-const via = JSON.parse(JSON.stringify(base));
-scriviLoop(via, null);
-console.log(JSON.stringify([loopDi(base), st.pointer, loopDi(st), via.pointer,
-  loopDi({pointer: {loop_start: 1, loop_end: 2}}),
-  loopDi({pointer: {loop_unit: 'normalized', loop_start: 0.8, loop_dur: 0.5}})]));
+const doc = p => { const st = {pointer: Object.assign({speed_ratio: 0.1, loop_dur: 0.2}, p)}; scriviLoop(st); return st.pointer; };
+const acceso = doc({loop: 'on', start: 0, loop_unit: 'normalized', loop_start: [[0, 0.1], [1, 0.5]], loop_end: 0.6});
+const spento = doc({loop: 'off', start: 0, loop_unit: 'normalized', loop_start: 0, loop_end: 1});
+const start = doc({loop: 'off', start: 0.25, loop_unit: 'normalized', loop_start: 0, loop_end: 1});
+console.log(JSON.stringify([acceso, spento, start,
+  leggiLoop({pointer: JSON.parse(JSON.stringify(acceso))}),
+  leggiLoop({pointer: spento}), leggiLoop({pointer: start}),
+  leggiLoop({pointer: {loop_start: 1, loop_end: 2}}),
+  (() => { const st = {pointer: {loop_unit: 'normalized', loop_start: 0.3, loop_dur: 0.5}};
+           leggiLoop(st); return st.pointer.loop_end; })()]));
 """)
     out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
     assert json.loads(out.stdout) == [
-        [0, 0.3636],
-        {"speed_ratio": 0.1, "loop_unit": "normalized", "loop_start": 0.1235, "loop_end": 0.5},
-        [0.1235, 0.5],
-        {"start": 0, "speed_ratio": 0.1},
-        None,
-        [0.8, 1],
+        {"speed_ratio": 0.1, "loop_unit": "normalized",
+         "loop_start": [[0, 0.1], [1, 0.5]], "loop_end": 0.6},
+        {"speed_ratio": 0.1},
+        {"speed_ratio": 0.1, "start": 0.25, "loop_unit": "normalized"},
+        {"pointer.loop": "on", "pointer.start": 0, "pointer.loop_unit": "normalized"},
+        {"pointer.loop": "off", "pointer.start": 0, "pointer.loop_unit": "normalized"},
+        {"pointer.loop": "off", "pointer.start": 0.25, "pointer.loop_unit": "normalized"},
+        {"pointer.loop": "on", "pointer.start": 0, "pointer.loop_unit": "seconds"},
+        0.8,
     ]
 
 
@@ -479,16 +485,18 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
     """La storia e' tutto il lavoro: i punti e i valori a schermo non salvati."""
     js = _script()
     frag = (js[js.index("function istantanea"):js.index("addEventListener(\"keydown\", e => {\n  if (e.key.toLowerCase()")]
-            + _fn(js, "snapshot") + _fn(js, "snapInterp"))
+            + _fn(js, "snapshot") + _fn(js, "snapInterp")
+            + _fn(js, "snapFissi") + _fn(js, "valFisso"))
     p = tmp_path / "u.js"
     p.write_text(
         "const AUT = [{path:'a', kind:'num'}];\n"
-        "let bps = [], LOOP = null, curBp = -1;\n"
+        "let bps = [], curBp = -1;\n"
+        "const CAT = [{path:'pointer.loop'}];\n"
         "let STORIA = [], ISTO = -1, GESTO = false;\n"
         "const SELEZIONE = new Set();\n"
         "let DURPREC = 30;\n"
         "function durata() { return 30; }\n"
-        "const SCHERMO = {a: 1};\n"
+        "const SCHERMO = {a: 1, 'pointer.loop': 'off'};\n"
         "const document = {getElementById: id => ({\n"
         "  get value() { return id[0] === 'I' ? 'linear' : SCHERMO[id.slice(2)]; },\n"
         "  set value(v) { if (id[0] !== 'I') SCHERMO[id.slice(2)] = v; },\n"
@@ -504,15 +512,44 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
         "vaiStoria(-1); const dopoUndo = SCHERMO.a;\n"
         "vaiStoria(-1); const punti = bps.length;\n"
         "vaiStoria(1); vaiStoria(1); const dopoRedo = SCHERMO.a;\n"
-        "console.log(JSON.stringify([prima, dopoUndo, punti, dopoRedo, STORIA.length]));")
+        "SCHERMO['pointer.loop'] = 'on'; drawTl();\n"   # un fisso: il loop acceso
+        "vaiStoria(-1); const loop = SCHERMO['pointer.loop'];\n"
+        "console.log(JSON.stringify([prima, dopoUndo, punti, dopoRedo, loop]));")
     out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
-    prima, dopoUndo, punti, dopoRedo, n = __import__("json").loads(out.stdout)
+    prima, dopoUndo, punti, dopoRedo, loop = __import__("json").loads(out.stdout)
     assert prima == 7
     assert dopoUndo == 1      # l'undo riporta anche il valore non salvato
     assert punti == 0         # un altro passo indietro: il breakpoint sparisce
     assert dopoRedo == 7
-    assert n == 3
+    assert loop == "off"      # anche i fissi tornano indietro
+
+
+@node
+def test_le_tacche_si_pescano_in_ordine_dal_minimo(tmp_path):
+    """Modo `tacche`: una per breakpoint, dalla prima non sotto `min`.
+
+    Dove si arriva lo dice il numero di punti, non un `max`; il passo e' un
+    salto sull'indice della lista. Finite le
+    tacche, i punti che avanzano tengono l'ultima. Nessuna tacca: null.
+    """
+    js = _script()
+    p = tmp_path / "t.js"
+    p.write_text(_fn(js, "tacche") + """
+const vs = [0.000020833, 0.0000417, 0.001, 0.004, 0.016];
+console.log(JSON.stringify([tacche(vs, 3, 0.00002), tacche(vs, 4, 0.002),
+  tacche(vs, 2, 0.001), tacche(vs, 2, 5), tacche(vs, 3, 0, 2), tacche(vs, 3, 0, 3)]));
+""")
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout) == [
+        [0.000020833, 0.0000417, 0.001],
+        [0.004, 0.016, 0.016, 0.016],
+        [0.001, 0.004],
+        None,
+        [0.000020833, 0.001, 0.016],      # passo 2: una si' e una no
+        [0.000020833, 0.004, 0.016],      # passo 3: oltre la fine tiene l'ultima
+    ]
 
 
 @node
