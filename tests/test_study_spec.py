@@ -40,7 +40,7 @@ def test_validate_rejects_order_too_high():
 
 def test_validate_rejects_value_out_of_bounds():
     d = _spec_dict()
-    d["axes"]["a"]["values"] = [5, 99999]  # oltre density max
+    d["axes"]["a"]["values"] = [5, 0]  # sotto density min (0.01)
     with pytest.raises(ValueError):
         parse_study_spec(d)
 

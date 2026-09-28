@@ -120,7 +120,7 @@ def test_parameter_bounds_static_registry():
     """Senza output_sr: bounds statici del registry (comportamento storico)."""
     pb = engine_bridge.parameter_bounds()
     assert pb["grain_duration"].min_val == 0.001
-    assert pb["density"].max_val == 4000.0
+    assert pb["density"].max_val is None  # tetto tolto nell'engine (#272)
 
 
 def test_parameter_bounds_dynamic_output_sr():
@@ -129,7 +129,7 @@ def test_parameter_bounds_dynamic_output_sr():
     pb = engine_bridge.parameter_bounds(output_sr=48000)
     assert pb["grain_duration"].min_val == 1.0 / 48000
     # gli altri parametri restano statici
-    assert pb["density"].max_val == 4000.0
+    assert pb["density"].min_val == 0.01
 
 
 def _env(punti):

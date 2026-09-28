@@ -4,9 +4,9 @@ from granstudies import bounds
 
 
 def test_bounds_from_engine_registry():
-    # density: [0.01, 4000] dal registry dell'engine
+    # density: pavimento 0.01, nessun tetto (engine #272)
     lo, hi = bounds.bounds_for("density")
-    assert lo == 0.01 and hi == 4000.0
+    assert lo == 0.01 and hi is None
 
 
 def test_bounds_nested_path():
@@ -38,7 +38,7 @@ def test_bounds_unknown_path():
 def test_clamp_within_and_outside():
     assert bounds.clamp("density", 50) == 50
     assert bounds.clamp("density", -5) == 0.01
-    assert bounds.clamp("density", 99999) == 4000.0
+    assert bounds.clamp("density", 99999) == 99999  # nessun tetto
     # path sconosciuto: no-op
     assert bounds.clamp("non.esiste", 12345) == 12345
 
@@ -52,7 +52,7 @@ def test_bounds_grain_duration_dynamic_output_sr():
 
 def test_bounds_output_sr_ignored_for_other_paths():
     # output_sr non tocca i parametri senza bound dinamico
-    assert bounds.bounds_for("density", output_sr=48000) == (0.01, 4000.0)
+    assert bounds.bounds_for("density", output_sr=48000) == (0.01, None)
     assert bounds.bounds_for("pitch.semitones", output_sr=48000) == (-36.0, 36.0)
 
 
