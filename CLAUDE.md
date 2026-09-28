@@ -184,15 +184,28 @@ c'e' ancora e i campioni sono in cache, quindi non si rende niente. Il server
 serve `/samples/` dalla cartella dei sample del repo, che sta fuori da quella
 servita.
 
-**Il loop sul sample.** Quando la forma d'onda mostra un sample (`▶ ascolta`),
-click e trascina disegna una regione: e' il loop del pointer, e gli estremi si
-prendono per allargarlo o stringerlo; doppio click lo toglie. Il sample si
-riascolta dentro il loop. Sul documento diventa `pointer.loop_unit: normalized`
-+ `loop_start`/`loop_end` (frazioni del file), e `pointer.start` sparisce cosi'
-il pointer parte da loop_start. Si parte sempre **senza loop** — il pointer
-percorre il file intero: quello di `base:` e' una scelta dello sweep, non il
-punto di partenza di un ascolto. Senza regione le chiavi di loop spariscono. Sul render dello stream non si disegna:
-li' l'asse e' il tempo d'uscita, non la posizione nel sample.
+**Start e loop del pointer.** Fra i fissi ci sono `pointer.start`,
+`pointer.loop` (`off`/`on`) e `pointer.loop_unit` (`normalized`/`seconds`);
+fra i parametri sui breakpoint `pointer.loop_start` e `pointer.loop_end`, che
+compaiono solo col loop acceso. Cosa si automatizza lo dice l'engine
+(`pointer_controller.py`, `POINTER_PARAMETER_SCHEMA`): loop_start/loop_end
+reggono inviluppi (loop mobile), `start` e' scalare e un envelope lo rifiuta,
+`loop_unit` e' la meta-chiave che legge tutti e tre. `pointer.loop` non e'
+dell'engine: e' la presenza delle chiavi, e spento le toglie (`scriviLoop`).
+`start` a 0 non si scrive: col loop il pointer parte cosi' da loop_start.
+Si parte sempre **senza loop** — quello di `base:` e' una scelta dello
+sweep, non il punto di partenza di un ascolto. Riaprendo (`leggiLoop`), un
+documento senza `loop_unit` si legge in secondi come fa l'engine, e un
+`loop_dur` scalare diventa `loop_end`.
+
+**La regione sul sample e' quella coppia di campi.** Quando la forma d'onda
+mostra un sample (`▶ ascolta`), click e trascina disegna il loop e lo scrive
+in loop_start/loop_end (accendendo `pointer.loop`); gli estremi si prendono
+per allargarlo o stringerlo; doppio click lo spegne. Scrivere i campi sposta
+la regione. Un loop fermo si sposta su tutti i breakpoint, uno che si muove
+gia' cambia solo sul punto corrente. In `seconds` la regione si vede solo
+ascoltando il sample, perche' serve la sua durata. Sul render dello stream
+non si disegna: li' l'asse e' il tempo d'uscita, non la posizione nel sample.
 Il loop suona con un `AudioBufferSourceNode` (loop nativo, preciso al
 campione), non spostando `audio.currentTime`: quel seek e' asincrono e il
 cursore andava fuori passo. Il campo `latenza (ms)` del trasporto ritarda il

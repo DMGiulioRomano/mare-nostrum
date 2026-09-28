@@ -60,6 +60,7 @@
  #ctl #res { margin-right:14px; }
 
  /* --- laboratorio del singolo stream ------------------------------------- */
+ #lab .row[hidden] { display:none; }
  #lab .row { display:grid; grid-template-columns:max-content 1fr; gap:4px 10px;
              align-items:center; margin-bottom:4px; }
  /* Terza colonna: il tipo di interpolazione, largo uguale per tutti cosi' i
@@ -408,6 +409,26 @@ const VOCI = VOCI_P.map(([dim, k, o]) => ({
   def: o.def, min: o.min, max: o.max,
 }));
 L.params = L.params.concat(VOCI);
+
+// --- il pointer: start e loop ------------------------------------------------
+// Cosa si automatizza l'ha deciso l'engine (pointer_controller.py e
+// POINTER_PARAMETER_SCHEMA): `loop_start` e `loop_end` sono Parameter e
+// reggono un inviluppo — il loop mobile — mentre `start` e' grezzo e un
+// envelope lo rifiuta, e `loop_unit` e' la meta-chiave che dice come leggere
+// tutti e tre. `pointer.loop` non e' dell'engine: e' la presenza delle chiavi,
+// come `off` per le voci, e lo toglie `scriviLoop`.
+// La regione disegnata sulla forma d'onda del sample E' questa coppia di
+// campi: disegnarla li scrive, scriverli la sposta.
+const PUNT = [
+  {path: "pointer.start", kind: "num", free: true, values: [], bp: false, def: 0},
+  {path: "pointer.loop", kind: "cat", values: ["off", "on"], bp: false, def: "off"},
+  {path: "pointer.loop_unit", kind: "cat", values: ["normalized", "seconds"], bp: false,
+   def: "normalized"},
+  {path: "pointer.loop_start", kind: "num", free: true, values: [], def: 0, min: 0},
+  {path: "pointer.loop_end", kind: "num", free: true, values: [], def: 1, min: 0},
+];
+const PUNTI = new Set(PUNT.map(p => p.path));
+L.params = L.params.filter(p => !PUNTI.has(p.path)).concat(PUNT);
 const VOCI_DI = Object.fromEntries(VOCI.map(p => [p.path, p]));
 
 // Dove finisce ogni parametro: sui breakpoint (`bp`) o fisso per lo stream.
@@ -457,13 +478,9 @@ function iniziale(p) {
 }
 
 let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
-// Il loop del pointer: [inizio, fine] come frazioni del sample, o null.
-// Frazioni e non secondi perche' la forma d'onda da' proprio quelle, e
-// riaprendo non serve conoscere la durata del file.
-// Si parte SEMPRE senza: il pointer percorre il file intero. Il loop di
-// `base:` e' una scelta dello sweep, non il punto di partenza di un ascolto —
-// lo si disegna sulla forma d'onda quando serve.
-let LOOP = null;
+// Il loop del pointer sta nei campi `pointer.*` (vedi PUNT). Si parte SEMPRE
+// senza (`pointer.loop: off`): il pointer percorre il file intero. Il loop di
+// `base:` e' una scelta dello sweep, non il punto di partenza di un ascolto.
 
 // Undo/redo. Lo stato che si annulla e' tutto il lavoro: i breakpoint, il
 // loop, il punto selezionato E i valori a schermo — quelli che hai cambiato
@@ -479,8 +496,8 @@ function istantanea() {
   // La durata sta qui perche' col lucchetto chiuso decide dove cadono i
   // punti: riportare indietro i breakpoint senza di lei lascerebbe i tempi
   // in secondi diversi da quelli che l'undo doveva ripristinare.
-  return JSON.stringify({bps, loop: LOOP, cur: curBp, dur: durata(),
-                         vals: snapshot(), ints: snapInterp()});
+  return JSON.stringify({bps, cur: curBp, dur: durata(), vals: snapshot(),
+                         ints: snapInterp(), cat: snapFissi()});
 }
 
 function storia() {
@@ -505,7 +522,8 @@ function vaiStoria(d) {
   }
   ISTO = i;
   const s = JSON.parse(STORIA[i]);
-  bps = s.bps; LOOP = s.loop; SELEZIONE.clear();
+  bps = s.bps; SELEZIONE.clear();
+  for (const [path, v] of Object.entries(s.cat || {})) setSel(path, v);
   if (s.dur != null) { document.getElementById("labDur").value = s.dur; DURPREC = s.dur; }
   curBp = Math.min(s.cur, bps.length - 1);
   // A schermo torna quello che c'era a schermo, non i valori del breakpoint:
@@ -532,29 +550,72 @@ addEventListener("keydown", e => {
   vaiStoria(e.shiftKey ? 1 : -1);
 });
 
-// Il loop scritto in uno stream. Solo `loop_unit: normalized`: un loop in
-// secondi non si sa disegnare senza la durata del sample.
-// ponytail: loop in secondi ignorato in lettura (e riscritto via in labDoc);
-// convertirlo quando la durata del sample e' nota, se servira'.
-function loopDi(st) {
-  const p = (st && st.pointer) || {};
-  if (p.loop_start == null || p.loop_unit !== "normalized") return null;
-  const fine = p.loop_end != null ? p.loop_end
-             : p.loop_dur != null ? p.loop_start + p.loop_dur : 1;
-  return [Number(p.loop_start), Math.min(1, Number(fine))];
+// Il loop come frazioni del sample, [inizio, fine], per disegnarlo e
+// sentirlo: sono i campi a schermo (il breakpoint selezionato). In secondi
+// serve la durata del sample, che si sa solo quando lo si ascolta.
+function loopFrac() {
+  if (valFisso("pointer.loop") !== "on") return null;
+  const n = k => Number(String(valFisso("pointer." + k)).replace(",", "."));
+  let a = n("loop_start"), b = n("loop_end");
+  if (valFisso("pointer.loop_unit") === "seconds") {
+    if (!view || !view.duration) return null;
+    a /= view.duration; b /= view.duration;
+  }
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return [Math.max(0, Math.min(1, a)), Math.max(0, Math.min(1, b))];
 }
 
-// L'inverso, sul documento. Senza loop le chiavi spariscono: il pointer
-// percorre il file intero. Con il loop sparisce `start`, cosi' il pointer
-// parte da loop_start invece di arrivarci (l'engine fa cosi' quando start
-// manca).
-function scriviLoop(st, loop) {
+// La regione disegnata (frazioni) scritta nei campi. Un loop fermo resta
+// fermo: si sposta su tutti i breakpoint. Uno che si muove gia' cambia solo
+// sul punto corrente, come un valore salvato li'.
+function loopDisegna(a, b) {
+  const sec = valFisso("pointer.loop_unit") === "seconds" ? view.duration : 1;
+  const r = v => Math.round(v * sec * 1e4) / 1e4;
+  const vals = {"pointer.loop_start": r(a), "pointer.loop_end": r(b)};
+  const fermo = valFisso("pointer.loop") !== "on" ||
+                !Object.keys(vals).some(k => Array.isArray(serie(k)));
+  setSel("pointer.loop", "on");
+  for (const [k, v] of Object.entries(vals)) setSel(k, v);
+  bps.forEach((bp, i) => { if (fermo || i === curBp) Object.assign(bp.vals, vals); });
+  drawTl();
+}
+
+// Sul documento: `pointer.loop` non e' una chiave dell'engine, e spento
+// porta via loop_start/loop_end. `start` a 0 non si scrive: e' il default, e
+// con un loop acceso il pointer parte cosi' da loop_start invece di
+// arrivarci. `loop_unit` resta solo se c'e' qualcosa da leggere con lui.
+// `loop_dur` non ha un campo: quello di `base:` sparisce.
+function scriviLoop(st) {
   const p = st.pointer = st.pointer || {};
-  for (const k of ["loop_start", "loop_end", "loop_dur", "loop_unit"]) delete p[k];
-  if (!loop) return;
-  delete p.start;
-  const r = v => Math.round(v * 1e4) / 1e4;
-  Object.assign(p, {loop_unit: "normalized", loop_start: r(loop[0]), loop_end: r(loop[1])});
+  const on = p.loop === "on";
+  delete p.loop; delete p.loop_dur;
+  if (!on) { delete p.loop_start; delete p.loop_end; }
+  if (!Number(p.start)) delete p.start;
+  if (!on && p.start === undefined) delete p.loop_unit;
+}
+
+// L'inverso, riaprendo: i campi fissi del pointer dal documento. Senza
+// `loop_unit` l'engine legge in secondi, e cosi' li si mostra.
+// ponytail: un `loop_dur` diventa loop_end = loop_start + loop_dur solo se
+// sono scalari, e oltre la fine del file si taglia; un loop_dur inviluppo
+// si perde. Un campo `loop_dur` se servira' il loop che scavalca la fine.
+function leggiLoop(st) {
+  const p = st.pointer = st.pointer || {};
+  if (p.loop_end == null && typeof p.loop_dur === "number" && typeof p.loop_start === "number")
+    p.loop_end = p.loop_start + p.loop_dur;
+  const on = p.loop_start != null;
+  const scritto = on || Number(p.start || 0) !== 0 || p.loop_unit != null;
+  return {"pointer.loop": on ? "on" : "off", "pointer.start": p.start ?? 0,
+          "pointer.loop_unit": p.loop_unit === "normalized" || !scritto ? "normalized" : "seconds"};
+}
+
+// Le righe di loop_start/loop_end ci sono solo col loop acceso.
+function loopVis() {
+  const on = valFisso("pointer.loop") === "on";
+  for (const k of ["loop_start", "loop_end"]) {
+    const el = document.getElementById("P:pointer." + k);
+    if (el) el.closest(".row").hidden = !on;
+  }
 }
 let curBp = -1;
 
@@ -702,6 +763,7 @@ function labInit() {
   // finche' non si salva, i valori a schermo e quelli del punto divergono, e
   // e' l'unica cosa che si puo' guardare senza accorgersene. Lo dice l'info.
   for (const p of NUM) if (!p.voce) document.getElementById("P:" + p.path).onchange = labInfo;
+  for (const path of PUNTI) document.getElementById("P:" + path).onchange = drawTl;
   if (ENVP) ENVCB = labInfo;
   document.getElementById("labRender").onclick = labRender;
   document.getElementById("fNew").onclick = fNew;
@@ -930,6 +992,11 @@ function snapInterp() {
     v[p.path] = el ? el.value : "linear";
   }
   return v;
+}
+
+// I fissi per lo stream, per l'undo: accendere il loop e' lavoro come gli altri.
+function snapFissi() {
+  return Object.fromEntries(CAT.map(p => [p.path, valFisso(p.path)]));
 }
 
 // Il tipo di un parametro in un breakpoint. I punti salvati prima che i tipi
@@ -1272,6 +1339,7 @@ function bpLoad(i) {
 function drawTl() {
   bozzaSalva();
   if (typeof segna === "function") segna();
+  loopVis();
   marcaAudio();
   const tl = document.getElementById("tl");
   tl.innerHTML = "";
@@ -1578,7 +1646,7 @@ function labDoc() {
     const raw = document.getElementById("P:" + p.path).value;
     // I fissi sono quasi tutti nomi; i pochi numerici — max_partial, le
     // divisioni dell'edo — vanno scritti numeri, non stringhe.
-    setPath(st, p.path, p.kind === "num" ? Number(raw) : raw);
+    setPath(st, p.path, p.kind === "num" ? Number(String(raw).replace(",", ".")) : raw);
   }
   for (const p of NUM) {
     const v = serie(p.path);
@@ -1589,7 +1657,7 @@ function labDoc() {
     if (v !== null) setPath(st, EP, v);
   }
   vociDoc(st);
-  scriviLoop(st, LOOP);
+  scriviLoop(st);
   return {duration: dur, bpm: 120, streams: [st]};
 }
 
@@ -1632,7 +1700,8 @@ function marcaAudio() {
   drawGrani();
   const wv = document.getElementById("waveView");
   for (const v of wv.querySelectorAll(".loopr")) v.remove();
-  if (SAMPLE_AUDIO && LOOP) {
+  const LOOP = SAMPLE_AUDIO && loopFrac();
+  if (LOOP) {
     const r = document.createElement("div");
     r.className = "loopr";
     r.style.left = (LOOP[0] * 100) + "%";
@@ -1648,7 +1717,7 @@ function marcaAudio() {
           // Un estremo non scavalca l'altro: loop_end > loop_start, lo
           // pretende l'engine.
           LOOP[k] = k ? Math.max(LOOP[0] + 0.001, x) : Math.min(LOOP[1] - 0.001, x);
-          drawTl();
+          loopDisegna(LOOP[0], LOOP[1]);
         };
         const up = () => {
           removeEventListener("pointermove", move);
@@ -1908,7 +1977,6 @@ function preview() {
     righe.push(EP + ":\n  states: [" +
                e.states.map(st => "[" + st[0].toFixed(3) + ", " + st[1] + "]").join(", ") +
                "]\n  curve: [" + e.curve.map(punto).join(", ") + "]");
-  if (LOOP) righe.push("pointer.loop (normalized): [" + LOOP.map(v => v.toFixed(4)).join(", ") + "]");
   return righe.join("\n");
 }
 
@@ -1952,7 +2020,7 @@ function segna() {
 function bozzaSalva() {
   try {
     localStorage.setItem(BOZZA, JSON.stringify({
-      bps, file: FILE, salvato: SALVATO, loop: LOOP, sess: SESSIONE,
+      bps, file: FILE, salvato: SALVATO, sess: SESSIONE,
       name: document.getElementById("labName").value,
       dur: document.getElementById("labDur").value,
       cat: Object.fromEntries(CAT.map(p => [p.path, document.getElementById("P:" + p.path).value])),
@@ -1964,7 +2032,6 @@ function ripristina() {
   const b = BOZZA0;
   if (!b || !b.bps || !b.bps.length) return;
   bps = b.bps;
-  if ("loop" in b) LOOP = b.loop;
   FILE = b.file || "";
   SALVATO = b.salvato || "";
   document.getElementById("labName").value = b.name || NOME0;
@@ -2029,7 +2096,7 @@ function fNew() {
   bps = [];
   curBp = -1;
   SELEZIONE.clear();
-  LOOP = null;              // il loop si disegna, non si eredita
+  setSel("pointer.loop", "off");   // il loop si disegna, non si eredita
   FILE = "";
   SALVATO = statoOra();
   document.getElementById("labName").value = NOME0;
@@ -2121,6 +2188,7 @@ function carica(doc, path) {
     return;
   }
   const st = doc.streams[0];
+  const fissiLoop = leggiLoop(st);
   const ts = new Set([0]);
   for (const p of NUM) {
     const v = leggiPath(st, p.path);
@@ -2156,7 +2224,7 @@ function carica(doc, path) {
   }));
   for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
   vociCarica(st);
-  LOOP = loopDi(st);
+  for (const [path, v] of Object.entries(fissiLoop)) setSel(path, v);
   SELEZIONE.clear();        // i breakpoint di prima non esistono piu'
   FILE = path || "";
   document.getElementById("labName").value =
@@ -2305,7 +2373,7 @@ function lpStop() {
 
 function lpStart(at) {
   lpStop();
-  const D = view.buf.duration, ls = LOOP[0] * D, le = LOOP[1] * D;
+  const LOOP = loopFrac(), D = view.buf.duration, ls = LOOP[0] * D, le = LOOP[1] * D;
   const off = at >= ls && at < le ? at : ls;
   const node = ctx.createBufferSource();
   node.buffer = view.buf;
@@ -2326,7 +2394,8 @@ function lpStart(at) {
 // qualche click; aggiornare loopStart/loopEnd dal vivo se da' fastidio.
 function lpSync() {
   if (!LP && !SAMPLE_AUDIO) return;
-  const ok = SAMPLE_AUDIO && LOOP && view && view.buf && !audio.paused &&
+  const LOOP = SAMPLE_AUDIO && loopFrac();
+  const ok = LOOP && LOOP[1] > LOOP[0] && view && view.buf && !audio.paused &&
              audio.src.endsWith(view.url);
   if (!ok) return lpStop();
   const D = view.buf.duration;
@@ -2634,20 +2703,20 @@ for (const id of ["specView", "waveView", "envView", "graniView"]) {
       const a = frac({clientX: x0}), b = frac(e);
       if (Math.abs(b - a) < 0.001) return;
       GESTO = true;      // disegnare il loop e' un passo solo di undo
-      LOOP = [Math.min(a, b), Math.max(a, b)];
-      drawTl();
+      loopDisegna(Math.min(a, b), Math.max(a, b));
     } else if (!disegna) seekFrom(el, e);
   });
   addEventListener("mouseup", () => {
     // Finito di disegnare, l'ascolto riparte dall'inizio del loop.
-    if (down && disegna && LOOP && view) vaiA(LOOP[0] * view.duration);
+    const LOOP = down && disegna && view && loopFrac();
+    if (LOOP) vaiA(LOOP[0] * view.duration);
     if (down && disegna) { GESTO = false; drawTl(); }
     down = false;
   });
 }
 document.getElementById("waveView").addEventListener("dblclick", () => {
-  if (!SAMPLE_AUDIO || !LOOP) return;
-  LOOP = null;
+  if (!SAMPLE_AUDIO || !loopFrac()) return;
+  setSel("pointer.loop", "off");
   drawTl();
 });
 
