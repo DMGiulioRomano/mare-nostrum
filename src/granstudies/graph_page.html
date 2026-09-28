@@ -1212,13 +1212,11 @@ function riempi(modo, n, a, b, passo, ratio) {
 
 // Le tacche dello study.yml, una per breakpoint, nell'ordine della lista: si
 // parte dalla prima che non sta sotto `min` e si va avanti. Niente passo da
-// indovinare — rigenerare da' gli stessi valori dello sweep. `max` resta la
-// maschera, e con min > max si cammina all'indietro. Finite le tacche,
-// i punti che avanzano tengono l'ultima.
-function tacche(vs, n, a, b) {
-  const lo = Math.min(a, b), hi = Math.max(a, b), eps = 1e-12;
-  const t = vs.map(Number).filter(v => v >= lo - eps && v <= hi + eps);
-  if (a > b) t.reverse();
+// indovinare — rigenerare da' gli stessi valori dello sweep — e niente `max`:
+// dove si arriva lo dice `quanti`. Finite le tacche, i punti che avanzano
+// tengono l'ultima.
+function tacche(vs, n, a) {
+  const t = vs.map(Number).filter(v => v >= a - 1e-12);
   if (!t.length) return null;
   return Array.from({length: n}, (_, i) => t[Math.min(i, t.length - 1)]);
 }
@@ -1262,7 +1260,7 @@ function genRule() {
   modo.appendChild(opt);
   modo.onchange = () => {
     ratio.disabled = modo.value !== "regolare";
-    passo.disabled = modo.value === "tacche";
+    passo.disabled = max.disabled = modo.value === "tacche";
   };
   const via = document.createElement("button");
   via.textContent = "×"; via.title = "togli la regola";
@@ -1297,9 +1295,10 @@ function genBps() {
   const regole = [...document.querySelectorAll("#gRules .rule")].map(r => {
     const [p, min, max, modo, ratio, passo] = r.children;
     const A = numero(min.value, NaN), B = numero(max.value, NaN);
-    if (!Number.isFinite(A) || !Number.isFinite(B)) return null;
+    if (!Number.isFinite(A)) return null;
     const vals = modo.value === "tacche"
-      ? tacche(NUM.find(q => q.path === p.value).values, n, A, B)
+      ? tacche(NUM.find(q => q.path === p.value).values, n, A)
+      : !Number.isFinite(B) ? null
       : riempi(modo.value, n, A, B, numero(passo.value, 0), numero(ratio.value, 1));
     return vals && {path: p.value, vals};
   }).filter(Boolean);
