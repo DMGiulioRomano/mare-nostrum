@@ -20,7 +20,7 @@
  #now .file { color:var(--dim); word-break:break-all; }
  audio { margin-top:6px; width:340px; display:block; }
  #transport { margin-top:6px; font-size:12px; color:var(--dim); }
- #transport label { margin-right:14px; cursor:pointer; }
+ #transport label, #transport button { margin-right:14px; cursor:pointer; }
  #transport input { vertical-align:-1px; margin-right:3px; }
 
  /* --- pannello di analisi ------------------------------------------------ */
@@ -206,6 +206,7 @@
   <div id="now"></div>
   <audio id="a" controls></audio>
   <div id="transport">
+    <button id="daCapo" title="riparte dall'inizio (o dall'inizio del loop)">⏮ da capo</button>
     <label><input type="checkbox" id="loop"> loop</label>
     <label title="ritardo fra l'audio prodotto e quello che senti: il cursore resta indietro di tanto">latenza <input type="number" id="lat" min="0" max="1000" step="5" style="width:4.5em"> ms</label>
   </div>
@@ -2608,6 +2609,11 @@ function vaiA(t) {
   audio.currentTime = t;
   if (LP) lpStart(t);
 }
+// Con un loop acceso lpStart(0) cade prima della regione e parte da loop_start.
+document.getElementById("daCapo").addEventListener("click", () => {
+  vaiA(0);
+  audio.play();
+});
 // Sulla forma d'onda di un sample un trascinamento non e' un seek ma un
 // loop: click = seek, click e trascina = regione. Sotto i 4 pixel e' un
 // click con la mano che trema.
