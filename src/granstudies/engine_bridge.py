@@ -510,6 +510,28 @@ def parameter_defaults() -> dict:
     return out
 
 
+def parameter_path_defaults() -> dict:
+    """Mappa ``path YAML dotted -> default`` sui path di
+    ``parameter_schema_paths`` (``pointer.speed_ratio``, non ``speed_ratio``).
+
+    E' il valore che l'engine usa quando lo stream non dichiara la chiave: il
+    laboratorio lo mostra per un parametro che il documento aperto lascia al
+    default. I default ``None`` (``density``, il loop) non sono un valore e
+    restano fuori, come i path segnaposto.
+    """
+    _ensure_engine_on_path()
+    from pge.parameters.parameter_schema import ALL_SCHEMAS
+
+    out: dict = {}
+    for section, schema in ALL_SCHEMAS.items():
+        for spec in schema:
+            if spec.yaml_path.startswith("_") or spec.default is None:
+                continue
+            prefix = f"{section}." if section == "pointer" else ""
+            out[f"{prefix}{spec.yaml_path}"] = spec.default
+    return out
+
+
 def window_names() -> frozenset:
     """Nomi di finestra (``grain.envelope``) noti all'engine, alias inclusi."""
     _ensure_engine_on_path()

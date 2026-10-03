@@ -638,7 +638,8 @@ def cmd_graph(study: str) -> int:
     esterni compresi, non quelle di una combinazione sola.
     """
     from . import bounds
-    from .graph import campioni, lab_data, write_graph
+    from .engine_bridge import parameter_path_defaults
+    from .graph import campioni, lab_completo, write_graph
 
     gen_root = os.path.join(REPO_ROOT, "generated", study)
     out = os.path.join(gen_root, "graph.html")
@@ -647,25 +648,9 @@ def cmd_graph(study: str) -> int:
     # serve tutto — sono le tacche di ogni parametro, non i valori di una
     # combinazione sola.
     with open(os.path.join(study_dir(study), "study.yml")) as fh:
-        lab = lab_data(yaml.safe_load(fh))
-    lab["envelopes"] = _finestre()
-    noti = {p["path"] for p in lab["params"]}
-    # Il sample e' una manopola fissa come le altre categoriali, ma le sue
-    # tacche non stanno nello study.yml: sono i file della cartella dei sample.
-    camp = campioni(samples_dir(_load_spec(study).samples_dir))
-    if camp and "sample" not in noti:
-        lab["params"].append({"path": "sample", "values": camp, "kind": "cat"})
-    # Volume, pan e pan_range non hanno tacche: sono aggiustamenti continui e
-    # si scrivono a mano. `pan` serve anche come punto da cui partono gli
-    # offset delle voci (voice 0 sta li'), `pan_range` come dispersione del
-    # singolo grano. I limiti li sa l'engine (bounds.bounds_for), non li
-    # riscriviamo qui; dove non li conosce (pan_range) restano None.
-    for path in ("volume", "pan", "pan_range"):
-        if path in noti:
-            continue
-        lo, hi = bounds.bounds_for(path) or (None, None)
-        lab["params"].append({"path": path, "values": [], "kind": "num",
-                              "free": True, "min": lo, "max": hi})
+        raw = yaml.safe_load(fh)
+    lab = lab_completo(raw, campioni(samples_dir(_load_spec(study).samples_dir)),
+                       _finestre(), bounds.bounds_for, parameter_path_defaults())
     os.makedirs(gen_root, exist_ok=True)
     n = write_graph(study, out, lab)
     if not n:

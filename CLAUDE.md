@@ -120,6 +120,48 @@ una rampa ripartirebbe piu' tardi e il file suonerebbe diverso da quello
 aperto. Round-trip verificato. Un preset che non cambiava nulla rispetto al
 precedente non torna: non cambiava il suono.
 
+**Aperto e risalvato, e' lo stesso stream** (#3). Il laboratorio non
+ricostruisce piu' lo stream dal `base:` dello studio: parte da quello del
+documento aperto (`APERTO`) e ci scrive sopra **solo cio' che conosce e che e'
+stato toccato**. "Toccato" e' una differenza fra due scritture dello stesso
+stream: `labView()` e' lo stream come lo scriverebbe il laboratorio per intero,
+`VISTA0` e' quella scrittura presa appena aperto il file, e `labDoc()` mette
+sullo stream aperto le sole chiavi in cui la `labView()` di adesso differisce
+da `VISTA0` (`toccati`). Il confronto scende nei blocchi (`grain`, `pointer`,
+`voices.pitch`...) ma non nei valori: un inviluppo cambia o resta tutto
+intero. Cosi' restano com'erano le chiavi che il laboratorio non ha
+(`grain.read_direction`, che in `mare-nostrum.yml` hanno 8 stream su 10),
+`stream_id` e `onset`, e i parametri che il documento lascia al default
+dell'engine anche se il laboratorio ha un campo per loro. Il loop e' un
+gruppo (`GRUPPO_LOOP`): se una delle sue chiavi cambia, si scrivono tutte come
+`scriviLoop` le vuole. Anche la **testa** del documento si conserva (`TESTA`):
+`seed`, `bpm`, la `duration` del tutto, le chiavi di PGE-ui come `ui_tracks`
+restano com'erano, e del laboratorio c'e' solo la durata, che si scrive in
+testa solo se `durata (s)` e' stata toccata. Un parametro che il documento non
+dichiara si mostra al valore che l'engine usa al suo posto (`assente`: il
+default dello schema dei parametri, che `graph` passa alla pagina con
+`engine_bridge.parameter_path_defaults`), non a quello rimasto a schermo dal
+documento aperto prima ne' ai `DEFAULTS` del foglio bianco — che per
+`grain.duration` e `grain.envelope` sono 0.064 e gaussian contro 0.05 e
+hanning: lo schermo direbbe un suono che l'ascolto non ha, e scegliere a mano
+quel valore non scriverebbe niente. Dove l'engine non ha un default si ricade
+su `iniziale`. Nel file non entra finche' non lo si tocca. `APERTO`, `VISTA0`
+e `TESTA` stanno nella storia dell'undo e
+nella bozza, accanto ai breakpoint. Il **foglio bianco** (`nuovo`, o la
+pagina appena aperta) non ha uno stream aperto: nasce da `DEFAULTS` e `base:`
+e il laboratorio lo scrive per intero, come prima.
+
+L'**anteprima** sotto i breakpoint legge il documento (`labDoc`), non i
+breakpoint: un inviluppo non toccato vi compare com'e' scritto.
+
+**Si salva col piazzamento, si ascolta senza.** `onset`, `mute` e `solo` di uno
+stream aperto dal brano restano nel file — sono dello stream. Ma il render del
+laboratorio e' l'ascolto dello stream da solo: `labPost` manda anche un
+documento `ascolto` con `onset: 0` e senza `mute`/`solo` (`perAscolto`), e il
+server rende quello (scritto in `logs/<nome>.ascolto.yml`) accanto allo YAML
+salvato. Senza, uno stream con onset 43 s partirebbe dopo 43 s di silenzio e
+uno con `mute` non suonerebbe affatto.
+
 Il lavoro non salvato sopravvive a un refresh (localStorage, per studio): e'
 una rete di sicurezza, non un salvataggio. La verita' e' il file.
 
@@ -141,6 +183,52 @@ scelta e' **per breakpoint**: il tipo sta sul punto e governa il
 segmento che PARTE da li', quindi l'ultimo punto non ne ha uno. `linear` e'
 il default e non viene scritto nello YAML; gli altri diventano il terzo
 elemento del punto, `[[0, 0.001, cubic], [1, 0.016]]`.
+
+**Gli inviluppi `{type, points}`** (#4). L'interpolazione globale di un
+inviluppo si scrive `{type: cubic, points: [...]}`: la scrive PGE-ui da solo,
+appena l'interpolazione globale di una curva di soli breakpoint non e'
+lineare, e nel brano la portano `grain.duration` (stream6, stream8),
+`fill_factor` (stream4) e `voices.pitch.pitch_range` (stream10, `step`).
+Il laboratorio li legge (`curva`): `type` e' il tipo di ogni segmento che non
+ne dichiara uno sul punto, e il menu di interpolazione di ogni breakpoint lo
+mostra. **I valori si leggono come li legge l'engine**, non in linea:
+`valoreA` e' `Envelope.evaluate` rifatto passo per passo — un segmento solo
+se nessun punto dichiara un tipo, uno per coppia altrimenti, e la cubica e'
+la PCHIP di Fritsch-Carlson con le tangenti calcolate su **tutti** i punti
+(`tangenti`, `hermite`). Conta perche' riaprendo ogni inviluppo prende un
+punto anche dove il breakpoint e' di un altro parametro: li' il valore a
+schermo e' quello che l'engine suona. Sul tempo di un punto vale il punto,
+senza l'arrotondamento della formula (`0.009`, non `0.009000000000000001`).
+La stessa lettura la usano `segui il render` e il lucchetto (`bpFra`), sulla
+curva dei breakpoint.
+
+Non toccato, un `{type, points}` resta com'era (#3). **Toccato, resta un
+`{type: T, points}` finche' i suoi segmenti sono tutti T** (`forma`); con i
+tipi mescolati diventa la lista del laboratorio, col tipo sui punti da cui
+parte un segmento non lineare. Per l'engine le due forme sono lo stesso
+inviluppo, bit per bit, integrale compreso: le tangenti della cubica le
+calcola sempre su tutti i punti, che il tipo sia globale o scritto su ogni
+punto. Non e' un'ipotesi: lo prova
+`test_type_points_e_tipo_su_ogni_punto_sono_lo_stesso_inviluppo` sui quattro
+inviluppi del brano. La terza forma — il dict col tipo globale e le eccezioni
+sul punto — l'engine la legge uguale, ma il laboratorio non la scrive: PGE-ui
+non la rilegge intatta (`wrapEnv`, appena un punto ha un tipo suo, scrive la
+lista piatta e il `type` globale si perde, quindi la cubica degli altri
+segmenti diventerebbe una retta alla prima modifica fatta li'). Le due forme
+che il laboratorio scrive PGE-ui le riapre e le riscrive uguali. Il prezzo di un inviluppo toccato e' quello di sempre del
+laboratorio: prende un punto a ogni breakpoint dove il suo valore cambia,
+anche a quelli di altri parametri, e una cubica con un punto in piu' ha
+tangenti diverse — fra due punti la curva puo' muoversi di poco, mentre su
+ogni breakpoint l'engine vale quanto il laboratorio mostra.
+
+Il criterio del passo 1 del piano (`docs/plans/stream-come-file.md`) e' un
+test: ognuno dei 10 stream di `mare-nostrum.yml`, aperto e risalvato senza
+toccare niente, da' all'engine lo stesso fingerprint
+(`test_criterio_del_piano_ogni_stream_del_brano_risalvato_e_lo_stesso`). I test
+del documento girano sulla pagina intera, non a frammenti: `tests/lab_dom.js`
+e' un DOM finto in node (un `<select>` con un valore che non ha vale `""`,
+come nel browser), e `graph.lab_completo` da' loro lo stesso corredo che
+`make serve` da' alla pagina.
 
 **I breakpoint sul suono.** Dopo un render del laboratorio i punti compaiono
 anche sopra sonogramma e forma d'onda, in giallo e numerati (il cursore di
@@ -253,8 +341,10 @@ cosa deve succedere.
 Accorciando, i punti che finiscono oltre la nuova fine escono, ma lasciano il
 punto in cui l'inviluppo **tagliava** il bordo, interpolato (`bpFra`) — se no
 la coda resterebbe piatta sull'ultimo valore rimasto; è la stessa cura del
-`truncateEnvArray` di PGE-ui. Un `step` sul punto di partenza tiene il suo
-valore invece di interpolare. Quanti ne sono usciti lo dice la riga di stato.
+`truncateEnvArray` di PGE-ui. Il valore del punto di chiusura e' quello della
+curva dei breakpoint letta come l'engine (`valoreA`): un `step` sul punto di
+partenza tiene il suo valore, una `cubic` resta la cubica. Quanti ne sono
+usciti lo dice la riga di stato.
 
 La durata entra nella storia dell'undo: riportare indietro i breakpoint senza
 di lei lascerebbe i tempi in secondi diversi da quelli ripristinati. Verificato
@@ -263,7 +353,8 @@ in `tests/test_graph_js.py`.
 **Seguire il render.** Sotto il lucchetto c'e' `segui il render`: acceso,
 mentre suona i parametri smettono di mostrare il breakpoint selezionato e
 mostrano **dove sono adesso** — gli inviluppi letti al tempo del cursore, con
-la stessa interpolazione dei breakpoint (`bpFra`, via `bpA`), l'estremo fuori
+la stessa interpolazione dei breakpoint (`bpFra`, via `bpA`: la curva dei
+breakpoint letta come l'engine, cubica compresa), l'estremo fuori
 dagli estremi. E' una lettura: non tocca i breakpoint, non entra nell'undo, e
 spegnendolo si torna al punto selezionato (`mostraBp`). Vale solo sul render
 dello stream, non sull'ascolto di un sample. Verificato in

@@ -49,6 +49,33 @@ def test_salva_senza_rendere(tmp_path, monkeypatch):
     assert (tmp_path / "live" / "bozza.yml").exists()
 
 
+def test_si_salva_il_documento_e_si_rende_l_ascolto(tmp_path, monkeypatch):
+    """Con `ascolto` il file su disco e' `doc`, l'audio viene da `ascolto`.
+
+    E' la pagina a sapere cosa togliere per ascoltare (il piazzamento nel
+    brano); il server scrive i due e rende il secondo, accanto al primo.
+    """
+    rese = []
+    monkeypatch.setattr(S.subprocess, "run", lambda cmd, **k: rese.append(cmd) or _ok())
+    ascolto = {"duration": 4, "streams": [dict(DOC["streams"][0], onset=0)]}
+    doc = {"duration": 4, "streams": [dict(DOC["streams"][0], onset=43.761, mute=True)]}
+    out = S.render_doc(doc, "x", str(tmp_path), str(tmp_path), ascolto=ascolto)
+    salvato = tmp_path / "live" / "x.yml"
+    assert out["ok"] and out["yaml"] == "live/x.yml" and out["src"] == "live/x.aif"
+    assert S.yaml.safe_load(salvato.read_text()) == doc
+    reso = rese[0][2]
+    assert reso != str(salvato)
+    assert S.yaml.safe_load(open(reso).read()) == ascolto
+    assert rese[0][3] == str(tmp_path / "live" / "x.aif")
+
+
+def test_senza_ascolto_si_rende_il_documento_salvato(tmp_path, monkeypatch):
+    rese = []
+    monkeypatch.setattr(S.subprocess, "run", lambda cmd, **k: rese.append(cmd) or _ok())
+    S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), ascolto=DOC)
+    assert rese[0][2] == str(tmp_path / "live" / "x.yml")
+
+
 def test_la_pagina_non_si_cacha_ma_l_audio_si(tmp_path):
     """La pagina cambia a ogni `graph`: una copia vecchia mostra un
     laboratorio di ieri senza dirlo. L'audio invece ha sempre un nome nuovo."""
