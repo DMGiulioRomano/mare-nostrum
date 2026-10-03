@@ -896,3 +896,79 @@ console.log(JSON.stringify([a(0), a(0.2), a(0.4), a(0.8), a(1), a(1.5),
     got = json.loads(out.stdout)
     # prima del primo punto e dopo l'ultimo: l'estremo. In mezzo: interpolato.
     assert got == pytest.approx([0, 0, 5, 15, 20, 20, 0, 100])
+
+
+# --- i tempi del documento: frazioni o secondi, come dice time_mode --------
+
+def _lab_tempi(base: str, coda: str, tmp_path) -> list:
+    """labDoc e la sua lettura, senza DOM: due numerici, la finestra, l'accordo.
+
+    I tempi dei breakpoint nella pagina sono frazioni dello stream; l'engine li
+    legge come frazioni solo con `time_mode: normalized`, altrimenti in
+    secondi. Il `base:` dello studio decide quale dei due.
+    """
+    js = _script()
+    p = tmp_path / "tempi.js"
+    p.write_text("\n".join([
+        'const EP = "grain.envelope";',
+        "const L = {base: " + base + "};",
+        "const NUM = [{path: 'density'}, {path: 'pan'}];",
+        "const AUT = NUM.concat([{path: EP}, {path: 'voices.pitch.progression'}]);",
+        "const PROG = AUT[3], ENVP = AUT[2], CAT = [];",
+        "const durata = () => 30;",
+        # vociDoc vero e' accoppiato alle righe delle voci: qui basta la
+        # progressione, che e' l'unica cosa sua che porta tempi.
+        "function vociDoc(st) { st.voices = {pitch: {strategy: 'chord_progression',"
+        " progression: progressione()}}; }",
+        "function scriviLoop() {}",
+        "const NOTE_DI = {};",
+        "let bps = [{t: 0, vals: {density: 10, pan: 0, [EP]: 'hanning',"
+        " 'voices.pitch.progression': 'maj'}, ints: {density: 'step'}},"
+        " {t: 0.5, vals: {density: 80, pan: 0, [EP]: 'bartlett',"
+        " 'voices.pitch.progression': 'min'}},"
+        " {t: 1, vals: {density: 20, pan: 0, [EP]: 'bartlett',"
+        " 'voices.pitch.progression': 'min'}}];",
+        _fn(js, "serie"), _fn(js, "serieEnv"), _fn(js, "tipoDi"),
+        _fn(js, "progressione"), _fn(js, "setPath"), _fn(js, "leggiPath"),
+        _fn(js, "scalaTempi"), _fn(js, "inSecondi"), _fn(js, "tempiFrazione"),
+        _fn(js, "labDoc"), coda,
+    ]))
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+_TEMPI = """
+const st = labDoc().streams[0];
+console.log(JSON.stringify([st.time_mode || null, st.density, st.pan,
+  st.grain.envelope.curve, st.voices.pitch.progression,
+  st.volume_range || null, tempiFrazione(st).density]));
+"""
+
+
+@node
+def test_in_normalized_i_tempi_restano_frazioni(tmp_path):
+    tm, dens, pan, curve, prog, _vr, back = _lab_tempi(
+        "{time_mode: 'normalized', grain: {}}", _TEMPI, tmp_path)
+    assert tm == "normalized"
+    assert dens == [[0, 10, "step"], [0.5, 80], [1, 20]]
+    assert pan == 0                                  # scalare: niente tempi
+    assert [p[0] for p in curve] == [0, 0.5, 1]
+    assert [p[0] for p in prog] == [0, 0.5]
+    assert back == dens
+
+
+@node
+def test_senza_normalized_i_tempi_vanno_in_secondi(tmp_path):
+    """Senza `time_mode: normalized` l'engine legge secondi: la rampa scritta
+    in frazioni si schiacciava nel primo secondo e poi restava ferma. Gli
+    inviluppi ereditati dal `base:` sono gia' in secondi e non si toccano;
+    riaprendo, i tempi tornano frazioni."""
+    tm, dens, _pan, curve, prog, vr, back = _lab_tempi(
+        "{grain: {}, volume_range: [[0, 0], [10, 3]]}", _TEMPI, tmp_path)
+    assert tm is None
+    assert dens == [[0, 10, "step"], [15, 80], [30, 20]]
+    assert [p[0] for p in curve] == [0, 15, 30]
+    assert [p[0] for p in prog] == [0, 15]
+    assert vr == [[0, 0], [10, 3]]                   # del base:, gia' secondi
+    assert back == [[0, 10, "step"], [0.5, 80], [1, 20]]

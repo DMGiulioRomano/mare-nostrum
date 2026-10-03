@@ -1661,6 +1661,42 @@ function vociCarica(st) {
   vociVis();
 }
 
+// I tempi dei breakpoint sono frazioni dello stream (la riga `tempo (0-1)`),
+// ma l'engine li legge cosi' solo con `time_mode: normalized`: senza, sono
+// secondi, e una rampa scritta in frazioni si schiacciava nel primo secondo.
+// Il documento parte dal `base:` dello studio, ed e' lui a decidere: i tempi
+// si scrivono nella sua convenzione, cosi' anche gli inviluppi che il
+// documento eredita dal base (gia' nella sua) restano giusti. Vale per tutto
+// cio' che sta sui breakpoint — numerici, voci, loop, `curve` della finestra,
+// progressione: l'engine legge tutti con lo stesso `time_mode`.
+function scalaTempi(v, f) {
+  if (!Array.isArray(v)) return v;
+  return v.map(p => Array.isArray(p) && typeof p[0] === "number"
+    ? [f(p[0])].concat(p.slice(1)) : p);
+}
+
+// Quanto vale 1 sull'asse dei tempi del documento: 1 se normalized, la
+// durata se no. Una durata che non si sa lascia i tempi come sono.
+function inSecondi(st, dur) {
+  return st.time_mode === "normalized" ? 1 : (Number(dur) || 1);
+}
+
+// L'inverso, riaprendo: una copia dello stream con i tempi in frazioni, che
+// e' quello che il resto della pagina sa leggere.
+function tempiFrazione(st, dur = st.duration) {
+  const k = inSecondi(st, dur);
+  if (k === 1) return st;
+  const out = JSON.parse(JSON.stringify(st));
+  const f = t => +(t / k).toFixed(6);
+  for (const p of AUT) {
+    const v = leggiPath(out, p.path);
+    if (p.path === EP) { if (v && Array.isArray(v.curve)) v.curve = scalaTempi(v.curve, f); }
+    else if (Array.isArray(v)) setPath(out, p.path, scalaTempi(v, f));
+  }
+  out.time_mode = "normalized";
+  return out;
+}
+
 function labDoc() {
   const dur = durata();
   // stream_id/onset/duration in testa, come nei documenti scritti a mano.
@@ -1668,6 +1704,8 @@ function labDoc() {
                            JSON.parse(JSON.stringify(L.base)));
   st.onset = 0;
   st.duration = dur;
+  const k = inSecondi(st, dur);
+  const tempo = k === 1 ? (t => t) : (t => +(t * k).toFixed(6));
   for (const p of CAT) {
     const raw = document.getElementById("P:" + p.path).value;
     // I fissi sono quasi tutti nomi; i pochi numerici — max_partial, le
@@ -1676,13 +1714,17 @@ function labDoc() {
   }
   for (const p of NUM) {
     const v = serie(p.path);
-    if (v !== null) setPath(st, p.path, v);
+    if (v !== null) setPath(st, p.path, scalaTempi(v, tempo));
   }
   if (ENVP) {
     const v = serieEnv();
+    if (v && typeof v === "object") v.curve = scalaTempi(v.curve, tempo);
     if (v !== null) setPath(st, EP, v);
   }
   vociDoc(st);
+  const vp = leggiPath(st, "voices.pitch");
+  if (vp && vp.strategy === "chord_progression")
+    vp.progression = scalaTempi(vp.progression, tempo);
   scriviLoop(st);
   return {duration: dur, bpm: 120, streams: [st]};
 }
@@ -2213,7 +2255,8 @@ function carica(doc, path) {
     document.getElementById("labInfo").textContent = "non e' un documento con stream.";
     return;
   }
-  const st = doc.streams[0];
+  const st = tempiFrazione(doc.streams[0],
+                           doc.streams[0].duration || doc.duration || DUR);
   const fissiLoop = leggiLoop(st);
   const ts = new Set([0]);
   for (const p of NUM) {
