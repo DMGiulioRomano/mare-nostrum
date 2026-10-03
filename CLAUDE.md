@@ -120,6 +120,36 @@ una rampa ripartirebbe piu' tardi e il file suonerebbe diverso da quello
 aperto. Round-trip verificato. Un preset che non cambiava nulla rispetto al
 precedente non torna: non cambiava il suono.
 
+**Aperto e risalvato, e' lo stesso stream** (#3). Il laboratorio non
+ricostruisce piu' lo stream dal `base:` dello studio: parte da quello del
+documento aperto (`APERTO`) e ci scrive sopra **solo cio' che conosce e che e'
+stato toccato**. "Toccato" e' una differenza fra due scritture dello stesso
+stream: `labView()` e' lo stream come lo scriverebbe il laboratorio per intero,
+`VISTA0` e' quella scrittura presa appena aperto il file, e `labDoc()` mette
+sullo stream aperto le sole chiavi in cui la `labView()` di adesso differisce
+da `VISTA0` (`toccati`). Il confronto scende nei blocchi (`grain`, `pointer`,
+`voices.pitch`...) ma non nei valori: un inviluppo cambia o resta tutto
+intero. Cosi' restano com'erano le chiavi che il laboratorio non ha
+(`grain.read_direction`, che in `mare-nostrum.yml` hanno 8 stream su 10),
+`stream_id` e `onset`, e i parametri che il documento lascia al default
+dell'engine anche se il laboratorio ha un campo per loro. Il loop e' un
+gruppo (`GRUPPO_LOOP`): se una delle sue chiavi cambia, si scrivono tutte come
+`scriviLoop` le vuole. `APERTO` e `VISTA0` stanno nella storia dell'undo e
+nella bozza, accanto ai breakpoint. Il **foglio bianco** (`nuovo`, o la
+pagina appena aperta) non ha uno stream aperto: nasce da `DEFAULTS` e `base:`
+e il laboratorio lo scrive per intero, come prima.
+
+L'**anteprima** sotto i breakpoint legge il documento (`labDoc`), non i
+breakpoint: un inviluppo non toccato vi compare com'e' scritto.
+
+**Si salva col piazzamento, si ascolta senza.** `onset`, `mute` e `solo` di uno
+stream aperto dal brano restano nel file — sono dello stream. Ma il render del
+laboratorio e' l'ascolto dello stream da solo: `labPost` manda anche un
+documento `ascolto` con `onset: 0` e senza `mute`/`solo` (`perAscolto`), e il
+server rende quello (scritto in `logs/<nome>.ascolto.yml`) accanto allo YAML
+salvato. Senza, uno stream con onset 43 s partirebbe dopo 43 s di silenzio e
+uno con `mute` non suonerebbe affatto.
+
 Il lavoro non salvato sopravvive a un refresh (localStorage, per studio): e'
 una rete di sicurezza, non un salvataggio. La verita' e' il file.
 

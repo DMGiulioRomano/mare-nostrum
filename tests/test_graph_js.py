@@ -280,23 +280,17 @@ def test_riaprendo_ogni_punto_ritrova_il_suo_tipo(tmp_path):
 @node
 def test_l_anteprima_mostra_anche_il_tipo(tmp_path):
     """Due inviluppi che suonano diverso non devono leggersi identici."""
-    js = _script()
-    frag = (js[js.index("function tipoDi"):js.index("function bpAdd")]
-            + js[js.index("function serie"):js.index("function labDoc")]
-            + js[js.index("function preview"):js.index("// --- il file")])
-    p = tmp_path / "p.js"
-    p.write_text(
-        "const NUM = [{path:'a', kind:'num'}, {path:'b', kind:'num'}];\n"
-        "const AUT = NUM;\n"
-        "const ENVP = null, EP = 'grain.envelope', LOOP = null;\n"
-        "let bps = [{t:0, vals:{a:1, b:1}, ints:{a:'cubic', b:'linear'}},"
-        "           {t:1, vals:{a:2, b:2}, ints:{a:'cubic', b:'linear'}}];\n"
-        + frag + "console.log(preview());")
-    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
-    assert out.returncode == 0, out.stderr
-    righe = out.stdout.strip().splitlines()
-    assert righe[0] == "a: [[0.000, 1, cubic], [1.000, 2]]"
-    assert righe[1] == "b: [[0.000, 1], [1.000, 2]]"
+    from test_lab_documento import _lab
+    righe = _lab(tmp_path, """
+bpAdd(); bpAdd();
+bps[0].vals['pitch.ratio'] = 1; bps[1].vals['pitch.ratio'] = 2;
+bps[0].ints['pitch.ratio'] = 'cubic';
+bps[0].vals['pitch.range'] = 1; bps[1].vals['pitch.range'] = 2;
+drawTl();
+console.log(JSON.stringify(preview().split('\\n')));
+""")
+    assert "pitch.ratio: [[0.000, 1, cubic], [1.000, 2]]" in righe
+    assert "pitch.range: [[0.000, 1], [1.000, 2]]" in righe
 
 
 # --- le finestre sui breakpoint -------------------------------------------
@@ -493,6 +487,7 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
         "let bps = [], curBp = -1;\n"
         "const CAT = [{path:'pointer.loop'}];\n"
         "let STORIA = [], ISTO = -1, GESTO = false;\n"
+        "let APERTO = null, VISTA0 = null;\n"
         "const SELEZIONE = new Set();\n"
         "let DURPREC = 30;\n"
         "function durata() { return 30; }\n"

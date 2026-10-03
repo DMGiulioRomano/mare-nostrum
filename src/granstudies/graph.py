@@ -14,7 +14,7 @@ from __future__ import annotations
 import html
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 
 def lab_data(raw: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -46,6 +46,39 @@ def lab_data(raw: Dict[str, Any] | None) -> Dict[str, Any]:
         if key.startswith("base.") and isinstance(node, dict) and node.get("values"):
             add(key[len("base."):], node["values"])
     return {"base": raw.get("base") or {}, "params": params}
+
+
+def lab_completo(raw: Dict[str, Any] | None, campioni: List[str],
+                 finestre: Dict[str, Any],
+                 limiti: Callable[[str], Any]) -> Dict[str, Any]:
+    """Il corredo intero, come lo vede la pagina: ``lab_data`` piu' quello
+    che lo ``study.yml`` non dice.
+
+    Sta qui, e non dentro ``cmd_graph``, perche' i test della pagina devono
+    caricarla con lo stesso corredo che riceve servita da ``make serve``:
+    una copia scritta a mano nel test diverge alla prima manopola aggiunta.
+    Le tre dipendenze dal disco e dall'engine — i file dei sample, i profili
+    delle finestre, i limiti dei parametri — arrivano da chi chiama.
+    """
+    lab = lab_data(raw)
+    lab["envelopes"] = finestre
+    noti = {p["path"] for p in lab["params"]}
+    # Il sample e' una manopola fissa come le altre categoriali, ma le sue
+    # tacche non stanno nello study.yml: sono i file della cartella dei sample.
+    if campioni and "sample" not in noti:
+        lab["params"].append({"path": "sample", "values": list(campioni), "kind": "cat"})
+    # Volume, pan e pan_range non hanno tacche: sono aggiustamenti continui e
+    # si scrivono a mano. `pan` serve anche come punto da cui partono gli
+    # offset delle voci (voice 0 sta li'), `pan_range` come dispersione del
+    # singolo grano. I limiti li sa l'engine (bounds.bounds_for), non li
+    # riscriviamo qui; dove non li conosce (pan_range) restano None.
+    for path in ("volume", "pan", "pan_range"):
+        if path in noti:
+            continue
+        lo, hi = limiti(path) or (None, None)
+        lab["params"].append({"path": path, "values": [], "kind": "num",
+                              "free": True, "min": lo, "max": hi})
+    return lab
 
 
 def build_html(study: str, lab: Dict[str, Any] | None = None) -> str:
