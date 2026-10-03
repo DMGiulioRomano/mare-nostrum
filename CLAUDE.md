@@ -315,6 +315,28 @@ finire, tranne durante un gesto (`GESTO`): un trascinamento e' un passo solo,
 non cento. Dentro un campo di testo `cmd+Z` resta l'undo del testo. Aprire un
 file o fare `nuovo` azzera la storia.
 
+**I tempi sul documento seguono il suo `time_mode`.** Nella pagina i tempi
+dei breakpoint sono frazioni dello stream, ma l'engine li legge cosi' solo con
+`time_mode: normalized`; senza, sono secondi. Decide lo stream: quello
+aperto (#3), o il `base:` dello studio sul foglio bianco. Con `normalized` i
+tempi escono frazioni, altrimenti `labView` li scrive in secondi
+(`scalaTempi`, `inSecondi`), e riaprendo `carica` legge da una copia dello
+stream coi tempi in frazioni (`tempiFrazione`) — lo stream aperto (`APERTO`)
+resta com'e' scritto, e un inviluppo non toccato esce nei suoi secondi di
+prima. Cosi' gli inviluppi che lo stream ha gia' restano nella loro
+convenzione: forzare `time_mode: normalized` sarebbe stato piu' semplice, ma
+li avrebbe riletti in frazioni. Vale per tutto cio' che sta sui breakpoint:
+numerici, voci, loop, la `curve` di `grain.envelope`, la progressione, e i
+punti di un `{type, points}` (#4). Prima la pagina contava sul
+`time_mode: normalized` del `base:`, che oggi tutti gli studi dichiarano: su
+uno studio senza, una rampa di 30 s si schiacciava nel primo secondo, e il
+render non diceva niente (#9). Riportato da
+DMGiulioRomano/granulation-studies@93f201c, verificato in
+`tests/test_graph_js.py` (foglio bianco) e in `tests/test_lab_documento.py`
+(uno stream aperto in secondi, col suo `{type: cubic}`). Un `time_unit`
+dentro un `{type, points}`, che per l'engine prevale sul `time_mode` dello
+stream, non e' gestito: si conserva se non lo si tocca.
+
 **Il tempo di un breakpoint si scrive.** La riga `tempo (0-1)` in cima ai
 parametri mostra la x normalizzata del punto selezionato e la accetta digitata:
 vale subito, come il trascinamento, e riordina i punti (non passa da `salva

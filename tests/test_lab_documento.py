@@ -652,3 +652,73 @@ console.log(JSON.stringify(labDoc()));
     # niente e `serie` lo lascia fuori, come per ogni inviluppo.
     punti = {p[0]: p[1] for p in ff["points"]}
     assert punti[0.4] == punti[0.6] == 2 and 0.5 not in punti
+
+
+# --- #9 sopra #3 e #4: uno stream aperto coi tempi in secondi -----------------
+# Senza `time_mode: normalized` l'engine legge i tempi in secondi. Il
+# laboratorio li porta a frazioni per leggerli (`tempiFrazione`) e li riscrive
+# in secondi (`scalaTempi`) — anche dentro un `{type, points}`, che #4 legge e
+# che la sola #9 lasciava com'era, cioe' in secondi letti come frazioni.
+
+DUR_S = 100.0
+
+
+def _in_secondi(st):
+    """stream4 com'e' scritto senza `time_mode`: gli inviluppi in secondi."""
+    st = json.loads(json.dumps(st))
+    st.pop("time_mode", None)
+    st["duration"] = DUR_S
+
+    def sec(v):
+        if isinstance(v, dict):
+            return dict(v, points=sec(v["points"]))
+        return [[round(p[0] * DUR_S, 6)] + p[1:] for p in v]
+
+    st["fill_factor"] = sec(st["fill_factor"])
+    st["grain"]["duration"] = sec(st["grain"]["duration"])
+    return st
+
+
+@node
+def test_in_secondi_aperto_e_risalvato_e_lo_stesso_stream(tmp_path):
+    st = _in_secondi(_stream("stream4"))
+    got = _lab(tmp_path, _apri(st) + "console.log(JSON.stringify({ts: bps.map(b => b.t), "
+                                     "doc: labDoc()}));\n")
+    assert got["doc"]["streams"][0] == st
+    assert all(0 <= t <= 1 for t in got["ts"]) and 0.0926 in got["ts"]
+
+
+@node
+@engine
+def test_in_secondi_ogni_breakpoint_vale_quanto_per_il_motore(tmp_path):
+    Envelope = _motore(tmp_path)
+    st = _in_secondi(_stream("stream4"))
+    got = _lab(tmp_path, _apri(st) + "console.log(JSON.stringify(bps));\n")
+    for path in ("fill_factor", "grain.duration"):
+        env = Envelope(_leggi(st, path))
+        for b in got:
+            assert _vicini(b["vals"][path], env.evaluate(b["t"] * DUR_S)), (path, b["t"])
+
+
+@node
+@engine
+def test_in_secondi_un_type_points_toccato_si_scrive_in_secondi(tmp_path):
+    """Toccato resta `{type: cubic}`, coi tempi in secondi, e l'engine vale su
+    ogni breakpoint quanto il laboratorio mostra. `grain.duration`, non
+    toccato, resta com'era."""
+    Envelope = _motore(tmp_path)
+    st = _in_secondi(_stream("stream4"))
+    got = _lab(tmp_path, _apri(st) + """
+const i = bps.findIndex(b => Math.abs(b.t - 0.1631) < 1e-9);
+bpLoad(i); document.getElementById('P:fill_factor').value = '0.9'; bpSave();
+console.log(JSON.stringify({doc: labDoc(), bps}));
+""")
+    out = got["doc"]["streams"][0]
+    ff = out["fill_factor"]
+    assert isinstance(ff, dict) and ff["type"] == "cubic"
+    assert [16.31, 0.9] in ff["points"] and ff["points"][-1][0] == DUR_S
+    env = Envelope(ff)
+    for b in got["bps"]:
+        assert _vicini(env.evaluate(b["t"] * DUR_S), b["vals"]["fill_factor"]), b["t"]
+    assert out["grain"]["duration"] == st["grain"]["duration"]
+    assert "time_mode" not in out

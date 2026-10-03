@@ -1693,6 +1693,46 @@ function vociCarica(st) {
   vociVis();
 }
 
+// I tempi dei breakpoint sono frazioni dello stream (la riga `tempo (0-1)`),
+// ma l'engine li legge cosi' solo con `time_mode: normalized`: senza, sono
+// secondi, e una rampa scritta in frazioni si schiacciava nel primo secondo.
+// Decide lo stream — quello aperto (#3), o il `base:` dello studio sul foglio
+// bianco: i tempi si scrivono nella sua convenzione, cosi' anche gli
+// inviluppi che lo stream ha gia' (nella sua) restano giusti. Vale per tutto
+// cio' che sta sui breakpoint — numerici, voci, loop, `curve` della finestra,
+// progressione: l'engine legge tutti con lo stesso `time_mode`. Un
+// `{type, points}` (#4) si scala nei suoi punti.
+function scalaTempi(v, f) {
+  if (v && typeof v === "object" && !Array.isArray(v) && Array.isArray(v.points))
+    return Object.assign({}, v, {points: scalaTempi(v.points, f)});
+  if (!Array.isArray(v)) return v;
+  return v.map(p => Array.isArray(p) && typeof p[0] === "number"
+    ? [f(p[0])].concat(p.slice(1)) : p);
+}
+
+// Quanto vale 1 sull'asse dei tempi del documento: 1 se normalized, la
+// durata se no. Una durata che non si sa lascia i tempi come sono.
+function inSecondi(st, dur) {
+  return st.time_mode === "normalized" ? 1 : (Number(dur) || 1);
+}
+
+// L'inverso, riaprendo: una copia dello stream con i tempi in frazioni, che
+// e' quello che il resto della pagina sa leggere.
+function tempiFrazione(st, dur = st.duration) {
+  const k = inSecondi(st, dur);
+  if (k === 1) return st;
+  const out = JSON.parse(JSON.stringify(st));
+  const f = t => +(t / k).toFixed(6);
+  for (const p of AUT) {
+    const v = leggiPath(out, p.path);
+    if (p.path === EP) { if (v && Array.isArray(v.curve)) v.curve = scalaTempi(v.curve, f); }
+    else if (Array.isArray(v) || (v && Array.isArray(v.points)))
+      setPath(out, p.path, scalaTempi(v, f));
+  }
+  out.time_mode = "normalized";
+  return out;
+}
+
 // Lo stream come lo scrive il laboratorio: tutto cio' che conosce, preso dallo
 // schermo e dai breakpoint, sopra lo stream aperto — o sopra `base:`, sul
 // foglio bianco. E' la scrittura per intero; `labDoc` ne tiene solo le
@@ -1704,6 +1744,8 @@ function labView() {
                     : Object.assign({stream_id: "lab", onset: 0, duration: dur}, clona(L.base));
   if (!APERTO) st.onset = 0;
   st.duration = dur;
+  const k = inSecondi(st, dur);
+  const tempo = k === 1 ? (t => t) : (t => +(t * k).toFixed(6));
   for (const p of CAT) {
     const raw = document.getElementById("P:" + p.path).value;
     // I fissi sono quasi tutti nomi; i pochi numerici — max_partial, le
@@ -1712,13 +1754,17 @@ function labView() {
   }
   for (const p of NUM) {
     const v = serie(p.path);
-    if (v !== null) setPath(st, p.path, forma(leggiPath(APERTO, p.path), v));
+    if (v !== null) setPath(st, p.path, scalaTempi(forma(leggiPath(APERTO, p.path), v), tempo));
   }
   if (ENVP) {
     const v = serieEnv();
+    if (v && typeof v === "object") v.curve = scalaTempi(v.curve, tempo);
     if (v !== null) setPath(st, EP, v);
   }
   vociDoc(st);
+  const vp = leggiPath(st, "voices.pitch");
+  if (vp && vp.strategy === "chord_progression")
+    vp.progression = scalaTempi(vp.progression, tempo);
   scriviLoop(st);
   return st;
 }
@@ -2337,7 +2383,9 @@ function carica(doc, path) {
   TESTA = Object.fromEntries(Object.entries(doc).map(([k, v]) =>
     [k, k === "streams" ? null : clona(v)]));
   VISTA0 = null;
-  const st = clona(APERTO);
+  // APERTO resta com'e' scritto; si legge da una copia coi tempi in frazioni
+  // (#9), che e' quello che il resto della pagina sa leggere.
+  const st = tempiFrazione(clona(APERTO), APERTO.duration || doc.duration || DUR);
   const fissiLoop = leggiLoop(st);
   const ts = new Set([0]);
   // `curva` legge la lista e il `{type, points}`; una forma che non conosce
