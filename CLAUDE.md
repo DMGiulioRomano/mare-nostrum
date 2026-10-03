@@ -138,9 +138,15 @@ gruppo (`GRUPPO_LOOP`): se una delle sue chiavi cambia, si scrivono tutte come
 `seed`, `bpm`, la `duration` del tutto, le chiavi di PGE-ui come `ui_tracks`
 restano com'erano, e del laboratorio c'e' solo la durata, che si scrive in
 testa solo se `durata (s)` e' stata toccata. Un parametro che il documento non
-dichiara si mostra al valore da cui parte il foglio bianco (`iniziale`), non a
-quello rimasto a schermo dal documento aperto prima; nel file non entra finche'
-non lo si tocca. `APERTO`, `VISTA0` e `TESTA` stanno nella storia dell'undo e
+dichiara si mostra al valore che l'engine usa al suo posto (`assente`: il
+default dello schema dei parametri, che `graph` passa alla pagina con
+`engine_bridge.parameter_path_defaults`), non a quello rimasto a schermo dal
+documento aperto prima ne' ai `DEFAULTS` del foglio bianco — che per
+`grain.duration` e `grain.envelope` sono 0.064 e gaussian contro 0.05 e
+hanning: lo schermo direbbe un suono che l'ascolto non ha, e scegliere a mano
+quel valore non scriverebbe niente. Dove l'engine non ha un default si ricade
+su `iniziale`. Nel file non entra finche' non lo si tocca. `APERTO`, `VISTA0`
+e `TESTA` stanno nella storia dell'undo e
 nella bozza, accanto ai breakpoint. Il **foglio bianco** (`nuovo`, o la
 pagina appena aperta) non ha uno stream aperto: nasce da `DEFAULTS` e `base:`
 e il laboratorio lo scrive per intero, come prima.

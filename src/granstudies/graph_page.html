@@ -477,6 +477,16 @@ function iniziale(p) {
   return p.values.length ? p.values[0] : (p.free ? 0 : "");
 }
 
+// Un parametro che il documento aperto non dichiara vale quello che l'engine
+// usa al suo posto (`engine`, dal suo schema dei parametri): e' cio' che
+// suona, e quindi cio' che lo schermo deve dire. Dove l'engine non ne ha uno
+// si ricade sul foglio bianco. Mostrare li' `iniziale` (0.064 e gaussian,
+// contro 0.05 e hanning) faceva mentire lo schermo in silenzio, e scegliere a
+// mano quel valore non scriveva niente: per `labDoc` non era toccato.
+function assente(p) {
+  return p.engine !== undefined && p.engine !== null ? p.engine : iniziale(p);
+}
+
 let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
 
 // Il documento aperto (#3). Riaprendo uno stream e risalvandolo deve uscire
@@ -2351,18 +2361,17 @@ function carica(doc, path) {
                     : tipoA(leggiPath(st, p.path), t)])),
     vals: Object.fromEntries(AUT.map(p => {
       // Il documento puo' non avere affatto la chiave (un parametro lasciato
-      // al default dell'engine): li' si mostra il valore da cui parte il
-      // foglio bianco (`iniziale`) — non NaN, e non quello rimasto a schermo
-      // dal documento aperto prima. Nel file non entra finche' non lo si
-      // tocca (#3).
-      if (p.path === EP) return [EP, (espec ? envA(espec, t) : null) || iniziale(p)];
+      // al default dell'engine): li' si mostra quel default (`assente`) —
+      // non NaN, e non quello rimasto a schermo dal documento aperto prima.
+      // Nel file non entra finche' non lo si tocca (#3).
+      if (p.path === EP) return [EP, (espec ? envA(espec, t) : null) || assente(p)];
       if (p === PROG) return [p.path, (Array.isArray(prog) && (passoA(prog, t) || [])[1])
-                                      || iniziale(p)];
+                                      || assente(p)];
       const v = leggiPath(st, p.path);
-      return [p.path, Number(v === undefined || v === null ? iniziale(p) : valoreA(v, t))];
+      return [p.path, Number(v === undefined || v === null ? assente(p) : valoreA(v, t))];
     })),
   }));
-  for (const p of CAT) setSel(p.path, leggiPath(st, p.path) ?? iniziale(p));
+  for (const p of CAT) setSel(p.path, leggiPath(st, p.path) ?? assente(p));
   vociCarica(st);
   for (const [path, v] of Object.entries(fissiLoop)) setSel(path, v);
   SELEZIONE.clear();        // i breakpoint di prima non esistono piu'

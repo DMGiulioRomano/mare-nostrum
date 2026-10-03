@@ -50,15 +50,17 @@ def lab_data(raw: Dict[str, Any] | None) -> Dict[str, Any]:
 
 def lab_completo(raw: Dict[str, Any] | None, campioni: List[str],
                  finestre: Dict[str, Any],
-                 limiti: Callable[[str], Any]) -> Dict[str, Any]:
+                 limiti: Callable[[str], Any],
+                 predefiniti: Dict[str, Any] | None = None) -> Dict[str, Any]:
     """Il corredo intero, come lo vede la pagina: ``lab_data`` piu' quello
     che lo ``study.yml`` non dice.
 
     Sta qui, e non dentro ``cmd_graph``, perche' i test della pagina devono
     caricarla con lo stesso corredo che riceve servita da ``make serve``:
     una copia scritta a mano nel test diverge alla prima manopola aggiunta.
-    Le tre dipendenze dal disco e dall'engine — i file dei sample, i profili
-    delle finestre, i limiti dei parametri — arrivano da chi chiama.
+    Le dipendenze dal disco e dall'engine — i file dei sample, i profili
+    delle finestre, i limiti dei parametri, i default dell'engine per path
+    (``engine_bridge.parameter_path_defaults``) — arrivano da chi chiama.
     """
     lab = lab_data(raw)
     lab["envelopes"] = finestre
@@ -78,6 +80,13 @@ def lab_completo(raw: Dict[str, Any] | None, campioni: List[str],
         lo, hi = limiti(path) or (None, None)
         lab["params"].append({"path": path, "values": [], "kind": "num",
                               "free": True, "min": lo, "max": hi})
+    # Cosa suona un parametro che il documento aperto non dichiara: il default
+    # dell'engine, che la pagina mostra li' (`assente`). Il foglio bianco parte
+    # invece dai suoi DEFAULTS, che per `grain.duration` e `grain.envelope`
+    # sono altri valori.
+    for p in lab["params"]:
+        if p["path"] in (predefiniti or {}):
+            p["engine"] = predefiniti[p["path"]]
     return lab
 
 

@@ -123,6 +123,18 @@ def test_parameter_bounds_static_registry():
     assert pb["density"].max_val is None  # tetto tolto nell'engine (#272)
 
 
+def test_i_default_per_path_sono_quelli_dell_engine_sui_path_dello_stream():
+    """Sugli stessi path di `parameter_schema_paths` (il pointer col suo
+    prefisso), senza i segnaposto e senza i default `None`, che non sono un
+    valore: `density` e il loop, se mancano, non valgono niente."""
+    d = engine_bridge.parameter_path_defaults()
+    assert set(d) <= set(engine_bridge.parameter_schema_paths())
+    assert d["pointer.speed_ratio"] == engine_bridge.parameter_defaults()["speed_ratio"]
+    assert "speed_ratio" not in d and "pointer.loop_start" not in d and "density" not in d
+    assert None not in d.values()
+    assert not any(p.startswith("_") or "._" in p for p in d)
+
+
 def test_parameter_bounds_dynamic_output_sr():
     """Con output_sr: min di grain_duration = 1 campione (1/output_sr),
     come calcolato dall'engine per ogni render reale (issue #17)."""

@@ -638,6 +638,7 @@ def cmd_graph(study: str) -> int:
     esterni compresi, non quelle di una combinazione sola.
     """
     from . import bounds
+    from .engine_bridge import parameter_path_defaults
     from .graph import campioni, lab_completo, write_graph
 
     gen_root = os.path.join(REPO_ROOT, "generated", study)
@@ -649,7 +650,7 @@ def cmd_graph(study: str) -> int:
     with open(os.path.join(study_dir(study), "study.yml")) as fh:
         raw = yaml.safe_load(fh)
     lab = lab_completo(raw, campioni(samples_dir(_load_spec(study).samples_dir)),
-                       _finestre(), bounds.bounds_for)
+                       _finestre(), bounds.bounds_for, parameter_path_defaults())
     os.makedirs(gen_root, exist_ok=True)
     n = write_graph(study, out, lab)
     if not n:

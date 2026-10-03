@@ -22,19 +22,32 @@ from granstudies.graph import build_html, lab_completo
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 HARNESS = os.path.join(ROOT, "tests", "lab_dom.js")
+ENGINE_SRC = os.path.join(ROOT, "engine", "src")
 
 node = pytest.mark.skipif(shutil.which("node") is None, reason="serve node")
+engine = pytest.mark.skipif(not os.path.isdir(os.path.join(ENGINE_SRC, "pge")),
+                            reason="serve il submodule engine")
 
 # Due dei sample del brano, non tutti: uno stream che usa un sample fuori
 # dalla cartella dello studio vede il suo select vuoto, come nel browser.
 CAMPIONI = ["001-41_5-5_5.wav", "001-3_0-5_5.wav"]
 
 
+def _predefiniti():
+    """I default dell'engine per path, come li passa `cmd_graph`. Senza il
+    submodule non ce ne sono, e la pagina ricade sul foglio bianco."""
+    if not os.path.isdir(os.path.join(ENGINE_SRC, "pge")):
+        return {}
+    from granstudies.engine_bridge import parameter_path_defaults
+    return parameter_path_defaults()
+
+
 def _pagina(tmp_path, study="001-41"):
     with open(os.path.join(ROOT, "studies", study, "study.yml")) as fh:
         raw = yaml.safe_load(fh)
     p = tmp_path / "graph.html"
-    p.write_text(build_html(study, lab_completo(raw, CAMPIONI, {}, lambda _p: None)))
+    p.write_text(build_html(study, lab_completo(raw, CAMPIONI, {}, lambda _p: None,
+                                                _predefiniti())))
     return p
 
 
@@ -166,6 +179,44 @@ console.log(JSON.stringify({
 """)
     assert float(got["schermo"]) == 0 and set(got["punti"]) == {0}
     assert got["unit"] == "semitones"
+    assert got["doc"]["streams"][0] == st
+
+
+@node
+@engine
+def test_un_parametro_assente_si_mostra_al_valore_che_l_engine_suona(tmp_path):
+    """Lo stream non dichiara `grain.duration` ne' `grain.envelope`: l'engine
+    rende col suo default, e lo schermo deve dire quello, non il punto di
+    partenza del foglio bianco (`DEFAULTS`).
+
+    Altrimenti lo schermo mente in silenzio: mostra un valore che l'ascolto
+    non ha, e sceglierlo a mano non scrive niente — per `labDoc` e' "non
+    toccato" — mentre l'engine continua a rendere il suo. Il documento resta
+    senza le due chiavi finche' non le si tocca davvero.
+    """
+    from granstudies.engine_bridge import parameter_path_defaults
+    motore = parameter_path_defaults()
+    st = _stream("stream2")
+    del st["grain"]["duration"], st["grain"]["envelope"]
+    got = _lab(tmp_path, _apri(st) + """
+const vista = {
+  durate: bps.map(b => b.vals['grain.duration']),
+  finestre: bps.map(b => b.vals['grain.envelope']),
+  foglio: [DEFAULTS['grain.duration'], DEFAULTS['grain.envelope']]};
+// Lo stesso valore, scelto a mano su ogni breakpoint: non e' una modifica.
+for (let i = 0; i < bps.length; i++) {
+  bpLoad(i);
+  document.getElementById('P:grain.duration').value = String(vista.durate[0]);
+  bpSave();
+}
+vista.doc = labDoc();
+console.log(JSON.stringify(vista));
+""")
+    attesi = [motore["grain.duration"], motore["grain.envelope"]]
+    # Il caso discrimina solo finche' il foglio bianco parte da altro.
+    assert got["foglio"] != attesi
+    assert set(got["durate"]) == {attesi[0]}
+    assert set(got["finestre"]) == {attesi[1]}
     assert got["doc"]["streams"][0] == st
 
 
@@ -313,11 +364,6 @@ labRender().then(() => console.log(JSON.stringify(POST[0])));
 # la scrive PGE-ui appena quella di una curva di soli breakpoint non e'
 # lineare, e in `mare-nostrum.yml` la portano grain.duration (stream6,
 # stream8), fill_factor (stream4) e voices.pitch.pitch_range (stream10, step).
-
-ENGINE_SRC = os.path.join(ROOT, "engine", "src")
-engine = pytest.mark.skipif(not os.path.isdir(os.path.join(ENGINE_SRC, "pge")),
-                            reason="serve il submodule engine")
-
 
 def _motore(tmp_path):
     from granstudies import engine_bridge
