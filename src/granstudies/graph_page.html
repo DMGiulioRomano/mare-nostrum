@@ -478,6 +478,21 @@ function iniziale(p) {
 }
 
 let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
+
+// Il documento aperto (#3). Riaprendo uno stream e risalvandolo deve uscire
+// lo stesso stream: si parte da lui e si sovrascrive solo cio' che il
+// laboratorio conosce E che e' stato toccato. Tutto il resto — chiavi che il
+// laboratorio non ha (`grain.read_direction`), parametri che il documento
+// lascia al default dell'engine, `stream_id`, `onset` — resta com'era.
+//   APERTO: lo stream cosi' com'e' arrivato. null = foglio bianco, che invece
+//           nasce da `base:` e DEFAULTS e il laboratorio scrive per intero.
+//   VISTA0: come il laboratorio lo scriveva appena aperto (`labView`), prima
+//           di ogni modifica. "Toccato" vuol dire diverso da qui.
+//   TESTA:  il documento fuori dallo stream — `seed`, `bpm`, la `duration` del
+//           tutto, le chiavi di PGE-ui (`ui_tracks`) — con `streams` al suo
+//           posto ma vuoto. Si riscrive com'e', salvo la durata se toccata.
+// Stanno nella storia dell'undo e nella bozza, accanto ai breakpoint.
+let APERTO = null, VISTA0 = null, TESTA = null;
 // Il loop del pointer sta nei campi `pointer.*` (vedi PUNT). Si parte SEMPRE
 // senza (`pointer.loop: off`): il pointer percorre il file intero. Il loop di
 // `base:` e' una scelta dello sweep, non il punto di partenza di un ascolto.
@@ -497,7 +512,8 @@ function istantanea() {
   // punti: riportare indietro i breakpoint senza di lei lascerebbe i tempi
   // in secondi diversi da quelli che l'undo doveva ripristinare.
   return JSON.stringify({bps, cur: curBp, dur: durata(), vals: snapshot(),
-                         ints: snapInterp(), cat: snapFissi()});
+                         ints: snapInterp(), cat: snapFissi(),
+                         ap: APERTO, v0: VISTA0, te: TESTA});
 }
 
 function storia() {
@@ -523,6 +539,7 @@ function vaiStoria(d) {
   ISTO = i;
   const s = JSON.parse(STORIA[i]);
   bps = s.bps; SELEZIONE.clear();
+  if (s.ap !== undefined) { APERTO = s.ap; VISTA0 = s.v0; TESTA = s.te; }
   for (const [path, v] of Object.entries(s.cat || {})) setSel(path, v);
   if (s.dur != null) { document.getElementById("labDur").value = s.dur; DURPREC = s.dur; }
   curBp = Math.min(s.cur, bps.length - 1);
@@ -1107,8 +1124,9 @@ let DURPREC = 0;              // la durata da cui si riscala
 // Il punto in cui il segmento a->b taglia il tempo t. Serve accorciando:
 // senza, l'ultimo tratto dell'inviluppo sparirebbe con il punto che lo
 // chiudeva e la coda resterebbe piatta sull'ultimo valore rimasto.
-// Come `valoreA`, interpola in linea anche dove il tipo e' `cubic`: e'
-// l'approssimazione che la pagina fa gia' ovunque legga un inviluppo.
+// Il valore e' quello della curva dei breakpoint letta come la legge l'engine
+// (`valoreA`): `step` tiene, `cubic` e' la cubica — che dipende anche dai
+// punti oltre a e b, per questo si passa la curva intera e non la coppia.
 function bpFra(a, b, t) {
   const k = (t - a.t) / (b.t - a.t);
   const vals = {}, ints = {};
@@ -1116,8 +1134,12 @@ function bpFra(a, b, t) {
     const tipo = tipoDi(a, p.path);
     ints[p.path] = tipo;
     const x = a.vals[p.path], y = b.vals[p.path];
-    vals[p.path] = (tipo !== "step" && typeof x === "number" && typeof y === "number")
-                 ? x + (y - x) * k : x;
+    if (typeof x !== "number" || typeof y !== "number") { vals[p.path] = x; continue; }
+    const c = bps.map(q => [q.t, q.vals[p.path], tipoDi(q, p.path)]);
+    // Un valore che non e' un numero altrove guasterebbe le tangenti: li' si
+    // resta sul segmento, come si faceva prima.
+    vals[p.path] = c.every(q => Number.isFinite(q[1])) ? valoreA(c, t)
+                 : tipo === "step" ? x : x + (y - x) * k;
   }
   return {t, vals, ints};
 }
@@ -1664,12 +1686,15 @@ function vociCarica(st) {
 // I tempi dei breakpoint sono frazioni dello stream (la riga `tempo (0-1)`),
 // ma l'engine li legge cosi' solo con `time_mode: normalized`: senza, sono
 // secondi, e una rampa scritta in frazioni si schiacciava nel primo secondo.
-// Il documento parte dal `base:` dello studio, ed e' lui a decidere: i tempi
-// si scrivono nella sua convenzione, cosi' anche gli inviluppi che il
-// documento eredita dal base (gia' nella sua) restano giusti. Vale per tutto
+// Decide lo stream — quello aperto (#3), o il `base:` dello studio sul foglio
+// bianco: i tempi si scrivono nella sua convenzione, cosi' anche gli
+// inviluppi che lo stream ha gia' (nella sua) restano giusti. Vale per tutto
 // cio' che sta sui breakpoint — numerici, voci, loop, `curve` della finestra,
-// progressione: l'engine legge tutti con lo stesso `time_mode`.
+// progressione: l'engine legge tutti con lo stesso `time_mode`. Un
+// `{type, points}` (#4) si scala nei suoi punti.
 function scalaTempi(v, f) {
+  if (v && typeof v === "object" && !Array.isArray(v) && Array.isArray(v.points))
+    return Object.assign({}, v, {points: scalaTempi(v.points, f)});
   if (!Array.isArray(v)) return v;
   return v.map(p => Array.isArray(p) && typeof p[0] === "number"
     ? [f(p[0])].concat(p.slice(1)) : p);
@@ -1691,18 +1716,23 @@ function tempiFrazione(st, dur = st.duration) {
   for (const p of AUT) {
     const v = leggiPath(out, p.path);
     if (p.path === EP) { if (v && Array.isArray(v.curve)) v.curve = scalaTempi(v.curve, f); }
-    else if (Array.isArray(v)) setPath(out, p.path, scalaTempi(v, f));
+    else if (Array.isArray(v) || (v && Array.isArray(v.points)))
+      setPath(out, p.path, scalaTempi(v, f));
   }
   out.time_mode = "normalized";
   return out;
 }
 
-function labDoc() {
+// Lo stream come lo scrive il laboratorio: tutto cio' che conosce, preso dallo
+// schermo e dai breakpoint, sopra lo stream aperto — o sopra `base:`, sul
+// foglio bianco. E' la scrittura per intero; `labDoc` ne tiene solo le
+// differenze da VISTA0.
+function labView() {
   const dur = durata();
   // stream_id/onset/duration in testa, come nei documenti scritti a mano.
-  const st = Object.assign({stream_id: "lab", onset: 0, duration: dur},
-                           JSON.parse(JSON.stringify(L.base)));
-  st.onset = 0;
+  const st = APERTO ? clona(APERTO)
+                    : Object.assign({stream_id: "lab", onset: 0, duration: dur}, clona(L.base));
+  if (!APERTO) st.onset = 0;
   st.duration = dur;
   const k = inSecondi(st, dur);
   const tempo = k === 1 ? (t => t) : (t => +(t * k).toFixed(6));
@@ -1714,7 +1744,7 @@ function labDoc() {
   }
   for (const p of NUM) {
     const v = serie(p.path);
-    if (v !== null) setPath(st, p.path, scalaTempi(v, tempo));
+    if (v !== null) setPath(st, p.path, scalaTempi(forma(leggiPath(APERTO, p.path), v), tempo));
   }
   if (ENVP) {
     const v = serieEnv();
@@ -1726,8 +1756,72 @@ function labDoc() {
   if (vp && vp.strategy === "chord_progression")
     vp.progression = scalaTempi(vp.progression, tempo);
   scriviLoop(st);
-  return {duration: dur, bpm: 120, streams: [st]};
+  return st;
 }
+
+function labDoc() {
+  const vista = labView();
+  if (!APERTO || !VISTA0) return {duration: durata(), bpm: 120, streams: [vista]};
+  // La testa segue la regola dello stream: del laboratorio c'e' solo la
+  // durata (il bpm non ha un campo), e si scrive solo se e' stata toccata.
+  // Il resto — `seed`, `bpm`, chiavi di PGE-ui — resta com'era.
+  const doc = clona(TESTA || {streams: null});
+  if (!uguali(vista.duration, VISTA0.duration)) doc.duration = vista.duration;
+  doc.streams = [toccati(clona(APERTO), VISTA0, vista)];
+  return doc;
+}
+
+// Le chiavi che il loop scrive insieme (`scriviLoop`). Se una cambia, si
+// prendono tutte dalla vista nuova: accanto a un loop appena acceso, lo
+// `start: 0` del documento non e' un valore da conservare, e' la chiave che
+// `scriviLoop` toglie perche' il pointer parta da loop_start.
+const GRUPPO_LOOP = ["start", "loop_unit", "loop_start", "loop_end", "loop_dur"];
+
+// Lo stream aperto con sopra solo cio' che e' stato toccato: le differenze
+// fra la vista di quando e' stato aperto (v0) e quella di adesso (v). Una
+// chiave che la vista non cambia resta com'e' nel documento, anche se il
+// laboratorio la scriverebbe diversa — e' proprio il caso che si vuole.
+function toccati(st, v0, v) {
+  applica(st, v0, v);
+  const p0 = v0.pointer || {}, p1 = v.pointer || {};
+  if (GRUPPO_LOOP.some(k => !uguali(p0[k], p1[k]))) {
+    const p = st.pointer = st.pointer || {};
+    for (const k of GRUPPO_LOOP) if (p1[k] === undefined) delete p[k]; else p[k] = clona(p1[k]);
+  }
+  return st;
+}
+
+// Si scende nei blocchi (grain, pointer, voices.pitch...), non nei valori: un
+// inviluppo, anche nella forma {type, points}, e la finestra a stati sono un
+// valore solo, che cambia o resta tutto intero.
+function applica(dst, a, b) {
+  for (const k of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) {
+    const x = a ? a[k] : undefined, y = b ? b[k] : undefined;
+    if (blocco(x) && blocco(y)) {
+      const c = blocco(dst[k]) ? dst[k] : {};
+      const n = Object.keys(c).length;
+      applica(c, x, y);
+      if (Object.keys(c).length) dst[k] = c;
+      else if (n) delete dst[k];          // svuotato da qui: se ne va il blocco
+    } else if (!uguali(x, y)) {
+      if (y === undefined) delete dst[k]; else dst[k] = clona(y);
+    }
+  }
+}
+
+function blocco(o) {
+  return !!o && typeof o === "object" && !Array.isArray(o) && !("points" in o) && !("states" in o);
+}
+
+// Uguaglianza di contenuto: l'ordine delle chiavi non conta.
+function canonico(o) {
+  if (Array.isArray(o)) return o.map(canonico);
+  if (o && typeof o === "object")
+    return Object.fromEntries(Object.keys(o).sort().map(k => [k, canonico(o[k])]));
+  return o;
+}
+function uguali(a, b) { return JSON.stringify(canonico(a)) === JSON.stringify(canonico(b)); }
+function clona(o) { return o === undefined ? undefined : JSON.parse(JSON.stringify(o)); }
 
 function setPath(obj, path, v) {
   const parts = path.split(".");
@@ -2034,17 +2128,30 @@ function mostraLettura(t) {
 // terzo elemento compreso, altrimenti due inviluppi che suonano diverso si
 // leggono identici e la scelta dell'interpolazione sembra non aver fatto
 // niente.
+//
+// Si legge dal documento (`labDoc`), non dai breakpoint: un inviluppo che
+// nessuno ha toccato esce com'era scritto, e mostrarlo ricampionato sulla
+// griglia dei breakpoint direbbe una cosa che nello YAML non c'e'.
 function preview() {
   const punto = pt => "[" + pt[0].toFixed(3) + ", " + pt[1] +
                       (pt[2] ? ", " + pt[2] : "") + "]";
-  const righe = NUM.map(p => [p.path, serie(p.path)])
-                   .filter(([, v]) => Array.isArray(v))
-                   .map(([k, v]) => k + ": [" + v.map(punto).join(", ") + "]");
-  const e = ENVP ? serieEnv() : null;
-  if (e && typeof e === "object")
+  // Una forma che il laboratorio non scrive (compatta, gruppi) si mostra
+  // com'e', invece di farla passare per `punto`.
+  const lista = v => v.every(p => Array.isArray(p) && typeof p[0] === "number")
+    ? "[" + v.map(punto).join(", ") + "]" : JSON.stringify(v);
+  const st = labDoc().streams[0];
+  const righe = [];
+  for (const p of NUM) {
+    const v = leggiPath(st, p.path);
+    if (Array.isArray(v)) righe.push(p.path + ": " + lista(v));
+    else if (v && typeof v === "object" && Array.isArray(v.points))
+      righe.push(p.path + ": {type: " + (v.type || "linear") + "} " + lista(v.points));
+  }
+  const e = ENVP ? leggiPath(st, EP) : null;
+  if (e && typeof e === "object" && Array.isArray(e.states) && Array.isArray(e.curve))
     righe.push(EP + ":\n  states: [" +
-               e.states.map(st => "[" + st[0].toFixed(3) + ", " + st[1] + "]").join(", ") +
-               "]\n  curve: [" + e.curve.map(punto).join(", ") + "]");
+               e.states.map(s => "[" + Number(s[0]).toFixed(3) + ", " + s[1] + "]").join(", ") +
+               "]\n  curve: " + lista(e.curve));
   return righe.join("\n");
 }
 
@@ -2089,6 +2196,7 @@ function bozzaSalva() {
   try {
     localStorage.setItem(BOZZA, JSON.stringify({
       bps, file: FILE, salvato: SALVATO, sess: SESSIONE,
+      aperto: APERTO, vista0: VISTA0, testa: TESTA,
       name: document.getElementById("labName").value,
       dur: document.getElementById("labDur").value,
       cat: Object.fromEntries(CAT.map(p => [p.path, document.getElementById("P:" + p.path).value])),
@@ -2100,6 +2208,9 @@ function ripristina() {
   const b = BOZZA0;
   if (!b || !b.bps || !b.bps.length) return;
   bps = b.bps;
+  APERTO = b.aperto || null;
+  VISTA0 = b.vista0 || null;
+  TESTA = b.testa || null;
   FILE = b.file || "";
   SALVATO = b.salvato || "";
   document.getElementById("labName").value = b.name || NOME0;
@@ -2165,6 +2276,7 @@ function fNew() {
   curBp = -1;
   SELEZIONE.clear();
   setSel("pointer.loop", "off");   // il loop si disegna, non si eredita
+  APERTO = VISTA0 = TESTA = null;  // si torna a `base:`, non al documento di prima
   FILE = "";
   SALVATO = statoOra();
   document.getElementById("labName").value = NOME0;
@@ -2255,23 +2367,29 @@ function carica(doc, path) {
     document.getElementById("labInfo").textContent = "non e' un documento con stream.";
     return;
   }
-  const st = tempiFrazione(doc.streams[0],
-                           doc.streams[0].duration || doc.duration || DUR);
+  // La copia va presa prima di `leggiLoop`, che sul documento ci scrive.
+  APERTO = clona(doc.streams[0]);
+  // Gli stream non si copiano: in un brano sono dieci, e qui ne resta uno.
+  TESTA = Object.fromEntries(Object.entries(doc).map(([k, v]) =>
+    [k, k === "streams" ? null : clona(v)]));
+  VISTA0 = null;
+  // APERTO resta com'e' scritto; si legge da una copia coi tempi in frazioni
+  // (#9), che e' quello che il resto della pagina sa leggere.
+  const st = tempiFrazione(clona(APERTO), APERTO.duration || doc.duration || DUR);
   const fissiLoop = leggiLoop(st);
   const ts = new Set([0]);
-  for (const p of NUM) {
-    const v = leggiPath(st, p.path);
-    if (Array.isArray(v)) for (const [t] of v) ts.add(t);
-  }
+  // `curva` legge la lista e il `{type, points}`; una forma che non conosce
+  // non porta tempi (e resta com'e' nel documento, perche' nessuno la tocca).
+  const tempi = v => { for (const p of curva(v) || []) ts.add(p.t); };
+  for (const p of NUM) tempi(leggiPath(st, p.path));
   // I tempi della curve dell'envelope sono breakpoint come gli altri: e' la
   // stessa unione, altrimenti riaprendo un cambio di finestra sparirebbe.
   const espec = ENVP ? leggiPath(st, EP) : null;
-  if (espec && Array.isArray(espec.curve)) for (const [t] of espec.curve) ts.add(t);
+  if (espec && typeof espec === "object") tempi(espec.curve);
   // E i tempi della progressione di accordi, per la stessa ragione.
   const prog = leggiPath(st, "voices.pitch.progression");
   if (Array.isArray(prog)) for (const passo of prog)
     if (Number.isFinite(passo[0])) ts.add(passo[0]);
-  const envOra = () => ENVP ? document.getElementById("P:" + EP).value : null;
   bps = [...ts].sort((a, b) => a - b).map(t => ({
     t,
     // Il tipo del segmento in cui t cade: e' quello che decide come si arriva
@@ -2280,26 +2398,32 @@ function carica(doc, path) {
       p.path === EP ? tipoA(espec && espec.curve, t)
                     : tipoA(leggiPath(st, p.path), t)])),
     vals: Object.fromEntries(AUT.map(p => {
-      if (p.path === EP) return [EP, (espec ? envA(espec, t) : null) || envOra()];
-      if (p === PROG) return [p.path, (Array.isArray(prog) && (passoA(prog, t) || [])[1])
-                                      || document.getElementById("P:" + p.path).value];
       // Il documento puo' non avere affatto la chiave (un parametro lasciato
-      // al default dell'engine): li' vale quello che dice il select, non NaN.
+      // al default dell'engine): li' si mostra il valore da cui parte il
+      // foglio bianco (`iniziale`) — non NaN, e non quello rimasto a schermo
+      // dal documento aperto prima. Nel file non entra finche' non lo si
+      // tocca (#3).
+      if (p.path === EP) return [EP, (espec ? envA(espec, t) : null) || iniziale(p)];
+      if (p === PROG) return [p.path, (Array.isArray(prog) && (passoA(prog, t) || [])[1])
+                                      || iniziale(p)];
       const v = leggiPath(st, p.path);
-      return [p.path, v === undefined || v === null
-        ? Number(document.getElementById("P:" + p.path).value)
-        : Number(valoreA(v, t))];
+      return [p.path, Number(v === undefined || v === null ? iniziale(p) : valoreA(v, t))];
     })),
   }));
-  for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
+  for (const p of CAT) setSel(p.path, leggiPath(st, p.path) ?? iniziale(p));
   vociCarica(st);
   for (const [path, v] of Object.entries(fissiLoop)) setSel(path, v);
   SELEZIONE.clear();        // i breakpoint di prima non esistono piu'
   FILE = path || "";
   document.getElementById("labName").value =
     (path || NOME0).split("/").pop().replace(/\.ya?ml$/, "");
-  document.getElementById("labDur").value = doc.duration || st.duration || DUR;
+  // La durata dello stream, prima di quella del documento: aperto un brano,
+  // la `duration` in testa e' quella del brano intero.
+  document.getElementById("labDur").value = st.duration || doc.duration || DUR;
   DURPREC = durata();
+  // Lo schermo e' pronto: questo e' come il laboratorio scrive lo stream
+  // senza che nessuno abbia toccato niente.
+  VISTA0 = labView();
   storiaReset();
   bpLoad(0);
   SALVATO = statoOra();
@@ -2314,29 +2438,141 @@ function carica(doc, path) {
 // valore a sinistra una rampa 0.2 -> 0.75 diventerebbe un plateau a 0.2 e poi
 // una rampa piu' ripida, e il file risalvato suonerebbe diverso da quello
 // aperto. Un gradino dichiarato (terzo elemento `step`) invece tiene.
+//
+// E non un'approssimazione: e' `Envelope.evaluate` dell'engine, rifatto qui
+// passo per passo (#4), compresa la cubica. Riaprendo, un inviluppo prende
+// un punto anche dove il breakpoint e' di un altro parametro, e li' il valore
+// a schermo e' quello che l'engine suona; toccato e risalvato, la curva ci
+// passa sopra. Il confronto con l'engine e' in `tests/test_lab_documento.py`.
+// Due modi, come nell'engine (`Envelope._parse_segments`):
+//   - nessun punto dichiara un tipo suo: UN segmento, il tipo globale (della
+//     lista: linear; del dict: `type`) vale per tutti i punti;
+//   - almeno uno lo dichiara: un segmento per coppia di punti, ognuno col tipo
+//     del punto da cui parte (o quello globale).
+// Le tangenti della cubica sono comunque calcolate su TUTTI i punti.
 function valoreA(v, t) {
-  if (!Array.isArray(v)) return v;
-  let prev = v[0];
-  for (const pt of v) {
-    if (pt[0] >= t - 1e-9) {
-      if (pt[0] - prev[0] < 1e-9 || prev[2] === "step") return prev[1];
-      const k = (t - prev[0]) / (pt[0] - prev[0]);
-      return prev[1] + (pt[1] - prev[1]) * k;
+  const c = curva(v);
+  if (c === null) return v;                 // uno scalare, o un nome
+  if (!c || !c.length) return NaN;          // un inviluppo che qui non si legge
+  const n = c.length;
+  if (!c.some(p => p.suo)) {
+    if (t < c[0].t) return c[0].v;
+    if (t > c[n - 1].t) return c[n - 1].v;
+    // StepInterpolation: l'ultimo punto che non sta dopo t.
+    if (c[0].tipo === "step") {
+      for (let i = n - 1; i >= 0; i--) if (t >= c[i].t) return c[i].v;
+      return c[0].v;
     }
-    prev = pt;
+  } else {
+    if (n === 1 || t <= c[0].t) return c[0].v;
+    if (t >= c[n - 1].t) return c[n - 1].v;
   }
-  return prev[1];
+  // Sul tempo di un punto, il suo valore. L'engine ci arriva dalla fine del
+  // segmento prima (s=1), che con la retta e' il valore a meno di un
+  // arrotondamento: 0.001 + (0.009 - 0.001) e' 0.009000000000000001, e
+  // risalvato non sarebbe piu' il numero scritto.
+  const k = c.findIndex(p => p.t === t);
+  if (k >= 0) return c[k].v;
+  const m = c.some(p => p.tipo === "cubic") ? tangenti(c) : null;
+  for (let i = 0; i < n - 1; i++) {
+    const a = c[i], b = c[i + 1];
+    if (a.t <= t && t <= b.t) {
+      if (a.tipo === "step") return a.v;
+      if (a.tipo === "cubic") return hermite(t, a.t, a.v, m[i], b.t, b.v, m[i + 1]);
+      return a.v + (b.t > a.t ? (t - a.t) / (b.t - a.t) : 0) * (b.v - a.v);
+    }
+  }
+  return c[n - 1].v;
 }
 
 // Il tipo del segmento che contiene t (l'ultimo punto non ne ha: vale linear).
+// In un `{type, points}` e' `type`, salvo i punti che ne dichiarano uno loro.
 function tipoA(v, t) {
-  if (!Array.isArray(v)) return "linear";
+  const c = curva(v);
+  if (!c) return "linear";
   let tipo = "linear";
-  for (const pt of v) {
-    if (pt[0] > t + 1e-9) break;
-    tipo = pt[2] || "linear";
+  for (const p of c) {
+    if (p.t > t) break;
+    tipo = p.tipo;
   }
   return tipo;
+}
+
+// Un inviluppo come lista di punti {t, v, tipo, suo}: `suo` dice se il tipo
+// e' scritto sul punto o viene da quello globale. Le forme che si leggono
+// sono quelle che il laboratorio scrive o che PGE-ui scrive per una curva di
+// soli breakpoint: la lista `[[t, v], [t, v, tipo], ...]` (anche coi punti
+// `{t, v, type}`) e il dict `{type, points}` (#4), dove `type` e' il tipo di
+// ogni segmento che non ne dichiara uno. null: non e' un inviluppo (uno
+// scalare). undefined: lo e', ma in una forma che qui non si legge (la
+// compatta, i gruppi) — e allora resta com'e' nel documento.
+function curva(v) {
+  let pts, glob = "linear";
+  if (Array.isArray(v)) pts = v;
+  else if (v && typeof v === "object" && Array.isArray(v.points)) {
+    pts = v.points;
+    glob = v.type || "linear";
+  } else return null;
+  const out = [];
+  for (const p of pts) {
+    const q = Array.isArray(p) ? p
+            : (p && typeof p === "object" && "t" in p && "v" in p) ? [p.t, p.v, p.type] : null;
+    if (!q || q.length < 2 || q.length > 3 || typeof q[0] !== "number" ||
+        typeof q[1] !== "number" || (q[2] != null && typeof q[2] !== "string")) return undefined;
+    out.push({t: q[0], v: q[1], tipo: q[2] || glob, suo: q[2] != null});
+  }
+  return out;
+}
+
+// Le tangenti di Fritsch-Carlson, come `Envelope._compute_fritsch_carlson_
+// tangents`: con due punti sole sono zero (la cubica diventa lo smoothstep),
+// dove la pendenza cambia segno sono zero (niente overshoot), altrove la
+// media armonica delle due pendenze.
+function tangenti(c) {
+  const n = c.length;
+  if (n < 2) return new Array(n).fill(0);
+  if (n === 2) return [0, 0];
+  const d = [];
+  for (let i = 0; i < n - 1; i++)
+    d.push(c[i + 1].t > c[i].t ? (c[i + 1].v - c[i].v) / (c[i + 1].t - c[i].t) : 0);
+  const m = new Array(n).fill(0);
+  m[0] = d[0];
+  for (let i = 1; i < n - 1; i++)
+    m[i] = d[i - 1] * d[i] <= 0 ? 0 : 2 / (1 / d[i - 1] + 1 / d[i]);
+  m[n - 1] = d[n - 2];
+  return m;
+}
+
+// L'interpolazione di Hermite su un segmento (`CubicInterpolation._cubic_hermite`).
+function hermite(t, t0, v0, m0, t1, v1, m1) {
+  const h = t1 - t0;
+  if (h === 0) return v0;
+  const s = (t - t0) / h, s2 = s * s, s3 = s2 * s;
+  return (2 * s3 - 3 * s2 + 1) * v0 + (s3 - 2 * s2 + s) * h * m0 +
+         (-2 * s3 + 3 * s2) * v1 + (s3 - s2) * h * m1;
+}
+
+// Un inviluppo toccato si riscrive dai breakpoint, nella forma lista che
+// `serie` produce. Se era arrivato come `{type: T, points}` e i suoi segmenti
+// sono ancora tutti T, resta un `{type: T, points}`: e' la forma che l'autore,
+// o PGE-ui, aveva scelto. Per l'engine le due forme sono lo stesso inviluppo
+// — un tipo globale e lo stesso tipo su ogni punto valgono uguale ovunque,
+// integrale compreso, perche' le tangenti della cubica le calcola sempre su
+// tutti i punti (provato sull'engine, vedi
+// `test_type_points_e_tipo_su_ogni_punto_sono_lo_stesso_inviluppo`).
+// Con i tipi mescolati, invece, la lista: il dict col tipo globale e le
+// eccezioni sul punto sarebbe lo stesso inviluppo per l'engine, ma PGE-ui non
+// lo rilegge intatto (`wrapEnv`, appena un punto ha un tipo suo, scrive la
+// lista piatta e il `type` globale si perde). Cosi' il laboratorio scrive solo
+// forme che PGE-ui riapre e riscrive uguali.
+function forma(orig, v) {
+  if (!Array.isArray(v) || !orig || typeof orig !== "object" || !Array.isArray(orig.points))
+    return v;
+  const T = orig.type || "linear";
+  if (!v.slice(0, -1).every(p => (p[2] || "linear") === T)) return v;
+  const out = Object.assign({}, orig, {points: v.map(p => [p[0], p[1]])});
+  if ("type" in orig) out.type = T;
+  return out;
 }
 
 function leggiPath(st, path) {
@@ -2347,13 +2583,27 @@ function leggiPath(st, path) {
 
 function labRender() { return labPost(true); }
 
+// Il documento da ascoltare: lo stesso, senza il suo posto nel brano. Uno
+// stream aperto dal brano si porta dietro `onset` (si sentirebbero prima i
+// suoi secondi di silenzio) e magari `mute` (non si sentirebbe affatto). Nel
+// file restano — sono dello stream che si e' aperto — e l'audio accanto e'
+// quello dello stream da solo, da zero.
+function perAscolto(doc) {
+  const d = clona(doc);
+  for (const st of d.streams || []) { st.onset = 0; delete st.mute; delete st.solo; }
+  return d;
+}
+
 async function labPost(render, path) {
   if (!bps.length) { document.getElementById("labInfo").textContent = "nessun breakpoint."; return; }
   const name = document.getElementById("labName").value || NOME0;
   const info = document.getElementById("labInfo");
   info.textContent = render ? "render in corso…" : "salvo…";
   try {
-    const out = await post("render", {name, doc: labDoc(), render, path: path || FILE});
+    const doc = labDoc();
+    const body = {name, doc, render, path: path || FILE};
+    if (render) body.ascolto = perAscolto(doc);
+    const out = await post("render", body);
     if (!out.ok) { info.textContent = out.error; return; }
     FILE = out.path || FILE;
     SALVATO = statoOra();

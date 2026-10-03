@@ -18,8 +18,10 @@ del render — nel documento non c'e', la sa solo chi l'ha caricato.
     POST /pick    {"mode": "open"|"save", "name": "..."}
     -> {"path": "/Users/.../stream.yml"}   pannello nativo del Finder
     POST /open    {"path": "..."}   -> {"doc": {...}}
-    POST /render  {"doc": {...}, "path": "...", "render": true}
+    POST /render  {"doc": {...}, "path": "...", "render": true, "ascolto": {...}}
     -> {"yaml": "...", "src": "...", "inviluppi": [...], "grani": {...}}
+                  (``ascolto``, facoltativo: il documento da rendere, se non
+                  e' quello da salvare — vedi ``render_doc``)
 
 Il "file di progetto" e' lo YAML stesso: un documento engine puro, che si
 riapre qui, si incolla nel brano o si apre in PGE-ui. Un secondo formato per
@@ -174,12 +176,17 @@ _Dumper.add_representer(list, _flow_if_flat)
 
 def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
                renderer: str = "numpy", render: bool = True,
-               path: str = "") -> dict:
+               path: str = "", ascolto: dict | None = None) -> dict:
     """Scrive lo YAML e (se ``render``) lo rende accanto, in .aif.
 
     Con ``path`` scrive dove l'utente ha detto nel pannello di salvataggio;
     senza, in ``<gen_root>/live/<name>.yml`` come prima. L'audio nasce sempre
     accanto allo YAML, con lo stesso nome: due file che si spostano insieme.
+
+    ``ascolto``, se diverso da ``doc``, e' cio' che si rende al posto suo: lo
+    decide la pagina (uno stream aperto dal brano si salva col suo ``onset``
+    e il suo ``mute``, ma si ascolta da solo e da zero). Il server non sa
+    perche': scrive il secondo documento in ``logs/`` e rende quello.
 
     Il percorso dell'engine e dei sample e' relativo alla radice del repo:
     ``main.py`` risolve ``samples-dir`` da dove gira, non da dove sta lo YAML.
@@ -211,8 +218,14 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
     # Salvare e' immediato, rendere no: si tiene il lavoro senza aspettare.
     if not render:
         return {"ok": True, "src": None, "yaml": _rel(doc_path), "path": doc_path}
+    src_path = doc_path
+    if ascolto is not None and ascolto != doc:
+        src_path = os.path.join(live, "logs",
+                                os.path.splitext(os.path.basename(doc_path))[0] + ".ascolto.yml")
+        with open(src_path, "w") as fh:
+            yaml.dump(ascolto, fh, Dumper=_Dumper, sort_keys=False, allow_unicode=True)
     cmd = [sys.executable, os.path.join(repo_root, "engine", "src", "main.py"),
-           doc_path, out_path,
+           src_path, out_path,
            "--renderer", renderer,
            "--samples-dir", os.path.join(repo_root, "samples"),
            "--log-dir", os.path.join(live, "logs")]
@@ -223,7 +236,7 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
         tail = (p.stderr or p.stdout).strip().splitlines()[-12:]
         return {"ok": False, "error": "\n".join(tail)}
     return {"ok": True, "src": _rel(out_path), "yaml": _rel(doc_path),
-            "path": doc_path, **_analisi(doc_path, repo_root, live)}
+            "path": doc_path, **_analisi(src_path, repo_root, live)}
 
 
 def _analisi(doc_path: str, repo_root: str, live: str) -> dict:
@@ -294,7 +307,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         self._json(render_doc(doc, body.get("name", "live"), self.directory,
                               self.repo_root, render=body.get("render", True),
-                              path=body.get("path", "")))
+                              path=body.get("path", ""), ascolto=body.get("ascolto")))
 
     def translate_path(self, path):
         """Come la stdlib, ma ``/samples/<file>`` esce dallo studio.
