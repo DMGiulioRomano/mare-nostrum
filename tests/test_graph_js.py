@@ -304,12 +304,17 @@ def _fn(js: str, nome: str) -> str:
     return js[i:j] + "\n"
 
 
+def _lettura(js: str) -> str:
+    """Come la pagina legge un inviluppo: `valoreA` e quello che usa (#4)."""
+    return "".join(_fn(js, f) for f in ("valoreA", "curva", "tangenti", "hermite"))
+
+
 def _env(bps: str, coda: str, tmp_path) -> str:
     js = _script()
     src = "\n".join([
         'const EP = "grain.envelope";',
         _fn(js, "serieEnv"), _fn(js, "envA"),
-        _fn(js, "valoreA"), _fn(js, "tipoDi"),
+        _lettura(js), _fn(js, "tipoDi"),
         "let bps = " + bps + ";", coda,
     ])
     p = tmp_path / "env.js"
@@ -657,7 +662,7 @@ def test_col_lucchetto_i_breakpoint_tengono_il_tempo_in_secondi(tmp_path):
         "const AUT = [{path:'a'}, {path:'b'}];\n"
         "let bps = [{t:0, vals:{a:0, b:0}}, {t:0.5, vals:{a:10, b:0}, ints:{b:'step'}},\n"
         "           {t:1, vals:{a:20, b:100}}];\n"
-        + _fn(js, "tipoDi") + _fn(js, "bpFra") + _fn(js, "ridimensiona") + """
+        + _fn(js, "tipoDi") + _fn(js, "bpFra") + _fn(js, "ridimensiona") + _lettura(js) + """
 const lungo = ridimensiona(30, 60);        // il doppio: tutto si contrae
 const dopoLungo = bps.map(b => [b.t, b.vals.a]);
 const corto = ridimensiona(60, 30);        // e torna dov'era
@@ -880,7 +885,7 @@ def test_seguendo_il_render_i_valori_sono_quelli_dell_inviluppo(tmp_path):
         "let bps = [{t:0.2, vals:{a:0,  b:0}, ints:{b:'step'}},\n"
         "           {t:0.6, vals:{a:10, b:100}},\n"
         "           {t:1,   vals:{a:20, b:100}}];\n"
-        + _fn(js, "tipoDi") + _fn(js, "bpFra") + _fn(js, "bpA") + """
+        + _fn(js, "tipoDi") + _fn(js, "bpFra") + _fn(js, "bpA") + _lettura(js) + """
 const a = x => bpA(x).vals.a, b = x => bpA(x).vals.b;
 console.log(JSON.stringify([a(0), a(0.2), a(0.4), a(0.8), a(1), a(1.5),
                             b(0.4), b(0.6)]));

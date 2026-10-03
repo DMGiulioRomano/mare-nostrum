@@ -1121,8 +1121,9 @@ let DURPREC = 0;              // la durata da cui si riscala
 // Il punto in cui il segmento a->b taglia il tempo t. Serve accorciando:
 // senza, l'ultimo tratto dell'inviluppo sparirebbe con il punto che lo
 // chiudeva e la coda resterebbe piatta sull'ultimo valore rimasto.
-// Come `valoreA`, interpola in linea anche dove il tipo e' `cubic`: e'
-// l'approssimazione che la pagina fa gia' ovunque legga un inviluppo.
+// Il valore e' quello della curva dei breakpoint letta come la legge l'engine
+// (`valoreA`): `step` tiene, `cubic` e' la cubica — che dipende anche dai
+// punti oltre a e b, per questo si passa la curva intera e non la coppia.
 function bpFra(a, b, t) {
   const k = (t - a.t) / (b.t - a.t);
   const vals = {}, ints = {};
@@ -1130,8 +1131,12 @@ function bpFra(a, b, t) {
     const tipo = tipoDi(a, p.path);
     ints[p.path] = tipo;
     const x = a.vals[p.path], y = b.vals[p.path];
-    vals[p.path] = (tipo !== "step" && typeof x === "number" && typeof y === "number")
-                 ? x + (y - x) * k : x;
+    if (typeof x !== "number" || typeof y !== "number") { vals[p.path] = x; continue; }
+    const c = bps.map(q => [q.t, q.vals[p.path], tipoDi(q, p.path)]);
+    // Un valore che non e' un numero altrove guasterebbe le tangenti: li' si
+    // resta sul segmento, come si faceva prima.
+    vals[p.path] = c.every(q => Number.isFinite(q[1])) ? valoreA(c, t)
+                 : tipo === "step" ? x : x + (y - x) * k;
   }
   return {t, vals, ints};
 }
@@ -1694,7 +1699,7 @@ function labView() {
   }
   for (const p of NUM) {
     const v = serie(p.path);
-    if (v !== null) setPath(st, p.path, v);
+    if (v !== null) setPath(st, p.path, forma(leggiPath(APERTO, p.path), v));
   }
   if (ENVP) {
     const v = serieEnv();
@@ -2312,14 +2317,14 @@ function carica(doc, path) {
   const st = clona(APERTO);
   const fissiLoop = leggiLoop(st);
   const ts = new Set([0]);
-  for (const p of NUM) {
-    const v = leggiPath(st, p.path);
-    if (Array.isArray(v)) for (const [t] of v) ts.add(t);
-  }
+  // `curva` legge la lista e il `{type, points}`; una forma che non conosce
+  // non porta tempi (e resta com'e' nel documento, perche' nessuno la tocca).
+  const tempi = v => { for (const p of curva(v) || []) ts.add(p.t); };
+  for (const p of NUM) tempi(leggiPath(st, p.path));
   // I tempi della curve dell'envelope sono breakpoint come gli altri: e' la
   // stessa unione, altrimenti riaprendo un cambio di finestra sparirebbe.
   const espec = ENVP ? leggiPath(st, EP) : null;
-  if (espec && Array.isArray(espec.curve)) for (const [t] of espec.curve) ts.add(t);
+  if (espec && typeof espec === "object") tempi(espec.curve);
   // E i tempi della progressione di accordi, per la stessa ragione.
   const prog = leggiPath(st, "voices.pitch.progression");
   if (Array.isArray(prog)) for (const passo of prog)
@@ -2372,29 +2377,141 @@ function carica(doc, path) {
 // valore a sinistra una rampa 0.2 -> 0.75 diventerebbe un plateau a 0.2 e poi
 // una rampa piu' ripida, e il file risalvato suonerebbe diverso da quello
 // aperto. Un gradino dichiarato (terzo elemento `step`) invece tiene.
+//
+// E non un'approssimazione: e' `Envelope.evaluate` dell'engine, rifatto qui
+// passo per passo (#4), compresa la cubica. Riaprendo, un inviluppo prende
+// un punto anche dove il breakpoint e' di un altro parametro, e li' il valore
+// a schermo e' quello che l'engine suona; toccato e risalvato, la curva ci
+// passa sopra. Il confronto con l'engine e' in `tests/test_lab_documento.py`.
+// Due modi, come nell'engine (`Envelope._parse_segments`):
+//   - nessun punto dichiara un tipo suo: UN segmento, il tipo globale (della
+//     lista: linear; del dict: `type`) vale per tutti i punti;
+//   - almeno uno lo dichiara: un segmento per coppia di punti, ognuno col tipo
+//     del punto da cui parte (o quello globale).
+// Le tangenti della cubica sono comunque calcolate su TUTTI i punti.
 function valoreA(v, t) {
-  if (!Array.isArray(v)) return v;
-  let prev = v[0];
-  for (const pt of v) {
-    if (pt[0] >= t - 1e-9) {
-      if (pt[0] - prev[0] < 1e-9 || prev[2] === "step") return prev[1];
-      const k = (t - prev[0]) / (pt[0] - prev[0]);
-      return prev[1] + (pt[1] - prev[1]) * k;
+  const c = curva(v);
+  if (c === null) return v;                 // uno scalare, o un nome
+  if (!c || !c.length) return NaN;          // un inviluppo che qui non si legge
+  const n = c.length;
+  if (!c.some(p => p.suo)) {
+    if (t < c[0].t) return c[0].v;
+    if (t > c[n - 1].t) return c[n - 1].v;
+    // StepInterpolation: l'ultimo punto che non sta dopo t.
+    if (c[0].tipo === "step") {
+      for (let i = n - 1; i >= 0; i--) if (t >= c[i].t) return c[i].v;
+      return c[0].v;
     }
-    prev = pt;
+  } else {
+    if (n === 1 || t <= c[0].t) return c[0].v;
+    if (t >= c[n - 1].t) return c[n - 1].v;
   }
-  return prev[1];
+  // Sul tempo di un punto, il suo valore. L'engine ci arriva dalla fine del
+  // segmento prima (s=1), che con la retta e' il valore a meno di un
+  // arrotondamento: 0.001 + (0.009 - 0.001) e' 0.009000000000000001, e
+  // risalvato non sarebbe piu' il numero scritto.
+  const k = c.findIndex(p => p.t === t);
+  if (k >= 0) return c[k].v;
+  const m = c.some(p => p.tipo === "cubic") ? tangenti(c) : null;
+  for (let i = 0; i < n - 1; i++) {
+    const a = c[i], b = c[i + 1];
+    if (a.t <= t && t <= b.t) {
+      if (a.tipo === "step") return a.v;
+      if (a.tipo === "cubic") return hermite(t, a.t, a.v, m[i], b.t, b.v, m[i + 1]);
+      return a.v + (b.t > a.t ? (t - a.t) / (b.t - a.t) : 0) * (b.v - a.v);
+    }
+  }
+  return c[n - 1].v;
 }
 
 // Il tipo del segmento che contiene t (l'ultimo punto non ne ha: vale linear).
+// In un `{type, points}` e' `type`, salvo i punti che ne dichiarano uno loro.
 function tipoA(v, t) {
-  if (!Array.isArray(v)) return "linear";
+  const c = curva(v);
+  if (!c) return "linear";
   let tipo = "linear";
-  for (const pt of v) {
-    if (pt[0] > t + 1e-9) break;
-    tipo = pt[2] || "linear";
+  for (const p of c) {
+    if (p.t > t) break;
+    tipo = p.tipo;
   }
   return tipo;
+}
+
+// Un inviluppo come lista di punti {t, v, tipo, suo}: `suo` dice se il tipo
+// e' scritto sul punto o viene da quello globale. Le forme che si leggono
+// sono quelle che il laboratorio scrive o che PGE-ui scrive per una curva di
+// soli breakpoint: la lista `[[t, v], [t, v, tipo], ...]` (anche coi punti
+// `{t, v, type}`) e il dict `{type, points}` (#4), dove `type` e' il tipo di
+// ogni segmento che non ne dichiara uno. null: non e' un inviluppo (uno
+// scalare). undefined: lo e', ma in una forma che qui non si legge (la
+// compatta, i gruppi) — e allora resta com'e' nel documento.
+function curva(v) {
+  let pts, glob = "linear";
+  if (Array.isArray(v)) pts = v;
+  else if (v && typeof v === "object" && Array.isArray(v.points)) {
+    pts = v.points;
+    glob = v.type || "linear";
+  } else return null;
+  const out = [];
+  for (const p of pts) {
+    const q = Array.isArray(p) ? p
+            : (p && typeof p === "object" && "t" in p && "v" in p) ? [p.t, p.v, p.type] : null;
+    if (!q || q.length < 2 || q.length > 3 || typeof q[0] !== "number" ||
+        typeof q[1] !== "number" || (q[2] != null && typeof q[2] !== "string")) return undefined;
+    out.push({t: q[0], v: q[1], tipo: q[2] || glob, suo: q[2] != null});
+  }
+  return out;
+}
+
+// Le tangenti di Fritsch-Carlson, come `Envelope._compute_fritsch_carlson_
+// tangents`: con due punti sole sono zero (la cubica diventa lo smoothstep),
+// dove la pendenza cambia segno sono zero (niente overshoot), altrove la
+// media armonica delle due pendenze.
+function tangenti(c) {
+  const n = c.length;
+  if (n < 2) return new Array(n).fill(0);
+  if (n === 2) return [0, 0];
+  const d = [];
+  for (let i = 0; i < n - 1; i++)
+    d.push(c[i + 1].t > c[i].t ? (c[i + 1].v - c[i].v) / (c[i + 1].t - c[i].t) : 0);
+  const m = new Array(n).fill(0);
+  m[0] = d[0];
+  for (let i = 1; i < n - 1; i++)
+    m[i] = d[i - 1] * d[i] <= 0 ? 0 : 2 / (1 / d[i - 1] + 1 / d[i]);
+  m[n - 1] = d[n - 2];
+  return m;
+}
+
+// L'interpolazione di Hermite su un segmento (`CubicInterpolation._cubic_hermite`).
+function hermite(t, t0, v0, m0, t1, v1, m1) {
+  const h = t1 - t0;
+  if (h === 0) return v0;
+  const s = (t - t0) / h, s2 = s * s, s3 = s2 * s;
+  return (2 * s3 - 3 * s2 + 1) * v0 + (s3 - 2 * s2 + s) * h * m0 +
+         (-2 * s3 + 3 * s2) * v1 + (s3 - s2) * h * m1;
+}
+
+// Un inviluppo toccato si riscrive dai breakpoint, nella forma lista che
+// `serie` produce. Se era arrivato come `{type: T, points}` e i suoi segmenti
+// sono ancora tutti T, resta un `{type: T, points}`: e' la forma che l'autore,
+// o PGE-ui, aveva scelto. Per l'engine le due forme sono lo stesso inviluppo
+// — un tipo globale e lo stesso tipo su ogni punto valgono uguale ovunque,
+// integrale compreso, perche' le tangenti della cubica le calcola sempre su
+// tutti i punti (provato sull'engine, vedi
+// `test_type_points_e_tipo_su_ogni_punto_sono_lo_stesso_inviluppo`).
+// Con i tipi mescolati, invece, la lista: il dict col tipo globale e le
+// eccezioni sul punto sarebbe lo stesso inviluppo per l'engine, ma PGE-ui non
+// lo rilegge intatto (`wrapEnv`, appena un punto ha un tipo suo, scrive la
+// lista piatta e il `type` globale si perde). Cosi' il laboratorio scrive solo
+// forme che PGE-ui riapre e riscrive uguali.
+function forma(orig, v) {
+  if (!Array.isArray(v) || !orig || typeof orig !== "object" || !Array.isArray(orig.points))
+    return v;
+  const T = orig.type || "linear";
+  if (!v.slice(0, -1).every(p => (p[2] || "linear") === T)) return v;
+  const out = Object.assign({}, orig, {points: v.map(p => [p[0], p[1]])});
+  if ("type" in orig) out.type = T;
+  return out;
 }
 
 function leggiPath(st, path) {
