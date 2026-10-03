@@ -492,7 +492,7 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
         "let bps = [], curBp = -1;\n"
         "const CAT = [{path:'pointer.loop'}];\n"
         "let STORIA = [], ISTO = -1, GESTO = false;\n"
-        "let APERTO = null, VISTA0 = null;\n"
+        "let APERTO = null, VISTA0 = null, TESTA = null;\n"
         "const SELEZIONE = new Set();\n"
         "let DURPREC = 30;\n"
         "function durata() { return 30; }\n"

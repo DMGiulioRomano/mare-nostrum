@@ -134,7 +134,13 @@ intero. Cosi' restano com'erano le chiavi che il laboratorio non ha
 `stream_id` e `onset`, e i parametri che il documento lascia al default
 dell'engine anche se il laboratorio ha un campo per loro. Il loop e' un
 gruppo (`GRUPPO_LOOP`): se una delle sue chiavi cambia, si scrivono tutte come
-`scriviLoop` le vuole. `APERTO` e `VISTA0` stanno nella storia dell'undo e
+`scriviLoop` le vuole. Anche la **testa** del documento si conserva (`TESTA`):
+`seed`, `bpm`, la `duration` del tutto, le chiavi di PGE-ui come `ui_tracks`
+restano com'erano, e del laboratorio c'e' solo la durata, che si scrive in
+testa solo se `durata (s)` e' stata toccata. Un parametro che il documento non
+dichiara si mostra al valore da cui parte il foglio bianco (`iniziale`), non a
+quello rimasto a schermo dal documento aperto prima; nel file non entra finche'
+non lo si tocca. `APERTO`, `VISTA0` e `TESTA` stanno nella storia dell'undo e
 nella bozza, accanto ai breakpoint. Il **foglio bianco** (`nuovo`, o la
 pagina appena aperta) non ha uno stream aperto: nasce da `DEFAULTS` e `base:`
 e il laboratorio lo scrive per intero, come prima.

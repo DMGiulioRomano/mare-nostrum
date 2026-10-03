@@ -488,8 +488,11 @@ let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
 //           nasce da `base:` e DEFAULTS e il laboratorio scrive per intero.
 //   VISTA0: come il laboratorio lo scriveva appena aperto (`labView`), prima
 //           di ogni modifica. "Toccato" vuol dire diverso da qui.
+//   TESTA:  il documento fuori dallo stream — `seed`, `bpm`, la `duration` del
+//           tutto, le chiavi di PGE-ui (`ui_tracks`) — con `streams` al suo
+//           posto ma vuoto. Si riscrive com'e', salvo la durata se toccata.
 // Stanno nella storia dell'undo e nella bozza, accanto ai breakpoint.
-let APERTO = null, VISTA0 = null;
+let APERTO = null, VISTA0 = null, TESTA = null;
 // Il loop del pointer sta nei campi `pointer.*` (vedi PUNT). Si parte SEMPRE
 // senza (`pointer.loop: off`): il pointer percorre il file intero. Il loop di
 // `base:` e' una scelta dello sweep, non il punto di partenza di un ascolto.
@@ -510,7 +513,7 @@ function istantanea() {
   // in secondi diversi da quelli che l'undo doveva ripristinare.
   return JSON.stringify({bps, cur: curBp, dur: durata(), vals: snapshot(),
                          ints: snapInterp(), cat: snapFissi(),
-                         ap: APERTO, v0: VISTA0});
+                         ap: APERTO, v0: VISTA0, te: TESTA});
 }
 
 function storia() {
@@ -536,7 +539,7 @@ function vaiStoria(d) {
   ISTO = i;
   const s = JSON.parse(STORIA[i]);
   bps = s.bps; SELEZIONE.clear();
-  if (s.ap !== undefined) { APERTO = s.ap; VISTA0 = s.v0; }
+  if (s.ap !== undefined) { APERTO = s.ap; VISTA0 = s.v0; TESTA = s.te; }
   for (const [path, v] of Object.entries(s.cat || {})) setSel(path, v);
   if (s.dur != null) { document.getElementById("labDur").value = s.dur; DURPREC = s.dur; }
   curBp = Math.min(s.cur, bps.length - 1);
@@ -1712,8 +1715,14 @@ function labView() {
 
 function labDoc() {
   const vista = labView();
-  const st = APERTO && VISTA0 ? toccati(clona(APERTO), VISTA0, vista) : vista;
-  return {duration: durata(), bpm: 120, streams: [st]};
+  if (!APERTO || !VISTA0) return {duration: durata(), bpm: 120, streams: [vista]};
+  // La testa segue la regola dello stream: del laboratorio c'e' solo la
+  // durata (il bpm non ha un campo), e si scrive solo se e' stata toccata.
+  // Il resto — `seed`, `bpm`, chiavi di PGE-ui — resta com'era.
+  const doc = clona(TESTA || {streams: null});
+  if (!uguali(vista.duration, VISTA0.duration)) doc.duration = vista.duration;
+  doc.streams = [toccati(clona(APERTO), VISTA0, vista)];
+  return doc;
 }
 
 // Le chiavi che il loop scrive insieme (`scriviLoop`). Se una cambia, si
@@ -2141,7 +2150,7 @@ function bozzaSalva() {
   try {
     localStorage.setItem(BOZZA, JSON.stringify({
       bps, file: FILE, salvato: SALVATO, sess: SESSIONE,
-      aperto: APERTO, vista0: VISTA0,
+      aperto: APERTO, vista0: VISTA0, testa: TESTA,
       name: document.getElementById("labName").value,
       dur: document.getElementById("labDur").value,
       cat: Object.fromEntries(CAT.map(p => [p.path, document.getElementById("P:" + p.path).value])),
@@ -2155,6 +2164,7 @@ function ripristina() {
   bps = b.bps;
   APERTO = b.aperto || null;
   VISTA0 = b.vista0 || null;
+  TESTA = b.testa || null;
   FILE = b.file || "";
   SALVATO = b.salvato || "";
   document.getElementById("labName").value = b.name || NOME0;
@@ -2220,7 +2230,7 @@ function fNew() {
   curBp = -1;
   SELEZIONE.clear();
   setSel("pointer.loop", "off");   // il loop si disegna, non si eredita
-  APERTO = VISTA0 = null;          // si torna a `base:`, non al documento di prima
+  APERTO = VISTA0 = TESTA = null;  // si torna a `base:`, non al documento di prima
   FILE = "";
   SALVATO = statoOra();
   document.getElementById("labName").value = NOME0;
@@ -2313,6 +2323,9 @@ function carica(doc, path) {
   }
   // La copia va presa prima di `leggiLoop`, che sul documento ci scrive.
   APERTO = clona(doc.streams[0]);
+  // Gli stream non si copiano: in un brano sono dieci, e qui ne resta uno.
+  TESTA = Object.fromEntries(Object.entries(doc).map(([k, v]) =>
+    [k, k === "streams" ? null : clona(v)]));
   VISTA0 = null;
   const st = clona(APERTO);
   const fissiLoop = leggiLoop(st);
@@ -2329,7 +2342,6 @@ function carica(doc, path) {
   const prog = leggiPath(st, "voices.pitch.progression");
   if (Array.isArray(prog)) for (const passo of prog)
     if (Number.isFinite(passo[0])) ts.add(passo[0]);
-  const envOra = () => ENVP ? document.getElementById("P:" + EP).value : null;
   bps = [...ts].sort((a, b) => a - b).map(t => ({
     t,
     // Il tipo del segmento in cui t cade: e' quello che decide come si arriva
@@ -2338,18 +2350,19 @@ function carica(doc, path) {
       p.path === EP ? tipoA(espec && espec.curve, t)
                     : tipoA(leggiPath(st, p.path), t)])),
     vals: Object.fromEntries(AUT.map(p => {
-      if (p.path === EP) return [EP, (espec ? envA(espec, t) : null) || envOra()];
-      if (p === PROG) return [p.path, (Array.isArray(prog) && (passoA(prog, t) || [])[1])
-                                      || document.getElementById("P:" + p.path).value];
       // Il documento puo' non avere affatto la chiave (un parametro lasciato
-      // al default dell'engine): li' vale quello che dice il select, non NaN.
+      // al default dell'engine): li' si mostra il valore da cui parte il
+      // foglio bianco (`iniziale`) — non NaN, e non quello rimasto a schermo
+      // dal documento aperto prima. Nel file non entra finche' non lo si
+      // tocca (#3).
+      if (p.path === EP) return [EP, (espec ? envA(espec, t) : null) || iniziale(p)];
+      if (p === PROG) return [p.path, (Array.isArray(prog) && (passoA(prog, t) || [])[1])
+                                      || iniziale(p)];
       const v = leggiPath(st, p.path);
-      return [p.path, v === undefined || v === null
-        ? Number(document.getElementById("P:" + p.path).value)
-        : Number(valoreA(v, t))];
+      return [p.path, Number(v === undefined || v === null ? iniziale(p) : valoreA(v, t))];
     })),
   }));
-  for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
+  for (const p of CAT) setSel(p.path, leggiPath(st, p.path) ?? iniziale(p));
   vociCarica(st);
   for (const [path, v] of Object.entries(fissiLoop)) setSel(path, v);
   SELEZIONE.clear();        // i breakpoint di prima non esistono piu'

@@ -112,6 +112,63 @@ def test_aperto_e_risalvato_senza_toccare_e_lo_stesso_stream(tmp_path, sid):
     assert doc["streams"][0] == st
 
 
+def _con_testa(st):
+    """Il documento con in testa chiavi che il laboratorio non conosce: il
+    `seed` (#5 conta che resti), una chiave di PGE-ui, un bpm che non e' 120
+    e la durata del brano intero, diversa da quella dello stream."""
+    return {"duration": 322.074, "bpm": 90, "seed": 1441,
+            "ui_tracks": [{"id": "t1", "streams": [st["stream_id"]]}], "streams": [st]}
+
+
+@node
+def test_le_chiavi_in_testa_al_documento_restano(tmp_path):
+    """Aperto e risalvato senza toccare niente, torna identico anche fuori
+    dallo stream: prima `labDoc` riscriveva la testa come `{duration, bpm:
+    120}` e il `seed` spariva."""
+    doc = _con_testa(_stream("stream2"))
+    got = _lab(tmp_path, "carica(%s, '/brano/stream2.yml');\n" % json.dumps(doc) + STAMPA)
+    assert got == doc
+
+
+@node
+def test_la_durata_toccata_si_scrive_in_testa_e_nello_stream(tmp_path):
+    """La durata in testa segue la regola delle altre chiavi: resta quella
+    del documento finche' nessuno tocca `durata (s)`; toccata, si scrive li'
+    e nello stream. Il resto della testa resta."""
+    doc = _con_testa(_stream("stream2"))
+    got = _lab(tmp_path, "carica(%s, '/brano/stream2.yml');\n" % json.dumps(doc) + """
+const d = document.getElementById('labDur');
+d.value = '120';
+d.onchange();
+console.log(JSON.stringify(labDoc()));
+""")
+    assert got["duration"] == 120 and got["streams"][0]["duration"] == 120
+    assert {k: got[k] for k in ("bpm", "seed", "ui_tracks")} == \
+        {k: doc[k] for k in ("bpm", "seed", "ui_tracks")}
+
+
+@node
+def test_un_parametro_assente_non_eredita_lo_schermo_del_documento_di_prima(tmp_path):
+    """Aperto dopo un altro documento, un parametro che il nuovo non dichiara
+    mostra il valore da cui parte il foglio bianco, non quello rimasto a
+    schermo — ne' sui breakpoint (`pan_range`) ne' nei fissi
+    (`voices.pitch.unit`). Nel file non entra comunque, finche' non lo si tocca.
+    """
+    a = dict(_stream("stream3"), pan_range=360)
+    st = _stream("stream2")          # niente voci, pan_range 360
+    del st["pan_range"]
+    got = _lab(tmp_path, _apri(a) + _apri(st) + """
+console.log(JSON.stringify({
+  schermo: document.getElementById('P:pan_range').value,
+  punti: bps.map(b => b.vals['pan_range']),
+  unit: document.getElementById('P:voices.pitch.unit').value,
+  doc: labDoc()}));
+""")
+    assert float(got["schermo"]) == 0 and set(got["punti"]) == {0}
+    assert got["unit"] == "semitones"
+    assert got["doc"]["streams"][0] == st
+
+
 @node
 def test_un_parametro_toccato_si_scrive_come_prima(tmp_path):
     """Breakpoint e interpolazione, come oggi; il resto resta com'era."""
@@ -176,17 +233,21 @@ def test_nuovo_dopo_un_documento_aperto_non_se_lo_porta_dietro(tmp_path):
 
 @node
 def test_l_undo_torna_allo_stream_aperto(tmp_path):
+    """Lo stream e la testa del documento: tutti e due stanno nella storia."""
     st = _stream("stream2")
-    got = _lab(tmp_path, _apri(st) + _tocca(0, "pitch.ratio", 0.75) + """
-const toccato = labDoc().streams[0];
+    doc = _con_testa(st)
+    got = _lab(tmp_path, "carica(%s, '/brano/stream2.yml');\n" % json.dumps(doc)
+               + _tocca(0, "pitch.ratio", 0.75) + """
+const toccato = labDoc();
 vaiStoria(-1);
-const annullato = labDoc().streams[0];
+const annullato = labDoc();
 vaiStoria(1);
-console.log(JSON.stringify([toccato, annullato, labDoc().streams[0]]));
+console.log(JSON.stringify([toccato, annullato, labDoc()]));
 """)
     toccato, annullato, rifatto = got
-    assert annullato == st
-    assert toccato == rifatto and toccato["pitch"]["ratio"][0] == [0, 0.75]
+    assert annullato == doc
+    assert toccato == rifatto and toccato["streams"][0]["pitch"]["ratio"][0] == [0, 0.75]
+    assert toccato["seed"] == 1441
 
 
 @node
@@ -194,7 +255,8 @@ def test_la_bozza_riporta_lo_stream_conservato(tmp_path):
     """Un refresh a meta' lavoro: torna anche quello che il laboratorio non
     conosce, non solo i breakpoint."""
     st = _stream("stream2")
-    bozza = _lab(tmp_path, _apri(st) + _tocca(0, "pitch.ratio", 0.75)
+    bozza = _lab(tmp_path, "carica(%s, '/brano/stream2.yml');\n" % json.dumps(_con_testa(st))
+                 + _tocca(0, "pitch.ratio", 0.75)
                  + "console.log(localStorage.getItem('lab:001-41'));\n")
     bozza["sess"] = "S"
     prima = """
@@ -202,6 +264,7 @@ localStorage.setItem('lab:001-41', %s);
 fetch = async () => ({ok: true, json: async () => ({ok: true, sessione: 'S', recenti: []})});
 """ % json.dumps(json.dumps(bozza))
     doc = _lab(tmp_path, STAMPA, prima=prima)
+    assert (doc["seed"], doc["bpm"], doc["duration"]) == (1441, 90, 322.074)
     out = doc["streams"][0]
     assert out["pitch"]["ratio"][0] == [0, 0.75]
     out["pitch"]["ratio"] = st["pitch"]["ratio"]
