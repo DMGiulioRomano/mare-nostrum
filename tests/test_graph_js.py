@@ -490,7 +490,7 @@ def test_undo_e_redo_tornano_sui_breakpoint(tmp_path):
     p = tmp_path / "u.js"
     p.write_text(
         "const AUT = [{path:'a', kind:'num'}];\n"
-        "let bps = [], curBp = -1;\n"
+        "let bps = [], curBp = -1, APERTO = null;\n"
         "const CAT = [{path:'pointer.loop'}];\n"
         "let STORIA = [], ISTO = -1, GESTO = false;\n"
         "const SELEZIONE = new Set();\n"
@@ -896,3 +896,402 @@ console.log(JSON.stringify([a(0), a(0.2), a(0.4), a(0.8), a(1), a(1.5),
     got = json.loads(out.stdout)
     # prima del primo punto e dopo l'ultimo: l'estremo. In mezzo: interpolato.
     assert got == pytest.approx([0, 0, 5, 15, 20, 20, 0, 100])
+
+
+# --- il documento aperto si conserva ---------------------------------------
+# Il laboratorio intero, senza pagina: tutto il blocco fra `const L = D.lab` e
+# `labInit()`, sopra un DOM finto fatto dei soli controlli che le funzioni del
+# file leggono e scrivono. `drawTl` e `vociVis` disegnano e basta, e si
+# sostituiscono; il resto e' il codice vero — carica, labDoc, storia, bozza.
+# Uno studio come quelli di mare-nostrum: due assi, il sample, i tre liberi,
+# e la finestra fra le tacche cosi' che anche lei stia sui breakpoint.
+
+_PARAMS = [
+    {"path": "grain.duration", "values": [0.001, 0.004, 0.016, 0.064], "kind": "num"},
+    {"path": "pitch.ratio", "values": [0.2, 0.5, 1.0], "kind": "num"},
+    {"path": "grain.envelope", "values": ["hanning", "bartlett", "gaussian"],
+     "kind": "cat"},
+    {"path": "sample", "values": ["a.wav", "b.wav"], "kind": "cat"},
+    {"path": "volume", "values": [], "kind": "num", "free": True},
+    {"path": "pan", "values": [], "kind": "num", "free": True},
+    {"path": "pan_range", "values": [], "kind": "num", "free": True},
+]
+
+# Il `base:` dello studio: lo stream a riposo dello sweep.
+_BASE = {
+    "onset": 0, "duration": 1000, "sample": "a.wav", "time_mode": "normalized",
+    "distribution_mode": "uniform", "fill_factor": 2,
+    "grain": {"envelope": "hanning"},
+    "pointer": {"start": 0, "speed_ratio": 0.1, "loop_unit": "normalized",
+                "offset_range": 0.01, "loop_start": 0, "loop_end": 0.36},
+    "pan": 0, "volume": 12,
+}
+
+# Uno stream del brano (stream3 di mare-nostrum.yml, accorciato): dentro ci
+# sono chiavi che il laboratorio non conosce (`read_direction`, `fill_factor`,
+# `distribution`), una che conosce ma che il documento lascia al default del
+# motore (`pan_range`) e una che sta in `base:` ma non qui
+# (`distribution_mode`). E un `seed` in testa.
+_STREAM = {
+    "stream_id": "stream3", "onset": 0, "duration": 249.225, "sample": "b.wav",
+    "time_mode": "normalized", "fill_factor": 4, "distribution": 1,
+    "grain": {
+        "duration": [[0, 0.002], [0.2186, 0.003], [0.4584, 0.006]],
+        "duration_range": 0.001,
+        "envelope": "bartlett",
+        "read_direction": [[0, 1], [0.07707, -1], [0.09393, 1], [0.25921, -1]],
+    },
+    "pointer": {"start": 0, "speed_ratio": 0.1, "loop_unit": "normalized",
+                "offset_range": 0.01},
+    "pitch": {"ratio": 0.2, "range": 0.05},
+    "pan": 0,
+    "volume": 0,
+    "voices": {
+        "num_voices": 4,
+        "pitch": {"pitch_range": 0.5, "strategy": "range", "unit": "ratio"},
+        "pan": {"spread": 120, "strategy": "stochastic"},
+    },
+}
+_DOC = {"duration": 249.225, "bpm": 120, "seed": 1441, "streams": [_STREAM]}
+
+_DOM = """
+const EL = {};
+function El(id) {
+  return {id, value: "", textContent: "", title: "", hidden: false, disabled: false,
+          style: {}, classList: {toggle() {}, add() {}, remove() {}},
+          querySelectorAll: () => [], querySelector: () => El(""),
+          closest: () => El(""), appendChild() {}};
+}
+// Solo i controlli che la pagina crea davvero: un id che non c'e' torna null,
+// come in un browser, e chi lo legge senza guardare muore qui invece di
+// leggere un campo inventato.
+function crea(id) { EL[id] = El(id); }
+const document = {getElementById: id => EL[id] || null,
+                  createElement: () => El(""), activeElement: null};
+const STORE = __STORE__;
+const localStorage = {getItem: k => (k in STORE ? STORE[k] : null),
+                      setItem: (k, v) => { STORE[k] = String(v); },
+                      removeItem: k => { delete STORE[k]; }};
+function addEventListener() {}
+function confirm() { return true; }
+const D = {study: "s01", lab: __LAB__};
+"""
+
+# Come labInit: un campo per parametro col suo valore di partenza, un menu
+# d'interpolazione dove la pagina lo mette, durata e nome.
+_INIT = """
+function drawTl() { bozzaSalva(); segna(); labInfo(); }
+function vociVis() {}
+for (const id of ["labDur", "labName", "labInfo", "labYaml", "bpSave", "bpAll",
+                  "fFile", "fSave"]) crea(id);
+for (const p of L.params) crea("P:" + p.path);
+for (const p of AUT) if (!p.noint) { crea("I:" + p.path); EL["I:" + p.path].value = "linear"; }
+for (const p of L.params) setSel(p.path, iniziale(p));
+EL.labDur.value = DUR;
+EL.labName.value = NOME0;
+const copia = x => JSON.parse(JSON.stringify(x));
+const out = x => console.log(JSON.stringify(x));
+"""
+
+
+def _lab(coda: str, tmp_path, store=None) -> str:
+    js = _script()
+    lab = js[js.index("const L = D.lab"):js.index("\nlabInit();")]
+    src = (_DOM.replace("__STORE__", json.dumps(store or {}))
+               .replace("__LAB__", json.dumps({"base": _BASE, "params": _PARAMS,
+                                               "envelopes": {}}))
+           + lab + _INIT + "const DOC = " + json.dumps(_DOC) + ";\n" + coda)
+    p = tmp_path / "lab.js"
+    p.write_text(src)
+    out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    return out.stdout.strip()
+
+
+def _stream(doc):
+    return doc["streams"][0]
+
+
+@node
+def test_aperto_e_risalvato_tiene_la_read_direction(tmp_path):
+    """`grain.read_direction` il laboratorio non la conosce: deve restare.
+
+    Oggi sparisce, e in mare-nostrum.yml succede a 8 stream su 10.
+    """
+    doc = json.loads(_lab("carica(copia(DOC), '/x/stream3.yml'); out(labDoc());",
+                          tmp_path))
+    assert _stream(doc)["grain"]["read_direction"] == \
+        _STREAM["grain"]["read_direction"]
+
+
+@node
+def test_aperto_e_risalvato_senza_toccare_niente_e_lo_stesso_documento(tmp_path):
+    """Tutto: le chiavi che il laboratorio non conosce, quelle che conosce, il
+    seed in testa. Senza modifiche il file torna identico."""
+    doc = json.loads(_lab("carica(copia(DOC), '/x/stream3.yml'); out(labDoc());",
+                          tmp_path))
+    assert doc == _DOC
+
+
+@node
+def test_uno_stream_aperto_non_riceve_le_chiavi_del_base(tmp_path):
+    """`base:` e' lo stream a riposo dello sweep, non del documento aperto.
+
+    E un parametro che il documento lascia al motore resta assente anche se il
+    laboratorio ha un campo per lui (`pan_range`).
+    """
+    st = _stream(json.loads(_lab(
+        "carica(copia(DOC), '/x/stream3.yml'); out(labDoc());", tmp_path)))
+    assert "distribution_mode" not in st
+    assert "pan_range" not in st
+    assert "loop_start" not in st["pointer"] and "loop_end" not in st["pointer"]
+
+
+@node
+def test_una_chiave_assente_non_eredita_il_valore_del_documento_di_prima(tmp_path):
+    """Aperto dopo un altro documento, il campo di `pan_range` non resta
+    a 360: mostra il valore da cui parte il foglio bianco, e nel file non entra."""
+    got = json.loads(_lab("""
+const A = copia(DOC); A.streams[0].pan_range = 360;
+carica(A, '/x/a.yml');
+carica(copia(DOC), '/x/stream3.yml');
+out([EL["P:pan_range"].value, bps.map(b => b.vals.pan_range), labDoc()]);
+""", tmp_path))
+    schermo, punti, doc = got
+    assert float(schermo) == 0 and set(punti) == {0}
+    assert "pan_range" not in _stream(doc)
+
+
+@node
+def test_la_durata_e_quella_dello_stream_non_del_documento(tmp_path):
+    """I tempi degli inviluppi sono frazioni della durata dello STREAM: il
+    `duration` in testa a un documento con piu' stream e' un'altra cosa."""
+    got = json.loads(_lab("""
+const A = copia(DOC); A.duration = 322.074;
+carica(A, '/x/a.yml');
+out([durata(), labDoc().duration, labDoc().streams[0].duration]);
+""", tmp_path))
+    assert got == [249.225, 322.074, 249.225]
+
+
+# --- toccato: si scrive come oggi -----------------------------------------
+
+@node
+def test_un_valore_toccato_si_scrive_e_il_resto_resta(tmp_path):
+    """pitch.ratio cambiato su un breakpoint: diventa l'inviluppo che il
+    laboratorio scriverebbe, e read_direction, fill_factor, seed restano."""
+    doc = json.loads(_lab("""
+carica(copia(DOC), '/x/stream3.yml');
+bpLoad(1);
+setSel("pitch.ratio", 0.5);
+bpSave();
+out(labDoc());
+""", tmp_path))
+    st = _stream(doc)
+    # i breakpoint sono i tempi di grain.duration: 0, 0.2186, 0.4584
+    assert st["pitch"]["ratio"] == [[0, 0.2], [0.2186, 0.5], [0.4584, 0.2]]
+    assert st["pitch"]["range"] == 0.05
+    assert st["grain"]["read_direction"] == _STREAM["grain"]["read_direction"]
+    assert st["grain"]["duration"] == _STREAM["grain"]["duration"]
+    assert st["fill_factor"] == 4 and st["distribution"] == 1
+    assert "pan_range" not in st and "distribution_mode" not in st
+    assert doc["seed"] == 1441
+
+
+@node
+def test_l_interpolazione_toccata_si_scrive_sul_punto(tmp_path):
+    doc = json.loads(_lab("""
+carica(copia(DOC), '/x/stream3.yml');
+bpLoad(0);
+EL["I:grain.duration"].value = "cubic";
+bpSave();
+out(labDoc());
+""", tmp_path))
+    assert _stream(doc)["grain"]["duration"] == \
+        [[0, 0.002, "cubic"], [0.2186, 0.003], [0.4584, 0.006]]
+
+
+@node
+def test_un_parametro_assente_toccato_entra_nel_file(tmp_path):
+    doc = json.loads(_lab("""
+carica(copia(DOC), '/x/stream3.yml');
+setSel("pan_range", 90);
+bpAll();
+out(labDoc());
+""", tmp_path))
+    assert _stream(doc)["pan_range"] == 90
+
+
+@node
+def test_le_voci_toccate_si_scrivono_quelle_no_restano(tmp_path):
+    """Cambiare la strategia del pan riscrive il suo blocco come lo scrive il
+    laboratorio; il blocco del pitch e il numero di voci restano com'erano."""
+    doc = json.loads(_lab("""
+carica(copia(DOC), '/x/stream3.yml');
+setSel("voices.pan.strategy", "range");
+out(labDoc());
+""", tmp_path))
+    v = _stream(doc)["voices"]
+    assert v["pan"] == {"spread": 120, "strategy": "range"}
+    assert v["pitch"] == _STREAM["voices"]["pitch"]
+    assert v["num_voices"] == 4
+
+
+@node
+def test_spegnere_le_voci_toglie_il_blocco(tmp_path):
+    doc = json.loads(_lab("""
+carica(copia(DOC), '/x/stream3.yml');
+setSel("voices.pitch.strategy", "off");
+setSel("voices.pan.strategy", "off");
+setSel("voices.num_voices", 1);
+bpAll();
+out(labDoc());
+""", tmp_path))
+    assert "voices" not in _stream(doc)
+
+
+@node
+def test_il_loop_toccato_si_scrive_e_porta_via_loop_dur(tmp_path):
+    """Riaprendo, un `loop_dur` si legge come loop_end (`leggiLoop`). Se il
+    loop non si tocca resta com'era; toccato, il laboratorio lo scrive con
+    loop_start/loop_end e `loop_dur` non puo' restare accanto."""
+    got = json.loads(_lab("""
+const A = copia(DOC);
+Object.assign(A.streams[0].pointer, {loop_start: 0.2, loop_dur: 0.3});
+carica(copia(A), '/x/a.yml');
+const fermo = labDoc().streams[0].pointer;
+setSel("pointer.loop_end", 0.6);
+bpAll();
+const mosso = labDoc().streams[0].pointer;
+carica(copia(DOC), '/x/stream3.yml');
+setSel("pointer.loop", "on");
+setSel("pointer.loop_start", 0.1);
+setSel("pointer.loop_end", 0.4);
+bpAll();
+out([fermo, mosso, labDoc().streams[0].pointer]);
+""", tmp_path))
+    fermo, mosso, acceso = got
+    assert fermo == {"start": 0, "speed_ratio": 0.1, "loop_unit": "normalized",
+                     "offset_range": 0.01, "loop_start": 0.2, "loop_dur": 0.3}
+    assert mosso["loop_end"] == 0.6 and "loop_dur" not in mosso
+    assert mosso["loop_start"] == 0.2
+    assert acceso == {"start": 0, "speed_ratio": 0.1, "loop_unit": "normalized",
+                      "offset_range": 0.01, "loop_start": 0.1, "loop_end": 0.4}
+
+
+@node
+def test_la_finestra_toccata_diventa_states_piu_curve(tmp_path):
+    doc = json.loads(_lab("""
+carica(copia(DOC), '/x/stream3.yml');
+bpLoad(1); EL["I:grain.envelope"].value = "step"; bpSave();
+bpLoad(2); setSel("grain.envelope", "gaussian"); bpSave();
+out(labDoc());
+""", tmp_path))
+    assert _stream(doc)["grain"]["envelope"] == {
+        "states": [[0, "bartlett"], [1, "gaussian"]],
+        "curve": [[0, 0], [0.2186, 0, "step"], [0.4584, 1]],
+    }
+
+
+@node
+def test_la_durata_toccata_si_scrive_nello_stream_e_in_testa(tmp_path):
+    doc = json.loads(_lab("""
+carica(copia(DOC), '/x/stream3.yml');
+EL.labDur.value = 120;
+out(labDoc());
+""", tmp_path))
+    assert doc["duration"] == 120 and _stream(doc)["duration"] == 120
+
+
+@node
+def test_il_piazzamento_e_del_laboratorio(tmp_path):
+    """Il file si rende da solo, dall'inizio (PythonGranularEngine#290, regola
+    5): `onset` torna 0, e `mute` / `solo` non restano — un file muto nel
+    laboratorio non suonerebbe. `stream_id` invece non ha un campo, e resta."""
+    st = _stream(json.loads(_lab("""
+const A = copia(DOC);
+Object.assign(A.streams[0], {onset: 11.061, mute: true, solo: true});
+carica(A, '/x/a.yml');
+out(labDoc());
+""", tmp_path)))
+    assert st["onset"] == 0 and "mute" not in st and "solo" not in st
+    assert st["stream_id"] == "stream3"
+
+
+# --- il foglio bianco nasce come oggi -------------------------------------
+
+@node
+def test_il_foglio_bianco_nasce_da_defaults_e_base(tmp_path):
+    """`nuovo` dimentica il documento aperto: si riparte da `base:` e DEFAULTS."""
+    st = _stream(json.loads(_lab("""
+carica(copia(DOC), '/x/stream3.yml');
+fNew();
+for (const p of L.params) setSel(p.path, iniziale(p));
+bpAdd();
+out(labDoc());
+""", tmp_path)))
+    assert st["stream_id"] == "lab"
+    assert st["distribution_mode"] == "uniform"          # da base:
+    assert st["time_mode"] == "normalized"
+    assert st["volume"] == 0                             # da DEFAULTS, non i 12 di base:
+    assert st["grain"]["duration"] == 0.064
+    assert st["grain"]["envelope"] == "gaussian"
+    assert "read_direction" not in st["grain"]
+    assert "voices" not in st
+
+
+# --- undo, bozza, recenti ---------------------------------------------------
+
+@node
+def test_undo_e_redo_col_documento_aperto(tmp_path):
+    """L'undo riporta il file a com'era aperto; e lo stream aperto sta nella
+    storia insieme ai breakpoint, quindi torna anche lui."""
+    got = json.loads(_lab("""
+carica(copia(DOC), '/x/stream3.yml');
+bpLoad(1); setSel("pitch.ratio", 0.5); bpSave();
+const toccato = labDoc();
+vaiStoria(-1);
+const annullato = labDoc();
+vaiStoria(1);
+const rifatto = labDoc();
+const prima = APERTO;
+APERTO = {doc: {streams: [{stream_id: "altro"}]}, lab: APERTO.lab};
+storia();
+vaiStoria(-1);
+out([toccato, annullato, rifatto, APERTO.doc.streams[0].stream_id]);
+""", tmp_path))
+    toccato, annullato, rifatto, id_ = got
+    assert annullato == _DOC
+    assert rifatto == toccato and _stream(toccato)["pitch"]["ratio"] != 0.2
+    assert id_ == "stream3"
+
+
+@node
+def test_la_bozza_riporta_anche_il_documento_aperto(tmp_path):
+    """Un refresh riprende il lavoro: i breakpoint e lo stream da cui vengono."""
+    store = json.loads(_lab("""
+carica(copia(DOC), '/x/stream3.yml');
+bpLoad(1); setSel("pitch.ratio", 0.5); bpSave();
+SESSIONE = "s1"; bozzaSalva();
+out(STORE);
+""", tmp_path))
+    doc = json.loads(_lab("""
+SESSIONE = "s1";
+ripristina();
+out(labDoc());
+""", tmp_path, store=store))
+    st = _stream(doc)
+    assert st["grain"]["read_direction"] == _STREAM["grain"]["read_direction"]
+    assert st["pitch"]["ratio"] == [[0, 0.2], [0.2186, 0.5], [0.4584, 0.2]]
+    assert doc["seed"] == 1441 and "distribution_mode" not in st
+
+
+@node
+def test_apri_recente_conserva_lo_stream(tmp_path):
+    """`apri recente` passa da apriPath come `apri…`: stesso documento."""
+    doc = json.loads(_lab("""
+async function post(rotta, body) { return {ok: true, doc: copia(DOC), path: body.path}; }
+async function recenti() {}
+apriPath('/x/stream3.yml').then(() => out(labDoc()));
+""", tmp_path))
+    assert doc == _DOC

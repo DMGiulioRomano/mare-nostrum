@@ -442,6 +442,10 @@ const PROG = VOCI_DI["voices.pitch.progression"];
 const CAT = L.params.filter(p => !p.bp);
 // I parametri che stanno sui breakpoint: i numerici, l'envelope, l'accordo.
 const AUT = L.params.filter(p => p.bp);
+// Tutti i path che il laboratorio scrive come UN valore — uno scalare, un
+// inviluppo, {states, curve}, {edo: N} — e non come un blocco di chiavi:
+// `innesta` li confronta e li scrive interi.
+const VALORI = new Set(L.params.map(p => p.path));
 
 // Da dove parte il laboratorio. Non sono i valori di `base:` — quello e' lo
 // stream a riposo dello *sweep*, tarato per i render del sweep (volume 12
@@ -478,6 +482,12 @@ function iniziale(p) {
 }
 
 let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
+// Il documento aperto, com'era nel file (`doc`), e quello che il laboratorio
+// ne scriveva appena aperto (`lab`). Il file si risalva partendo da `doc`, e
+// ci si scrive sopra solo quello che il laboratorio ha cambiato da allora
+// (vedi `labDoc`). null = foglio bianco. Sta accanto ai breakpoint perche'
+// insieme a loro E' il documento: va nella storia dell'undo e nella bozza.
+let APERTO = null;
 // Il loop del pointer sta nei campi `pointer.*` (vedi PUNT). Si parte SEMPRE
 // senza (`pointer.loop: off`): il pointer percorre il file intero. Il loop di
 // `base:` e' una scelta dello sweep, non il punto di partenza di un ascolto.
@@ -497,7 +507,7 @@ function istantanea() {
   // punti: riportare indietro i breakpoint senza di lei lascerebbe i tempi
   // in secondi diversi da quelli che l'undo doveva ripristinare.
   return JSON.stringify({bps, cur: curBp, dur: durata(), vals: snapshot(),
-                         ints: snapInterp(), cat: snapFissi()});
+                         ints: snapInterp(), cat: snapFissi(), aperto: APERTO});
 }
 
 function storia() {
@@ -523,6 +533,7 @@ function vaiStoria(d) {
   ISTO = i;
   const s = JSON.parse(STORIA[i]);
   bps = s.bps; SELEZIONE.clear();
+  APERTO = s.aperto || null;
   for (const [path, v] of Object.entries(s.cat || {})) setSel(path, v);
   if (s.dur != null) { document.getElementById("labDur").value = s.dur; DURPREC = s.dur; }
   curBp = Math.min(s.cur, bps.length - 1);
@@ -1661,11 +1672,31 @@ function vociCarica(st) {
   vociVis();
 }
 
+// Il documento. Sul foglio bianco e' quello che il laboratorio scrive sopra
+// lo stream a riposo dello studio (`base:`), come sempre. Su un documento
+// aperto si parte dal documento: `base:` e DEFAULTS non c'entrano, e il
+// laboratorio ci scrive sopra solo cio' che ha cambiato (vedi `fondi`).
 function labDoc() {
+  if (!APERTO) return labScrive(L.base);
+  const doc = fondi(APERTO.doc, APERTO.lab, labScrive({}));
+  // Il piazzamento e' del laboratorio: il file si rende da solo, dall'inizio,
+  // e nel brano lo decide il master (PythonGranularEngine#290, regola 5). Un
+  // `mute` o un `solo` qui darebbero un render muto. `stream_id` un campo non
+  // ce l'ha, e resta quello del documento; senza, il motore lo pretende.
+  const st = doc.streams[0];
+  if (st.onset !== undefined) st.onset = 0;
+  delete st.mute; delete st.solo;
+  if (st.stream_id == null) st.stream_id = "lab";
+  return doc;
+}
+
+// Quello che il laboratorio scrive di suo, sopra uno stream di partenza:
+// ogni parametro che conosce, com'e' a schermo e sui breakpoint.
+function labScrive(base) {
   const dur = durata();
   // stream_id/onset/duration in testa, come nei documenti scritti a mano.
   const st = Object.assign({stream_id: "lab", onset: 0, duration: dur},
-                           JSON.parse(JSON.stringify(L.base)));
+                           JSON.parse(JSON.stringify(base)));
   st.onset = 0;
   st.duration = dur;
   for (const p of CAT) {
@@ -1685,6 +1716,59 @@ function labDoc() {
   vociDoc(st);
   scriviLoop(st);
   return {duration: dur, bpm: 120, streams: [st]};
+}
+
+// Tre documenti: il file com'era (`doc`), quello che il laboratorio ne
+// scriveva appena aperto (`prima`) e quello che scrive adesso (`ora`). Fra
+// `prima` e `ora` c'e' esattamente cio' che e' stato toccato, e solo quello
+// passa nel file. Una chiave che il laboratorio non conosce non sta in
+// nessuno dei due, e resta com'era; una che conosce ma che nessuno ha toccato
+// e' uguale nei due, e resta com'era anche lei — assente compresa, anche se a
+// schermo ha un campo. Toccata e poi rimessa com'era, non e' toccata.
+// Il laboratorio e' il banco di UNO stream: di un documento con piu' stream
+// tiene il primo, come ha sempre fatto.
+function fondi(doc, prima, ora) {
+  const out = JSON.parse(JSON.stringify(doc));
+  const testa = d => Object.fromEntries(Object.entries(d).filter(([k]) => k !== "streams"));
+  innesta(out, testa(prima), testa(ora), "");
+  const st = out.streams[0], p = prima.streams[0], o = ora.streams[0];
+  innesta(st, p, o, "");
+  // `loop_dur` il laboratorio lo legge come loop_end (`leggiLoop`) e non lo
+  // scrive mai: toccato il loop, lo scrive con loop_start/loop_end, e un
+  // loop_dur rimasto accanto sarebbe una seconda fine.
+  if (st.pointer && ["pointer.loop_start", "pointer.loop_end"]
+        .some(k => !uguali(leggiPath(p, k), leggiPath(o, k))))
+    delete st.pointer.loop_dur;
+  out.streams = [st];
+  return out;
+}
+
+// Porta in `dove` la differenza fra `prima` e `ora`, chiave per chiave. Un
+// blocco (grain, pointer, voices, voices.pitch, ...) si attraversa, cosi'
+// dentro restano le chiavi che il laboratorio non conosce; un parametro e'
+// un valore solo e si scrive intero — mescolare gli `states` del file con la
+// `curve` del laboratorio darebbe una finestra che nessuno ha scelto. Un
+// blocco che il laboratorio toglie e che resta vuoto se ne va.
+function innesta(dove, prima, ora, pre) {
+  const blocco = x => x === undefined || (!!x && typeof x === "object" && !Array.isArray(x));
+  for (const k of new Set(Object.keys(prima).concat(Object.keys(ora)))) {
+    const a = prima[k], b = ora[k], path = pre + k;
+    if (uguali(a, b)) continue;
+    if (!VALORI.has(path) && blocco(a) && blocco(b)) {
+      if (!dove[k] || !blocco(dove[k])) dove[k] = {};
+      innesta(dove[k], a || {}, b || {}, path + ".");
+      if (b === undefined && !Object.keys(dove[k]).length) delete dove[k];
+    } else if (b === undefined) delete dove[k];
+    else dove[k] = JSON.parse(JSON.stringify(b));
+  }
+}
+
+function uguali(a, b) {
+  if (Object.is(a, b)) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every(k => k in b && uguali(a[k], b[k]));
 }
 
 function setPath(obj, path, v) {
@@ -2015,7 +2099,8 @@ function preview() {
 // Il file di progetto e' lo YAML: un documento engine puro, che si riapre
 // qui, si incolla nel brano o si apre in PGE-ui. I breakpoint non si salvano
 // a parte perche' non sono un'informazione in piu': sono i tempi che
-// compaiono negli inviluppi.
+// compaiono negli inviluppi. Un documento aperto si risalva partendo da lui
+// (`APERTO`, `fondi`): cio' che il laboratorio non ha toccato resta com'era.
 
 let FILE = "";        // path assoluto del file aperto; "" = mai salvato
 let SALVATO = "";     // com'era il documento all'ultimo salvataggio
@@ -2046,7 +2131,7 @@ function segna() {
 function bozzaSalva() {
   try {
     localStorage.setItem(BOZZA, JSON.stringify({
-      bps, file: FILE, salvato: SALVATO, sess: SESSIONE,
+      bps, aperto: APERTO, file: FILE, salvato: SALVATO, sess: SESSIONE,
       name: document.getElementById("labName").value,
       dur: document.getElementById("labDur").value,
       cat: Object.fromEntries(CAT.map(p => [p.path, document.getElementById("P:" + p.path).value])),
@@ -2058,6 +2143,7 @@ function ripristina() {
   const b = BOZZA0;
   if (!b || !b.bps || !b.bps.length) return;
   bps = b.bps;
+  APERTO = b.aperto || null;
   FILE = b.file || "";
   SALVATO = b.salvato || "";
   document.getElementById("labName").value = b.name || NOME0;
@@ -2122,6 +2208,7 @@ function fNew() {
   bps = [];
   curBp = -1;
   SELEZIONE.clear();
+  APERTO = null;                   // da qui il documento nasce da `base:`
   setSel("pointer.loop", "off");   // il loop si disegna, non si eredita
   FILE = "";
   SALVATO = statoOra();
@@ -2213,6 +2300,9 @@ function carica(doc, path) {
     document.getElementById("labInfo").textContent = "non e' un documento con stream.";
     return;
   }
+  // Il file com'era, prima che `leggiLoop` ci scriva sopra (un loop_dur
+  // diventa loop_end): e' da qui che si risalva.
+  const orig = JSON.parse(JSON.stringify(doc));
   const st = doc.streams[0];
   const fissiLoop = leggiLoop(st);
   const ts = new Set([0]);
@@ -2228,7 +2318,6 @@ function carica(doc, path) {
   const prog = leggiPath(st, "voices.pitch.progression");
   if (Array.isArray(prog)) for (const passo of prog)
     if (Number.isFinite(passo[0])) ts.add(passo[0]);
-  const envOra = () => ENVP ? document.getElementById("P:" + EP).value : null;
   bps = [...ts].sort((a, b) => a - b).map(t => ({
     t,
     // Il tipo del segmento in cui t cade: e' quello che decide come si arriva
@@ -2237,27 +2326,33 @@ function carica(doc, path) {
       p.path === EP ? tipoA(espec && espec.curve, t)
                     : tipoA(leggiPath(st, p.path), t)])),
     vals: Object.fromEntries(AUT.map(p => {
-      if (p.path === EP) return [EP, (espec ? envA(espec, t) : null) || envOra()];
-      if (p === PROG) return [p.path, (Array.isArray(prog) && (passoA(prog, t) || [])[1])
-                                      || document.getElementById("P:" + p.path).value];
       // Il documento puo' non avere affatto la chiave (un parametro lasciato
-      // al default dell'engine): li' vale quello che dice il select, non NaN.
+      // al default dell'engine): li' si mostra il valore da cui parte il
+      // foglio bianco — non NaN, e non quello rimasto a schermo dal documento
+      // di prima. Nel file non entra finche' non lo si tocca (`fondi`).
+      if (p.path === EP) return [EP, (espec ? envA(espec, t) : null) || iniziale(p)];
+      if (p === PROG) return [p.path, (Array.isArray(prog) && (passoA(prog, t) || [])[1])
+                                      || iniziale(p)];
       const v = leggiPath(st, p.path);
-      return [p.path, v === undefined || v === null
-        ? Number(document.getElementById("P:" + p.path).value)
-        : Number(valoreA(v, t))];
+      return [p.path, Number(v === undefined || v === null ? iniziale(p) : valoreA(v, t))];
     })),
   }));
-  for (const p of CAT) setSel(p.path, leggiPath(st, p.path));
+  for (const p of CAT) setSel(p.path, leggiPath(st, p.path) ?? iniziale(p));
   vociCarica(st);
   for (const [path, v] of Object.entries(fissiLoop)) setSel(path, v);
   SELEZIONE.clear();        // i breakpoint di prima non esistono piu'
   FILE = path || "";
   document.getElementById("labName").value =
     (path || NOME0).split("/").pop().replace(/\.ya?ml$/, "");
-  document.getElementById("labDur").value = doc.duration || st.duration || DUR;
+  // La durata dello STREAM: e' su di lei che si leggono le x normalizzate
+  // degli inviluppi. Il `duration` in testa al documento e' la durata del
+  // tutto, che in un documento con piu' stream e' un'altra cosa.
+  document.getElementById("labDur").value = st.duration || doc.duration || DUR;
   DURPREC = durata();
   storiaReset();
+  // Prima di bpLoad, che registra il primo passo della storia: quel passo
+  // deve gia' avere lo stream aperto.
+  APERTO = {doc: orig, lab: labScrive({})};
   bpLoad(0);
   SALVATO = statoOra();
   segna();
