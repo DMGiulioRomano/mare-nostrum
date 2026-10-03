@@ -120,6 +120,37 @@ una rampa ripartirebbe piu' tardi e il file suonerebbe diverso da quello
 aperto. Round-trip verificato. Un preset che non cambiava nulla rispetto al
 precedente non torna: non cambiava il suono.
 
+**Il documento aperto si conserva.** Aperto e risalvato senza toccare niente,
+un file torna identico, chiavi che il laboratorio non conosce comprese
+(`grain.read_direction`, `fill_factor`, il `seed` in testa). Accanto ai
+breakpoint il laboratorio tiene lo stream aperto com'era nel file e cio' che
+ne scriveva appena aperto (`APERTO`); salvando confronta quella scrittura con
+quella di adesso e porta nel file **solo la differenza** (`fondi` in
+`graph_page.html`). Una chiave che non conosce resta com'era; una che conosce
+ma che nessuno ha toccato pure, assente compresa, anche se a schermo ha un
+campo. Toccata e poi rimessa com'era non e' toccata. Toccata davvero, si
+scrive come sempre: breakpoint, interpolazione, voci, loop, `grain.envelope`
+a stati. I blocchi (`grain`, `pointer`, `voices.pitch`, ...) si attraversano
+chiave per chiave, cosi' dentro restano le chiavi sconosciute; un parametro
+(scalare, inviluppo, `{states, curve}`) si scrive intero. Toccato il loop, un
+`loop_dur` del file se ne va: il laboratorio lo legge come `loop_end`, e
+accanto sarebbe una seconda fine.
+
+`base:` e `DEFAULTS` valgono solo per il foglio bianco: un documento aperto non
+ne riceve le chiavi. Una chiave che il documento non ha si mostra al valore da
+cui partirebbe il foglio bianco, non a quello rimasto dal documento di prima,
+e nel file entra solo se la si tocca. La durata a schermo e' quella dello
+**stream**, su cui si leggono le x degli inviluppi, non il `duration` in testa
+al documento. Il piazzamento invece e' del laboratorio, perche' il file si
+rende da solo: `onset` torna 0, `mute` e `solo` non restano (nel brano li
+decide il master, PythonGranularEngine#290). `stream_id` resta quello del
+documento. Di un documento con piu' stream si tiene il primo, come prima.
+
+Lo stream aperto sta nella storia dell'undo e nella bozza, quindi undo, redo,
+refresh e `apri recente` lo ritrovano. `nuovo` lo dimentica. Gli inviluppi
+`{type, points}` il laboratorio non li sa ancora leggere (#4): a schermo danno
+`NaN`, ma non toccati restano nel file com'erano.
+
 Il lavoro non salvato sopravvive a un refresh (localStorage, per studio): e'
 una rete di sicurezza, non un salvataggio. La verita' e' il file.
 
