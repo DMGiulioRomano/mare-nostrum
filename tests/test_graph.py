@@ -21,6 +21,22 @@ def test_la_pagina_porta_con_se_i_parametri_del_laboratorio(tmp_path):
     assert d["lab"]["base"] == {"volume": 12}
 
 
+def test_la_pagina_porta_con_se_il_seed_dello_studio(tmp_path):
+    """Il `seed:` non e' una tacca: e' l'altra meta' dell'identita' di uno
+    stream, insieme all'id (#5). Si passa COSI' COM'E', `None` compreso —
+    uno studio che non lo dichiara non ha un seed, e il laboratorio non deve
+    inventarne uno."""
+    from granstudies.graph import lab_data
+
+    assert lab_data({"seed": 1441, "base": {}})["seed"] == 1441
+    assert lab_data({"seed": 0, "base": {}})["seed"] == 0      # 0 e' un seed
+    assert lab_data({"base": {}})["seed"] is None
+    assert lab_data(None)["seed"] is None
+    # E arriva fino al payload della pagina, anche senza passare da lab_data.
+    assert _payload(build_html("s01", {"base": {}, "params": [], "seed": 7}))["lab"]["seed"] == 7
+    assert "seed" in _payload(build_html("s01"))["lab"]
+
+
 def test_write_graph_scrive_sempre_e_conta_i_parametri(tmp_path):
     """Non guarda piu' il disco: senza audio la pagina serve lo stesso."""
     out = str(tmp_path / "graph.html")

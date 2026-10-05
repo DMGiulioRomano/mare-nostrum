@@ -212,3 +212,117 @@ def test_i_grani_si_decimano_sopra_il_tetto(studio):
         massimo=5)
     assert grani["n"] <= 5 and grani["tot"] > 5
     assert grani["passo"] == -(-grani["tot"] // 5)
+
+
+# --- #5: il seed rende ripetibile il render, e il disegno la sua realizzazione ---
+# L'RNG dell'engine e' (seed, rng_group o stream_id, componente)
+# (`shared/seeding.py`): senza un `seed:` scritto nel documento il Generator ne
+# genera uno di sessione, quindi due render dello stesso file suonano diversi e
+# le curve/i grani che il laboratorio disegna — calcolati ricaricando lo YAML
+# (`_analisi` in serve.py) — sono un'altra estrazione. Il laboratorio scrive il
+# seed: da qui in poi le tre cose coincidono.
+
+def _doc_stocastico(sample_name, seed=None):
+    """Lo stesso stream minimale, ma con due sorgenti di casualita' vere: una
+    strategia di voci stocastica e una banda sulla durata del grano."""
+    doc = _minimal_doc(sample_name)
+    st = doc["streams"][0]
+    st["grain"]["duration_range"] = 0.02
+    st["pointer"]["offset_range"] = 0.05
+    st["voices"] = {"num_voices": 4,
+                    "pitch": {"strategy": "stochastic", "unit": "semitones",
+                              "pitch_range": 12}}
+    if seed is not None:
+        doc["seed"] = seed
+    return doc
+
+
+@pytest.fixture
+def stocastico(tmp_path):
+    """La fabbrica: scrive un documento per seed e torna il path."""
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    sr = 44100
+    t = np.arange(sr) / sr
+    sf.write(str(samples / "test.wav"), 0.5 * np.sin(2 * np.pi * 220 * t), sr)
+
+    def scrivi(nome, seed=None):
+        p = tmp_path / (nome + ".yml")
+        with open(p, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(_doc_stocastico("test.wav", seed), fh)
+        return p
+
+    return tmp_path, samples, scrivi
+
+
+def _realizzazione(path, samples):
+    """Cosa il laboratorio disegnerebbe: le curve realizzate e i grani.
+
+    Tutto e due da UN caricamento, come fa `_analisi`. Delle curve si guarda
+    il tracciato e l'escursione vera (`pts`/`bp`/`min`/`max`): nei nomi e nei
+    colori una realizzazione diversa non si vede, negli offset per-voce di
+    una strategia stocastica si'.
+    """
+    a = engine_bridge.stream_analysis(str(path), str(samples))
+    g = a["grani"]
+    return ([{k: c[k] for k in ("nome", "min", "max", "pts", "bp")}
+             for c in a["inviluppi"]],
+            [g[c] for c in ("x", "w", "y", "h", "k")])
+
+
+def test_due_render_dello_stesso_documento_sono_lo_stesso_audio(stocastico):
+    """Il criterio della #5, misurato sui campioni e non sulla durata."""
+    tmp_path, samples, scrivi = stocastico
+    doc = scrivi("con-seed", seed=1441)
+    onde = []
+    for i in (1, 2):
+        out = tmp_path / f"out{i}.aif"
+        engine_bridge.render(str(doc), str(out), samples_dir=str(samples))
+        dati, _sr = sf.read(str(out))
+        onde.append(dati)
+    assert onde[0].shape == onde[1].shape
+    assert np.array_equal(onde[0], onde[1])
+    assert float(np.max(np.abs(onde[0]))) > 0.0       # non due silenzi uguali
+
+
+def test_col_seed_il_disegno_e_la_realizzazione_che_ha_suonato(stocastico):
+    """Le curve realizzate e il piano dei grani vengono da un secondo
+    caricamento dello YAML reso: col seed scritto ripescano le stesse sequenze,
+    quindi descrivono l'audio e non un'altra estrazione."""
+    tmp_path, samples, scrivi = stocastico
+    doc = scrivi("con-seed", seed=1441)
+    out = tmp_path / "out.aif"
+    engine_bridge.render(str(doc), str(out), samples_dir=str(samples))
+    curve, grani = _realizzazione(doc, samples)
+    assert (curve, grani) == _realizzazione(doc, samples)
+    # E non sono costanti: un altro seed e' un'altra realizzazione, e si vede
+    # in tutte e due le meta' (le curve portano gli offset per-voce).
+    altre, altri = _realizzazione(scrivi("altro", seed=7), samples)
+    assert curve and grani
+    assert curve != altre and grani != altri
+
+
+def test_senza_seed_ogni_caricamento_e_un_altra_estrazione(stocastico):
+    """Il difetto che la #5 chiude, e la ragione per cui il seed si scrive.
+
+    Senza `seed:` il Generator ne genera uno da `time.time_ns()`, quindi due
+    caricamenti dello stesso file danno due realizzazioni: l'audio reso e il
+    disegno che lo accompagna non sono lo stesso pescaggio.
+    """
+    _tmp, samples, scrivi = stocastico
+    doc = scrivi("senza-seed")
+    assert _realizzazione(doc, samples) != _realizzazione(doc, samples)
+
+
+def test_l_id_dello_stream_entra_nella_realizzazione(stocastico):
+    """Perche' `stream_id` = nome del file non e' un'etichetta: e' l'altra
+    meta' della derivazione, e `salva con nome` cambia il suono."""
+    _tmp, samples, scrivi = stocastico
+    a = scrivi("a", seed=1441)
+    b = scrivi("b", seed=1441)
+    with open(b) as fh:
+        d = yaml.safe_load(fh)
+    d["streams"][0]["stream_id"] = "b"
+    with open(b, "w") as fh:
+        yaml.safe_dump(d, fh)
+    assert _realizzazione(a, samples) != _realizzazione(b, samples)

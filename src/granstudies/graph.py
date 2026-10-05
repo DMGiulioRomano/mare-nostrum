@@ -25,6 +25,9 @@ def lab_data(raw: Dict[str, Any] | None) -> Dict[str, Any]:
     stessa cosa: valori di quel parametro che vale la pena sentire. Il
     laboratorio non li moltiplica in una griglia, li usa come tacche fra cui
     scegliere il valore di un breakpoint.
+
+    Porta anche il ``seed:`` del documento: non e' una tacca, e' l'altra
+    meta' dell'identita' di uno stream insieme all'id (#5).
     """
     raw = raw or {}
     params: List[Dict[str, Any]] = []
@@ -45,7 +48,14 @@ def lab_data(raw: Dict[str, Any] | None) -> Dict[str, Any]:
         # parametri di uno stream e nel laboratorio non hanno posto.
         if key.startswith("base.") and isinstance(node, dict) and node.get("values"):
             add(key[len("base."):], node["values"])
-    return {"base": raw.get("base") or {}, "params": params}
+    # Il `seed:` dello studio (#5). Serve al laboratorio perche' l'RNG
+    # dell'engine e' (seed, rng_group o stream_id, componente): un documento
+    # senza seed pesca un seed di sessione, e due render dello stesso file
+    # suonano diversi. Si passa COSI' COM'E', `None` compreso: uno studio che
+    # non lo dichiara non ha un seed, e il laboratorio non deve inventarne uno
+    # (vedi `seedDoc` nella pagina).
+    return {"base": raw.get("base") or {}, "params": params,
+            "seed": raw.get("seed")}
 
 
 def lab_completo(raw: Dict[str, Any] | None, campioni: List[str],
@@ -91,7 +101,8 @@ def lab_completo(raw: Dict[str, Any] | None, campioni: List[str],
 
 
 def build_html(study: str, lab: Dict[str, Any] | None = None) -> str:
-    data = {"study": study, "lab": lab or {"base": {}, "params": []}}
+    data = {"study": study,
+            "lab": lab or {"base": {}, "params": [], "seed": None}}
     return _template().replace("__TITLE__", html.escape(f"{study} — laboratorio")) \
                     .replace("__DATA__", json.dumps(data))
 
