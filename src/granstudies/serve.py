@@ -17,11 +17,15 @@ del render — nel documento non c'e', la sa solo chi l'ha caricato.
 
     POST /pick    {"mode": "open"|"save", "name": "..."}
     -> {"path": "/Users/.../stream.yml"}   pannello nativo del Finder
-    POST /open    {"path": "..."}   -> {"doc": {...}}
-    POST /render  {"doc": {...}, "path": "...", "render": true, "ascolto": {...}}
-    -> {"yaml": "...", "src": "...", "inviluppi": [...], "grani": {...}}
+    POST /open    {"path": "..."}   -> {"doc": {...}, "firma": "sha256:..."}
+    POST /render  {"doc": {...}, "path": "...", "render": true, "ascolto": {...},
+                   "firma": "sha256:...", "sovrascrivi": false}
+    -> {"yaml": "...", "src": "...", "firma": "sha256:...",
+        "inviluppi": [...], "grani": {...}}
                   (``ascolto``, facoltativo: il documento da rendere, se non
-                  e' quello da salvare — vedi ``render_doc``)
+                  e' quello da salvare — vedi ``render_doc``;
+                  ``firma``, facoltativa: com'era il file quando l'editor
+                  l'ha letto — vedi ``cambiato_su_disco``)
 
 Il "file di progetto" e' lo YAML stesso: un documento engine puro, che si
 riapre qui, si incolla nel brano o si apre in PGE-ui. Un secondo formato per
@@ -37,6 +41,7 @@ Solo su 127.0.0.1: scrive file ed esegue un processo, non e' roba da esporre.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import posixpath
@@ -116,6 +121,61 @@ def autorizzato(path: str) -> bool:
     return os.path.abspath(path) in _AUTORIZZATI
 
 
+# --- due editor, un file ---------------------------------------------------
+# Lo stesso `streams/risacca.yml` puo' stare aperto qui e in PGE-ui (regola 7
+# del piano). Ognuno dei due ricorda com'era il file quando l'ha letto e,
+# prima di scrivere, controlla che su disco sia ancora quello.
+#
+# La firma e' l'hash del CONTENUTO, non l'mtime: un mtime dice che qualcuno ha
+# scritto, non che il file sia diverso — e le due risposte portano a due cose
+# opposte (rileggere, o lasciar passare una riscrittura identica). L'algoritmo
+# sta nel prefisso perche' la stessa firma la calcola PGE-ui
+# (DMGiulioRomano/PGE-ui#185): il giorno che una delle due convenzioni cambia
+# si vede che non e' il file a essere cambiato.
+#
+# Si firmano i BYTE, non il documento caricato: la domanda e' "il file su
+# disco e' quello che ho letto", e due editor scrivono lo stesso documento con
+# formattazioni diverse. Firmare il documento parsato lascerebbe passare la
+# riscrittura di un file che l'altro editor ha davvero cambiato ogni volta che
+# il cambiamento non si vede nel parse (un commento, l'ordine delle chiavi).
+ALGO = "sha256"
+
+
+def firma_di(raw: bytes) -> str:
+    # L'algoritmo e' dichiarato una volta: scritto anche nella chiamata,
+    # cambiarlo nel prefisso e non nell'hash darebbe una firma che mente su
+    # se stessa, che e' l'unica cosa che il prefisso serve a non far succedere.
+    return f"{ALGO}:{hashlib.new(ALGO, raw).hexdigest()}"
+
+
+def firma(path: str) -> str:
+    """La firma del file su disco. ``""`` se non c'e' o non si legge."""
+    try:
+        with open(path, "rb") as fh:
+            return firma_di(fh.read())
+    except OSError:
+        return ""
+
+
+def cambiato_su_disco(path: str, letta: str) -> bool:
+    """Se il file su disco non e' quello che l'editor ha letto.
+
+    Due casi non sono un file cambiato, e nessuno dei due e' una scorciatoia:
+
+    - ``letta`` vuota: l'editor non ha mai letto quel file. E' il `salva con
+      nome` su un percorso nuovo, dove non c'e' niente da confrontare e il
+      pannello nativo ha gia' chiesto lui della sovrascrittura;
+    - il file **non c'e' piu'**: non ci sta il lavoro di nessuno, e rifiutare
+      lascerebbe la domanda senza una via d'uscita — "ricarica" non puo'
+      rileggere un file cancellato, e scriverlo e' esattamente cio' che si
+      stava chiedendo.
+    """
+    if not letta:
+        return False
+    ora = firma(path)
+    return bool(ora) and ora != letta
+
+
 # Questo avvio del server. La pagina se lo fa dire e ci confronta la bozza in
 # localStorage: un refresh riprende il lavoro non salvato, un `make serve`
 # nuovo parte da foglio bianco — che e' quello che si vuole aprendo il
@@ -174,9 +234,63 @@ def _flow_if_flat(dumper, data):
 _Dumper.add_representer(list, _flow_if_flat)
 
 
+def _scrivi(path: str, doc: dict) -> str:
+    """Scrive il documento e torna la firma dei byte scritti.
+
+    Si firma cio' che si e' scritto, non il file riletto dopo: sono due accessi
+    al disco e due risposte possibili, e quella che l'editor deve ricordare e'
+    la prima.
+    """
+    raw = yaml.dump(doc, Dumper=_Dumper, sort_keys=False,
+                    allow_unicode=True).encode()
+    # Binario: la firma e' dei byte sul disco, e in modalita' testo una
+    # piattaforma che traduce i fine riga ne scriverebbe altri.
+    with open(path, "wb") as fh:
+        fh.write(raw)
+    return firma_di(raw)
+
+
+def _stesso(a, b) -> bool:
+    """Lo stesso documento, tipi compresi.
+
+    Non e' ``==``: per Python ``4 == 4.0`` e ``1 == True``, per l'engine no
+    (un ``n_reps`` float e' un errore dalla PGE#211, un ``n_reps: true`` pure).
+    Un valore che cambia tipo e' un documento diverso, e si scrive.
+    """
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(_stesso(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return len(a) == len(b) and all(map(_stesso, a, b))
+    return a == b
+
+
+def gia_su_disco(path: str, doc: dict) -> str:
+    """La firma del file se contiene gia' ``doc``, ``""`` se no.
+
+    Il laboratorio scrive il file a ogni `rendi e ascolta`, anche quando non
+    l'ha toccato, e lo scrive a modo suo: due editor scrivono lo stesso
+    documento con byte diversi. La firma e' dei byte, quindi ogni ascolto
+    farebbe dire "cambiato su disco" alla guardia dell'altro editor
+    (DMGiulioRomano/PGE-ui#185) su un documento che nessuno ha cambiato, e si
+    porterebbe via la sua formattazione e i suoi commenti. Un file che
+    contiene gia' il documento non si riscrive: la sua firma torna alla
+    pagina come quella di un file appena scritto, perche' e' cio' che c'e'
+    su disco.
+    """
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        return firma_di(raw) if _stesso(yaml.safe_load(raw), doc) else ""
+    except (OSError, yaml.YAMLError):
+        return ""
+
+
 def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
                renderer: str = "numpy", render: bool = True,
-               path: str = "", ascolto: dict | None = None) -> dict:
+               path: str = "", ascolto: dict | None = None,
+               firma_letta: str = "", sovrascrivi: bool = False) -> dict:
     """Scrive lo YAML e (se ``render``) lo rende accanto, in .aif.
 
     Con ``path`` scrive dove l'utente ha detto nel pannello di salvataggio;
@@ -188,6 +302,20 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
     e il suo ``mute``, ma si ascolta da solo e da zero). Il server non sa
     perche': scrive il secondo documento in ``logs/`` e rende quello.
 
+    ``firma_letta`` e' com'era il file quando l'editor l'ha letto: se su disco
+    non e' piu' quella non si scrive niente e si risponde ``cambiato`` — a
+    decidere (rileggere o sovrascrivere) e' chi ha le modifiche, cioe' la
+    pagina. ``sovrascrivi`` e' quella decisione presa. La guardia vale solo
+    per ``path``, il file dell'utente: il ``live/<name>.yml`` di un foglio mai
+    salvato e' la cartella di lavoro del server, che nessuno rilegge.
+    La firma di cio' che si e' scritto torna sempre, anche quando poi e'
+    l'engine a fallire: lo YAML si scrive prima di rendere.
+
+    Un file dell'utente che contiene gia' ``doc`` non si riscrive
+    (``gia_su_disco``), e non e' nemmeno un file cambiato: scrivere non
+    cambierebbe niente, quindi non c'e' niente da sovrascrivere ne' da
+    chiedere. Si rende il file com'e', e torna la sua firma.
+
     Il percorso dell'engine e dei sample e' relativo alla radice del repo:
     ``main.py`` risolve ``samples-dir`` da dove gira, non da dove sta lo YAML.
     """
@@ -196,6 +324,14 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
             return {"ok": False, "error": "percorso non scelto da un pannello: "
                                           "usa 'salva con nome'."}
         doc_path = path if path.endswith((".yml", ".yaml")) else path + ".yml"
+        # Prima della guardia: se il file contiene gia' il documento, i byte
+        # possono essere cambiati (l'altro editor l'ha riscritto a modo suo),
+        # ma una scrittura non toglierebbe niente a nessuno.
+        gia = gia_su_disco(doc_path, doc)
+        if not gia and not sovrascrivi and cambiato_su_disco(doc_path, firma_letta):
+            return {"ok": False, "cambiato": True,
+                    "error": "il file e' cambiato su disco da quando l'hai "
+                             "letto: ricarica o sovrascrivi."}
         base = os.path.dirname(doc_path)
         out_path = os.path.splitext(doc_path)[0] + ".aif"
         os.makedirs(os.path.join(base, "logs"), exist_ok=True)
@@ -206,8 +342,11 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
         os.makedirs(os.path.join(live, "logs"), exist_ok=True)
         doc_path = os.path.join(live, stem + ".yml")
         out_path = os.path.join(live, stem + ".aif")
-    with open(doc_path, "w") as fh:
-        yaml.dump(doc, fh, Dumper=_Dumper, sort_keys=False, allow_unicode=True)
+        gia = ""
+    # La firma di cio' che si e' appena scritto torna alla pagina: senza, il
+    # salvataggio dopo si accuserebbe da solo di aver cambiato il file.
+    nuova = gia or _scrivi(doc_path, doc)
+
     def _rel(p: str) -> str:
         """Il path come lo usa la pagina: relativo se sta sotto lo studio
         (l'audio va caricato via HTTP), assoluto se l'utente l'ha messo
@@ -217,13 +356,13 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
 
     # Salvare e' immediato, rendere no: si tiene il lavoro senza aspettare.
     if not render:
-        return {"ok": True, "src": None, "yaml": _rel(doc_path), "path": doc_path}
+        return {"ok": True, "src": None, "yaml": _rel(doc_path),
+                "path": doc_path, "firma": nuova}
     src_path = doc_path
     if ascolto is not None and ascolto != doc:
         src_path = os.path.join(live, "logs",
                                 os.path.splitext(os.path.basename(doc_path))[0] + ".ascolto.yml")
-        with open(src_path, "w") as fh:
-            yaml.dump(ascolto, fh, Dumper=_Dumper, sort_keys=False, allow_unicode=True)
+        _scrivi(src_path, ascolto)
     cmd = [sys.executable, os.path.join(repo_root, "engine", "src", "main.py"),
            src_path, out_path,
            "--renderer", renderer,
@@ -234,9 +373,14 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
         # Le ultime righe: l'errore dell'engine sta in fondo, e la pagina lo
         # mostra in una riga di stato, non in un pannello.
         tail = (p.stderr or p.stdout).strip().splitlines()[-12:]
-        return {"ok": False, "error": "\n".join(tail)}
+        # Lo YAML pero' e' gia' scritto, e la sua firma deve arrivare alla
+        # pagina come dopo un render riuscito: se no la scrittura dopo
+        # manderebbe quella di prima e si accuserebbe da sola.
+        return {"ok": False, "error": "\n".join(tail), "yaml": _rel(doc_path),
+                "path": doc_path, "firma": nuova}
     return {"ok": True, "src": _rel(out_path), "yaml": _rel(doc_path),
-            "path": doc_path, **_analisi(src_path, repo_root, live)}
+            "path": doc_path, "firma": nuova,
+            **_analisi(src_path, repo_root, live)}
 
 
 def _analisi(doc_path: str, repo_root: str, live: str) -> dict:
@@ -300,8 +444,13 @@ class Handler(SimpleHTTPRequestHandler):
                 self._json({"ok": False, "error": "apri il file dal pannello."}, 403)
                 return
             try:
-                with open(path) as fh:
-                    self._json({"ok": True, "doc": yaml.safe_load(fh), "path": path})
+                # Una lettura sola: i byte si firmano e si caricano, cosi' la
+                # firma e' di esattamente il documento che torna alla pagina.
+                # Rileggere per firmare sarebbe una seconda risposta possibile.
+                with open(path, "rb") as fh:
+                    raw = fh.read()
+                self._json({"ok": True, "doc": yaml.safe_load(raw), "path": path,
+                            "firma": firma_di(raw)})
             except (OSError, yaml.YAMLError) as e:
                 self._json({"ok": False, "error": f"non riesco a leggerlo: {e}"})
             return
@@ -312,7 +461,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         self._json(render_doc(doc, body.get("name", "live"), self.directory,
                               self.repo_root, render=body.get("render", True),
-                              path=body.get("path", ""), ascolto=body.get("ascolto")))
+                              path=body.get("path", ""), ascolto=body.get("ascolto"),
+                              firma_letta=body.get("firma") or "",
+                              sovrascrivi=bool(body.get("sovrascrivi"))))
 
     def translate_path(self, path):
         """Come la stdlib, ma ``/samples/<file>`` esce dallo studio.

@@ -42,6 +42,22 @@ def _predefiniti():
     return parameter_path_defaults()
 
 
+_FINESTRE = None
+
+
+def _finestre():
+    """Le finestre dell'engine, come le passa `cmd_graph`. Senza, la pagina
+    ripiega su un menu delle sole tacche dello studio, e un documento con una
+    finestra che non sta fra quelle (lo `hanning` del brano) leggeva `""`:
+    `grain.envelope` risultava sempre non salvato sul breakpoint, cosa che
+    servita da `make serve` non succede. Senza submodule: nessuna."""
+    global _FINESTRE
+    if _FINESTRE is None:
+        from granstudies.__main__ import _finestre as engine
+        _FINESTRE = engine()
+    return _FINESTRE
+
+
 # Il `seed:` dello `study.yml` servito si tiene com'e' scritto, salvo quando un
 # test vuole l'altro ramo (#5): `seed_studio=None` e' uno studio che non ne
 # dichiara, un numero e' un altro seed.
@@ -56,7 +72,7 @@ def _pagina(tmp_path, study="001-41", seed_studio=TIENE):
         if seed_studio is not None:
             raw["seed"] = seed_studio
     p = tmp_path / "graph.html"
-    p.write_text(build_html(study, lab_completo(raw, CAMPIONI, {}, lambda _p: None,
+    p.write_text(build_html(study, lab_completo(raw, CAMPIONI, _finestre(), lambda _p: None,
                                                 _predefiniti())))
     return p
 
@@ -918,3 +934,759 @@ console.log(JSON.stringify({doc: labDoc(), bps}));
         assert _vicini(env.evaluate(b["t"] * DUR_S), b["vals"]["fill_factor"]), b["t"]
     assert out["grain"]["duration"] == st["grain"]["duration"]
     assert "time_mode" not in out
+
+
+# --- #6: due editor, un file --------------------------------------------------
+# Lo stesso file aperto qui e in PGE-ui (regola 7 del piano). Il laboratorio
+# ricorda la firma del file che ha letto e la manda a ogni scrittura; il server
+# non scrive se su disco non e' piu' quella.
+#
+# Il "disco" sta nel `fetch` finto, con le regole del server vero
+# (`gia_su_disco` e poi `cambiato_su_disco`, verificate in
+# `tests/test_serve.py`): `DISCO` e' il documento su disco, `FDISCO` la sua
+# firma, `scriveAltri` l'altro editor che salva. Un documento uguale a quello
+# su disco non si scrive e non e' un file cambiato: la firma resta quella del
+# file. Qui "uguale" e' il JSON a chiavi ordinate, perche' in JS `4` e `4.0`
+# sono lo stesso numero; la distinzione dei tipi la prova `test_serve.py`.
+# `/stato` risponde da se', perche' `apriPath` e `fSave` chiedono i recenti e
+# quella non e' una scrittura.
+
+def _doppio(disco):
+    return """
+const POST = [];
+let DISCO = %s, FDISCO = 'sha256:letta';
+function scriveAltri(doc) { DISCO = doc; FDISCO = 'sha256:altro'; }
+const discoCanonico = v => JSON.stringify(v, (k, x) =>
+  x && typeof x === 'object' && !Array.isArray(x)
+    ? Object.keys(x).sort().reduce((o, c) => (o[c] = x[c], o), {}) : x);
+fetch = async (rotta, opt) => {
+  if (rotta === '/stato')
+    return {ok: true, json: async () => ({ok: true, sessione: 'S', recenti: []})};
+  const body = JSON.parse(opt.body);
+  POST.push(Object.assign({rotta}, body));
+  if (rotta === 'open') {
+    // Firmato alla richiesta, come fa il server: una firma letta dopo sarebbe
+    // di un file che intanto puo' essere cambiato di nuovo.
+    const d = DISCO, f = FDISCO;
+    return {ok: true, json: async () =>
+      ({ok: true, doc: d, path: body.path, firma: f})};
+  }
+  if (discoCanonico(body.doc) === discoCanonico(DISCO))
+    return {ok: true, json: async () =>
+      ({ok: true, src: 'x.aif', yaml: 'r.yml', path: body.path, firma: FDISCO})};
+  if (body.firma && body.firma !== FDISCO && !body.sovrascrivi)
+    return {ok: true, json: async () => ({ok: false, cambiato: true,
+      error: "il file e' cambiato su disco da quando l'hai letto."})};
+  DISCO = body.doc; FDISCO = 'sha256:scritta';
+  return {ok: true, json: async () =>
+    ({ok: true, src: 'x.aif', yaml: 'r.yml', path: body.path, firma: FDISCO})};
+};
+""" % json.dumps(disco)
+
+
+# Cosa si guarda dopo: le richieste andate al server (rotta, firma mandata,
+# sovrascrittura chiesta, e il `volume` del documento scritto, che e' il
+# marcatore di quale versione e' finita nel file), la firma che il laboratorio
+# ricorda, la riga di stato, se la domanda e' aperta, e se il render e' partito.
+VISTO = """
+console.log(JSON.stringify({
+  post: POST.map(p => ({rotta: p.rotta, firma: p.firma || null,
+                        sovrascrivi: !!p.sovrascrivi,
+                        volume: p.doc ? p.doc.streams[0].volume : null})),
+  firma: FIRMA, file: FILE, sporco: sporco(), daPerdere: daPerdere(),
+  info: document.getElementById('labInfo').textContent,
+  domanda: !document.getElementById('fCambiato').hidden,
+  disco: DISCO.streams[0].volume, reso: ULTIMO || null,
+  ratio: labDoc().streams[0].pitch.ratio,
+}));
+"""
+
+VOL_MIO, VOL_ALTRI = -11, -7
+
+
+def _mio_e_altrui(sid="stream2"):
+    """Lo stesso stream nelle due versioni: la mia (quella che apro) e quella
+    che l'altro editor scrive su disco mentre io ci lavoro. Il `volume` e' il
+    marcatore: il laboratorio non lo tocca, quindi resta quello del documento
+    aperto (#3) e dice quale versione e' stata scritta."""
+    st = dict(_stream(sid), volume=VOL_MIO)
+    return _documento(st), _documento(dict(st, volume=VOL_ALTRI))
+
+
+@node
+def test_senza_modifiche_proprie_il_file_cambiato_si_rilegge_e_il_render_prosegue(tmp_path):
+    """Niente da perdere, niente da decidere: si rilegge e si riprova, e il
+    render prosegue sulla versione su disco — quella che l'altro editor ha
+    appena scritto e' quella che si vuole sentire. La riga di stato lo dice,
+    perche' il documento a schermo non e' piu' quello di prima."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => { scriveAltri(%s); return labRender(); })
+  .then(() => { %s });
+""" % (json.dumps(altrui), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "open", "render"]
+    # Il primo render manda la firma letta aprendo, il secondo quella riletta.
+    assert [p["firma"] for p in got["post"]] == [
+        None, "sha256:letta", None, "sha256:altro"]
+    # Ed e' la versione su disco che si e' scritta e che si sente.
+    assert got["post"][3]["volume"] == VOL_ALTRI
+    assert (got["firma"], got["domanda"]) == ("sha256:scritta", False)
+    assert got["reso"].startswith("x.aif")
+    assert "riletto" in got["info"]
+
+
+def _mio_e_altrui_gia_del_laboratorio():
+    """Come `_mio_e_altrui`, ma il file ha gia' l'identita' che il laboratorio
+    scriverebbe (lo `stream_id` del suo nome, il `seed` dello `study.yml`): e'
+    il documento che PGE-ui riscrive tenendo seed e id del file
+    (DMGiulioRomano/PGE-ui#184). Aperto, e' gia' quello che si scriverebbe."""
+    mio, altrui = _mio_e_altrui("stream2")
+    for d in (mio, altrui):
+        d["seed"] = 1441
+        d["streams"][0]["stream_id"] = "risacca"
+    return mio, altrui
+
+
+@node
+def test_senza_toccare_niente_il_render_non_riscrive_il_file(tmp_path):
+    """Aperto e reso senza toccare niente: il documento e' gia' quello su
+    disco, e il server non lo riscrive (`gia_su_disco`). Se lo riscrivesse,
+    ogni ascolto cambierebbe i byte del file e la guardia dell'altro editor
+    parlerebbe a vuoto. La firma resta quella letta, e il render parte."""
+    mio, _ = _mio_e_altrui_gia_del_laboratorio()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => labRender())
+  .then(() => { %s });
+""" % VISTO)
+    assert [p["rotta"] for p in got["post"]] == ["open", "render"]
+    assert got["firma"] == "sha256:letta"
+    assert got["reso"].startswith("x.aif")
+    assert (got["sporco"], got["daPerdere"], got["domanda"]) == (False, False, False)
+
+
+@node
+def test_riletto_senza_modifiche_proprie_il_file_dell_altro_editor_non_si_riscrive(tmp_path):
+    """Il caso per cui `gia_su_disco` c'e': l'altro editor ha scritto, io non
+    ho niente da perdere, quindi rileggo e rendo. Il documento che il secondo
+    `/render` manda e' quello appena riletto, e il file resta dell'altro
+    editor: la firma che ricordo e' la sua, e al suo giro dopo la sua guardia
+    non trova niente di cambiato."""
+    mio, altrui = _mio_e_altrui_gia_del_laboratorio()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => { scriveAltri(%s); return labRender(); })
+  .then(() => { %s });
+""" % (json.dumps(altrui), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "open", "render"]
+    assert got["post"][3]["volume"] == VOL_ALTRI
+    assert (got["firma"], got["disco"]) == ("sha256:altro", VOL_ALTRI)
+    assert got["reso"].startswith("x.aif") and "riletto" in got["info"]
+
+
+@node
+def test_con_modifiche_proprie_si_chiede_e_non_si_scrive(tmp_path):
+    """La decisione e' dell'utente: due bottoni accanto al nome del file, e
+    finche' non si risponde non si scrive niente — che e' anche la terza
+    risposta, quella che non deve costare un click."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return labRender();
+}).then(() => { %s });
+""" % (_tocca(0, "pitch.ratio", 0.75), json.dumps(altrui), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render"]
+    assert got["domanda"] is True
+    assert "modifiche non salvate" in got["info"]
+    assert "cambiato su disco" in got["info"]
+    # Non si e' scritto: su disco c'e' ancora il lavoro dell'altro editor, e
+    # il render non e' partito.
+    assert got["disco"] == VOL_ALTRI and got["reso"] is None
+    # E le modifiche proprie sono dove le ho lasciate.
+    assert got["ratio"][0] == [0, 0.75]
+
+
+@node
+def test_sovrascrivi_scrive_le_proprie_modifiche(tmp_path):
+    """La risposta passa dal bottone, e riprende la scrittura da dove si era
+    interrotta: era stata chiesta, e la risposta dice solo con quale
+    documento farla."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return labRender();
+}).then(() => document.getElementById('fOverwrite').onclick())
+  .then(() => { %s });
+""" % (_tocca(0, "pitch.ratio", 0.75), json.dumps(altrui), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "render"]
+    assert got["post"][2]["sovrascrivi"] is True
+    # Il documento scritto e' il mio, modifiche comprese.
+    assert got["post"][2]["volume"] == VOL_MIO
+    assert got["ratio"][0] == [0, 0.75]
+    assert (got["firma"], got["domanda"]) == ("sha256:scritta", False)
+    assert got["reso"].startswith("x.aif")
+
+
+@node
+def test_ricarica_perde_le_proprie_modifiche_e_non_le_fa_tornare_con_un_undo(tmp_path):
+    """"Ricarica" e' un `apri` dello stesso file: la storia si azzera, o un
+    undo riporterebbe indietro una versione che su disco non c'e' piu' — e la
+    scrittura dopo la riscriverebbe."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return labRender();
+}).then(() => document.getElementById('fReload').onclick())
+  .then(() => { vaiStoria(-1); %s });
+""" % (_tocca(0, "pitch.ratio", 0.75), json.dumps(altrui), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "open", "render"]
+    assert got["post"][3]["firma"] == "sha256:altro"
+    assert got["post"][3]["volume"] == VOL_ALTRI
+    # Nemmeno un undo riporta il 0.75: la storia e' quella del file riletto.
+    assert got["ratio"] == _stream("stream2")["pitch"]["ratio"]
+    assert got["domanda"] is False
+
+
+@node
+def test_la_firma_e_del_file_aperto_non_di_un_altro(tmp_path):
+    """Un `salva con nome` scrive un file che il laboratorio non ha letto, e
+    della sovrascrittura ha chiesto il pannello nativo. Mandare la firma
+    accuserebbe un file qualunque di essere cambiato — cosa che e', rispetto a
+    un altro file."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/a.yml')
+  .then(() => labPost(false, '/brano/b.yml'))
+  .then(() => { %s });
+""" % VISTO)
+    assert [p["rotta"] for p in got["post"]] == ["open", "render"]
+    assert got["post"][1]["firma"] is None
+    assert (got["file"], got["firma"]) == ("/brano/b.yml", "sha256:scritta")
+
+
+@node
+def test_due_salvataggi_di_fila_il_secondo_non_si_accusa_da_solo(tmp_path):
+    """La firma di cio' che si e' appena scritto torna dal server e prende il
+    posto di quella letta: senza, il salvataggio dopo manderebbe la firma di
+    prima e si rifiuterebbe da se'."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return fSave(false);
+}).then(() => {
+  %s
+  return fSave(false);
+}).then(() => { %s });
+""" % (_tocca(0, "pitch.ratio", 0.75), _tocca(0, "pitch.ratio", 0.5), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "render"]
+    assert [p["firma"] for p in got["post"]] == [
+        None, "sha256:letta", "sha256:scritta"]
+    assert got["domanda"] is False and got["ratio"][0] == [0, 0.5]
+
+
+@node
+def test_la_firma_sopravvive_a_un_refresh(tmp_path):
+    """Senza, il refresh disarmerebbe la guardia proprio sul file su cui si
+    stava lavorando: la scrittura dopo passerebbe senza confronto."""
+    mio, altrui = _mio_e_altrui()
+    bozza = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  console.log(localStorage.getItem('lab:001-41'));
+});
+""" % _tocca(0, "pitch.ratio", 0.75))
+    assert bozza["firma"] == "sha256:letta"
+    bozza["sess"] = "S"
+    prima = """
+localStorage.setItem('lab:001-41', %s);
+fetch = async () => ({ok: true, json: async () => ({ok: true, sessione: 'S', recenti: []})});
+""" % json.dumps(json.dumps(bozza))
+    # Riaperta la pagina, l'altro editor ha scritto: la guardia e' ancora
+    # armata e, con le modifiche riprese dalla bozza, chiede.
+    got = _lab(tmp_path, _doppio(altrui) + """
+FDISCO = 'sha256:altro';
+labRender().then(() => { %s });
+""" % VISTO, prima=prima)
+    assert got["post"][0]["firma"] == "sha256:letta"
+    assert got["domanda"] is True and got["reso"] is None
+
+
+@node
+def test_una_scrittura_nuova_sostituisce_la_domanda_in_attesa(tmp_path):
+    """La via d'uscita piu' ovvia dal "cambiato su disco" e' salvare le proprie
+    da un'altra parte. La domanda riguardava quella scrittura: se ne resta
+    aperta una a cui nessuno risponde piu', i due bottoni dicono che c'e'
+    qualcosa di fermo quando non c'e' niente."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return labRender();
+}).then(() => labPost(false, '/brano/mie.yml'))
+  .then(() => { %s });
+""" % (_tocca(0, "pitch.ratio", 0.75), json.dumps(altrui), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "render"]
+    assert got["post"][2]["volume"] == VOL_MIO        # le mie, in un file mio
+    assert (got["file"], got["domanda"]) == ("/brano/mie.yml", False)
+
+
+@node
+def test_se_il_file_cambia_mentre_lo_rileggo_lo_si_dice_invece_di_rincorrerlo(tmp_path):
+    """Si riprova una volta sola. A rincorrere un file che qualcuno riscrive
+    continuamente non si finisce mai, e intanto non si scrive niente: meglio
+    dirlo, che e' una cosa da guardare."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+// L'altro editor salva di nuovo appena abbiamo riletto: la firma che ci ha
+// dato e' gia' vecchia quando proviamo a scrivere.
+const server = fetch;
+fetch = async (rotta, opt) => {
+  const r = await server(rotta, opt);
+  if (rotta === 'open' && POST.length > 1) FDISCO = 'sha256:e-ancora';
+  return r;
+};
+apriPath('/brano/risacca.yml')
+  .then(() => { scriveAltri(%s); return labRender(); })
+  .then(() => { %s });
+""" % (json.dumps(altrui), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "open", "render"]
+    assert "cambia mentre lo rileggo" in got["info"]
+    assert got["reso"] is None            # il render non e' partito
+    # E non e' una domanda: senza modifiche proprie non c'e' niente da
+    # decidere, solo da riprovare.
+    assert got["domanda"] is False
+
+
+@node
+def test_l_identita_riscritta_non_e_lavoro_da_perdere(tmp_path):
+    """Dalla #5 il laboratorio riscrive l'identita' — `stream_id` col nome del
+    file, e il `seed` dello studio se il documento non ne ha — e `SALVATO` ne
+    tiene conto (`comeLetto`): un file il cui id non e' il suo nome, e ogni
+    file scritto prima della #5, e' `• modificato` dal primo istante.
+
+    Quella differenza una rilettura la ricalcola identica, quindi non e'
+    lavoro da perdere: la guardia legge `daPerdere()` e non `sporco()`.
+    Chiedere li' direbbe "hai modifiche non salvate" a chi non ha toccato
+    niente, e su quella popolazione — che e' la maggioranza — la regola 7
+    vuole che si rilegga.
+    """
+    mio, altrui = _mio_e_altrui()             # stream_id: stream2, nessun seed
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  const subito = {sporco: sporco(), daPerdere: daPerdere()};
+  scriveAltri(%s);
+  return labRender().then(() => console.log(JSON.stringify({subito,
+    post: POST.map(p => p.rotta),
+    domanda: !document.getElementById('fCambiato').hidden,
+    info: document.getElementById('labInfo').textContent})));
+});
+""" % json.dumps(altrui))
+    # Le due domande divergono, ed e' qui che si vede.
+    assert got["subito"] == {"sporco": True, "daPerdere": False}
+    assert got["post"] == ["open", "render", "open", "render"]
+    assert got["domanda"] is False
+    assert "modifiche non salvate" not in got["info"]
+
+
+@node
+def test_dopo_un_salvataggio_non_c_e_piu_niente_da_perdere(tmp_path):
+    """Salvato, il file E' il documento: `SCRITTO0` si sposta col salvataggio,
+    o il lavoro appena messo al sicuro continuerebbe a contare come da
+    perdere e la domanda comparirebbe su un documento che non ha piu' niente
+    di proprio."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return fSave(false);
+}).then(() => {
+  const prima = {sporco: sporco(), daPerdere: daPerdere()};
+  scriveAltri(%s);
+  return labRender().then(() => console.log(JSON.stringify({prima,
+    post: POST.map(p => p.rotta),
+    domanda: !document.getElementById('fCambiato').hidden})));
+});
+""" % (_tocca(0, "pitch.ratio", 0.75), json.dumps(altrui)))
+    assert got["prima"] == {"sporco": False, "daPerdere": False}
+    # Salvataggio, render rifiutato, rilettura, render: nessuna domanda.
+    assert got["post"] == ["open", "render", "render", "open", "render"]
+    assert got["domanda"] is False
+
+
+@node
+def test_un_refresh_senza_lavoro_proprio_rilegge_invece_di_chiedere(tmp_path):
+    """L'altra meta' della bozza: `FIRMA` tiene armata la guardia, `SCRITTO0`
+    le fa dare la risposta giusta. Senza, dopo un refresh ogni file risulta
+    tutto lavoro proprio e la domanda compare sempre."""
+    mio, altrui = _mio_e_altrui()
+    bozza = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => console.log(localStorage.getItem('lab:001-41')));
+""")
+    bozza["sess"] = "S"
+    prima = """
+localStorage.setItem('lab:001-41', %s);
+fetch = async () => ({ok: true, json: async () => ({ok: true, sessione: 'S', recenti: []})});
+""" % json.dumps(json.dumps(bozza))
+    got = _lab(tmp_path, _doppio(altrui) + """
+FDISCO = 'sha256:altro';
+labRender().then(() => { %s });
+""" % VISTO, prima=prima)
+    assert [p["rotta"] for p in got["post"]] == ["render", "open", "render"]
+    assert got["domanda"] is False and got["reso"].startswith("x.aif")
+
+
+@node
+def test_salvato_e_poi_un_refresh_la_scrittura_dopo_non_si_accusa(tmp_path):
+    """La bozza va riscritta dopo ogni scrittura: e' li' che stanno `FIRMA`,
+    `SALVATO` e `SCRITTO0`. Senza, un refresh dopo un salvataggio riprendeva
+    quelli di prima — la firma letta aprendo, il documento com'era aperto — e
+    il giro dopo mandava al server la firma di un file che il laboratorio
+    stesso aveva riscritto: "cambiato su disco", e la domanda "hai modifiche
+    non salvate" su un documento appena salvato."""
+    mio, _ = _mio_e_altrui()
+    bozza = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return fSave(false);
+}).then(() => console.log(localStorage.getItem('lab:001-41')));
+""" % _tocca(0, "pitch.ratio", 0.75))
+    assert bozza["firma"] == "sha256:scritta"
+    bozza["sess"] = "S"
+    prima = """
+localStorage.setItem('lab:001-41', %s);
+fetch = async () => ({ok: true, json: async () => ({ok: true, sessione: 'S', recenti: []})});
+""" % json.dumps(json.dumps(bozza))
+    # Sul disco c'e' quello che il laboratorio ha scritto, e nessun altro l'ha
+    # toccato.
+    got = _lab(tmp_path, _doppio(mio) + """
+FDISCO = 'sha256:scritta';
+const fuori = {sporco: sporco(), daPerdere: daPerdere()};
+labRender().then(() => { %s });
+""" % VISTO.replace("console.log(JSON.stringify({",
+                    "console.log(JSON.stringify({fuori,"), prima=prima)
+    assert got["fuori"] == {"sporco": False, "daPerdere": False}
+    assert [p["firma"] for p in got["post"]] == ["sha256:scritta"]
+    assert got["domanda"] is False and got["reso"].startswith("x.aif")
+
+
+@node
+def test_un_render_fallito_dopo_la_scrittura_non_fa_accusare_il_giro_dopo(tmp_path):
+    """Il server scrive lo YAML prima di rendere: se l'engine poi fallisce (un
+    valore fuori bounds, la cosa piu' comune in un laboratorio) il file e' gia'
+    quello nuovo, e la risposta ne porta la firma. La pagina la prende come
+    dopo una scrittura riuscita — o il render dopo, corretto il valore,
+    trovava il file "cambiato su disco" per mano propria e chiedeva."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+const server = fetch;
+let muore = true;
+fetch = async (rotta, opt) => {
+  const r = await server(rotta, opt);
+  if (rotta !== 'render' || !muore) return r;
+  muore = false;
+  const out = await r.json();
+  return {ok: true, json: async () => ({ok: false, error: 'ValueError: bounds',
+                                        path: out.path, yaml: out.yaml,
+                                        firma: out.firma})};
+};
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return labRender();
+}).then(() => {
+  const dopo = {info: document.getElementById('labInfo').textContent,
+                sporco: sporco(), daPerdere: daPerdere()};
+  %s
+  return labRender().then(() => dopo);
+}).then(dopo => { %s });
+""" % (_tocca(0, "pitch.ratio", 0.75), _tocca(0, "pitch.ratio", 0.5),
+       VISTO.replace("console.log(JSON.stringify({",
+                     "console.log(JSON.stringify({dopo,")))
+    # Il fallimento si dice, e il file scritto non e' piu' "modificato".
+    assert "bounds" in got["dopo"]["info"]
+    assert got["dopo"]["sporco"] is False and got["dopo"]["daPerdere"] is False
+    assert [p["firma"] for p in got["post"]] == [
+        None, "sha256:letta", "sha256:scritta"]
+    assert got["domanda"] is False and got["reso"].startswith("x.aif")
+
+
+@node
+def test_riletto_un_file_che_non_e_piu_un_documento_non_si_riprova(tmp_path):
+    """Se l'altro editor ha lasciato un file senza stream, la rilettura non
+    carica niente: riprovare la scrittura col documento di prima e la firma di
+    prima darebbe un secondo "cambiato" e la riga di stato direbbe "cambia
+    mentre lo rileggo", che non e' vero — il motivo e' un altro, e va detto."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => { scriveAltri({streams: []}); return labRender(); })
+  .then(() => { %s });
+""" % VISTO.replace("disco: DISCO.streams[0].volume", "disco: null"))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "open"]
+    assert "non e' un documento con stream" in got["info"]
+    assert "rileggo" not in got["info"]
+    assert got["firma"] == "sha256:letta" and got["reso"] is None
+
+
+# --- i valori a schermo e il render --------------------------------------------
+# Il render suona i breakpoint, non lo schermo: un valore scritto nel campo e
+# non confermato (`salva modifica`, `applica a tutti`, `+ breakpoint`) non sta
+# nel documento che si rende. Prima di rendere si chiede se scartarlo; col
+# bottone `scarto automatico` acceso si scarta senza chiedere. In tutti e due
+# i casi la riga di stato dice cosa e' stato scartato.
+
+def _schermo(risposta):
+    """Il `confirm` della pagina, registrato: cosa ha chiesto, e la risposta."""
+    return "const CHIESTO = [];\nconfirm = m => { CHIESTO.push(m); return %s; };\n" % (
+        "true" if risposta else "false")
+
+
+# Scritto nel campo del breakpoint 2, e non confermato: il gesto di chi prova un
+# valore e preme subito `rendi e ascolta`.
+A_SCHERMO = ("bpLoad(1); document.getElementById('P:pitch.ratio').value = '0.75';"
+             " document.getElementById('P:pitch.ratio').onchange();\n")
+
+VISTO_SCHERMO = """
+const visto = () => ({
+  chiesto: CHIESTO,
+  resi: POST.filter(p => p.rotta === 'render').map(p => p.doc.streams[0].pitch.ratio),
+  campo: document.getElementById('P:pitch.ratio').value,
+  cambiati: cambiati(),
+  info: document.getElementById('labInfo').textContent,
+  reso: ULTIMO || null,
+  auto: document.getElementById('labScarta').classList.contains('on'),
+});
+"""
+
+
+@node
+def test_valori_a_schermo_non_salvati_si_chiede_e_no_li_tiene(tmp_path):
+    """"No" e' la risposta che non perde niente: il render non parte, i valori
+    restano nei campi, e la riga di stato dice come metterli nel documento."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + _schermo(False) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return labRender();
+}).then(() => console.log(JSON.stringify(visto())));
+""" % A_SCHERMO)
+    assert len(got["chiesto"]) == 1
+    assert "breakpoint 2" in got["chiesto"][0] and "pitch.ratio" in got["chiesto"][0]
+    assert got["resi"] == [] and got["reso"] is None
+    assert got["campo"] == "0.75" and got["cambiati"] == ["pitch.ratio"]
+    assert "salva modifica" in got["info"] and "pitch.ratio" in got["info"]
+
+
+@node
+def test_valori_a_schermo_si_li_scarta_rende_e_un_undo_li_riporta(tmp_path):
+    """"Si'": lo schermo torna al breakpoint, il render parte e la riga di stato
+    dice cosa si e' scartato. Scartare e' un passo della storia come gli altri:
+    un undo rimette i valori nei campi."""
+    mio, _ = _mio_e_altrui()
+    ratio = _stream("stream2")["pitch"]["ratio"]
+    got = _lab(tmp_path, _doppio(mio) + _schermo(True) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return labRender();
+}).then(() => {
+  const dopo = visto();
+  vaiStoria(-1);
+  console.log(JSON.stringify(Object.assign(dopo,
+    {undo: document.getElementById('P:pitch.ratio').value})));
+});
+""" % A_SCHERMO)
+    assert len(got["chiesto"]) == 1
+    # Il documento reso e' quello dei breakpoint: lo 0.75 non c'e'.
+    assert len(got["resi"]) == 1 and got["resi"][0] == ratio
+    assert got["reso"].startswith("x.aif")
+    assert got["cambiati"] == [] and got["campo"] != "0.75"
+    assert "scartati" in got["info"] and "pitch.ratio" in got["info"]
+    assert got["undo"] == "0.75"
+
+
+@node
+def test_con_lo_scarto_automatico_acceso_non_si_chiede(tmp_path):
+    """Il bottone accanto al render: acceso, scartare e' la risposta data una
+    volta per tutte. Non si chiede, ma la riga di stato lo dice lo stesso —
+    scartare in silenzio e' proprio cio' che la domanda e' venuta a togliere."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + _schermo(False) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml').then(() => {
+  document.getElementById('labScarta').onclick();
+  %s
+  return labRender();
+}).then(() => console.log(JSON.stringify(visto())));
+""" % A_SCHERMO)
+    assert got["auto"] is True and got["chiesto"] == []
+    assert len(got["resi"]) == 1 and got["reso"].startswith("x.aif")
+    assert got["cambiati"] == []
+    assert "scartati" in got["info"] and "pitch.ratio" in got["info"]
+
+
+@node
+def test_senza_valori_a_schermo_non_si_chiede_niente(tmp_path):
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + _schermo(False) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml')
+  .then(() => labRender())
+  .then(() => console.log(JSON.stringify(visto())));
+""")
+    assert got["chiesto"] == [] and len(got["resi"]) == 1
+    assert "scartati" not in got["info"]
+
+
+@node
+def test_lo_scarto_automatico_parte_spento(tmp_path):
+    """Spento a ogni apertura della pagina: scartare senza chiedere e' una
+    scelta, non il comportamento di partenza."""
+    got = _lab(tmp_path, _schermo(False) + """
+const b = document.getElementById('labScarta');
+const stati = [b.classList.contains('on')];
+b.onclick(); stati.push(b.classList.contains('on'));
+b.onclick(); stati.push(b.classList.contains('on'));
+console.log(JSON.stringify(stati));
+""")
+    assert got == [False, True, False]
+
+
+# Con `segui il render` acceso lo schermo non e' lavoro: e' la lettura degli
+# inviluppi al cursore, che `mostraSegui` riscrive a ogni frame (anche in
+# pausa). Lontano dal breakpoint selezionato i campi ne differiscono, e
+# `cambiati()` li conta: chi chiede se scartarli chiederebbe di valori che
+# nessuno ha scritto. Il cursore va a meta' fra i primi due breakpoint, dove
+# gli inviluppi di stream2 che si muovono stanno fra i due valori.
+SEGUE = """
+SEGUI = true; LAB_AUDIO = true;
+mostraSegui((bps[0].t + bps[1].t) / 2 * durata());
+const letti = cambiati();
+"""
+
+
+@node
+def test_con_segui_il_render_la_lettura_a_schermo_non_e_un_valore_da_scartare(tmp_path):
+    """Il render non chiede, non dice di aver scartato niente, e parte: lo
+    schermo e' la lettura, non un valore scritto e non salvato."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + _schermo(False) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return labRender().then(() => letti);
+}).then(letti => console.log(JSON.stringify(Object.assign(visto(), {letti}))));
+""" % SEGUE)
+    assert got["letti"]                        # lo scenario dice qualcosa
+    assert got["chiesto"] == []
+    assert len(got["resi"]) == 1 and got["reso"].startswith("x.aif")
+    assert "scartati" not in got["info"]
+
+
+@node
+def test_con_segui_il_render_il_file_cambiato_si_rilegge_senza_chiedere(tmp_path):
+    """Per la stessa ragione la lettura non e' lavoro da perdere: senza
+    modifiche proprie il file cambiato su disco si rilegge e il render
+    prosegue, come a schermo fermo."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return labRender();
+}).then(() => { %s });
+""" % (SEGUE, json.dumps(altrui), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "open", "render"]
+    assert got["domanda"] is False and got["reso"].startswith("x.aif")
+
+
+@node
+def test_salva_su_un_file_cambiato_con_valori_a_schermo_chiede_invece_di_rileggere(tmp_path):
+    """`salva` scrive i breakpoint senza chiedere, e i valori a schermo restano
+    nei campi. Ma se il file e' cambiato su disco la rilettura li butterebbe —
+    in silenzio, e senza undo, perche' `carica` azzera la storia. Sono lavoro
+    proprio come i breakpoint toccati: si chiede, e finche' non si risponde i
+    campi restano come sono."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return fSave(false);
+}).then(() => { %s });
+""" % (A_SCHERMO, json.dumps(altrui), VISTO.replace(
+        "console.log(JSON.stringify({",
+        "console.log(JSON.stringify({campo: document.getElementById('P:pitch.ratio').value,")))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render"]
+    assert got["domanda"] is True
+    assert "modifiche non salvate" in got["info"]
+    assert got["campo"] == "0.75"
+    assert got["disco"] == VOL_ALTRI
+
+
+# La domanda del file cambiato non ferma la tastiera: mentre e' aperta si puo'
+# scrivere nei campi. `sovrascrivi` riprende la scrittura in attesa, e se era un
+# render vale la regola di `rendi e ascolta` — il render suona i breakpoint,
+# non lo schermo, e non parte senza dirlo. Prima `fSovrascrivi` andava dritto a
+# `labPost`: il render partiva senza il valore scritto, e niente lo diceva.
+
+def _sovrascrivi_dopo_aver_scritto(tmp_path, risposta, render=True):
+    """Il mio documento toccato, l'altro editor che scrive, la domanda aperta
+    da un render (o da un `salva`); poi un valore scritto a schermo e
+    `sovrascrivi`."""
+    mio, altrui = _mio_e_altrui()
+    scrittura = "labRender()" if render else "fSave(false)"
+    return _lab(tmp_path, _doppio(mio) + _schermo(risposta) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return %s;
+}).then(() => {
+  %s
+  return document.getElementById('fOverwrite').onclick();
+}).then(() => console.log(JSON.stringify(Object.assign(visto(), {
+  sovrascritti: POST.filter(p => p.sovrascrivi).length,
+  domanda: !document.getElementById('fCambiato').hidden,
+}))));
+""" % (_tocca(0, "pitch.ratio", 0.5), json.dumps(altrui), scrittura, A_SCHERMO))
+
+
+@node
+def test_sovrascrivi_di_un_render_chiede_dei_valori_scritti_a_schermo_e_no_li_tiene(tmp_path):
+    """"No": il render non parte, i valori restano nei campi, e la domanda del
+    file cambiato resta aperta — la scrittura e' ancora in attesa, e chi ha
+    salvato i suoi valori sul breakpoint la riprende con `sovrascrivi`."""
+    got = _sovrascrivi_dopo_aver_scritto(tmp_path, False)
+    assert len(got["chiesto"]) == 1
+    assert "breakpoint 2" in got["chiesto"][0] and "pitch.ratio" in got["chiesto"][0]
+    assert got["sovrascritti"] == 0 and got["reso"] is None
+    assert got["campo"] == "0.75" and got["cambiati"] == ["pitch.ratio"]
+    assert got["domanda"] is True
+    assert "salva modifica" in got["info"]
+
+
+@node
+def test_sovrascrivi_di_un_render_si_scarta_i_valori_a_schermo_e_lo_dice(tmp_path):
+    """"Si'": lo schermo torna al breakpoint, il render sovrascrive e parte, e
+    la riga di stato dice cosa si e' scartato, come in `rendi e ascolta`."""
+    got = _sovrascrivi_dopo_aver_scritto(tmp_path, True)
+    assert len(got["chiesto"]) == 1
+    assert got["sovrascritti"] == 1 and got["reso"].startswith("x.aif")
+    assert got["cambiati"] == [] and got["campo"] != "0.75"
+    assert got["domanda"] is False
+    assert "scartati i valori non salvati sul breakpoint 2: pitch.ratio" in got["info"]
+
+
+@node
+def test_sovrascrivi_di_un_salva_non_chiede_dei_valori_a_schermo(tmp_path):
+    """L'altra direzione: `salva` scrive i breakpoint senza chiedere e lascia
+    i valori nei campi, e il suo `sovrascrivi` fa lo stesso."""
+    got = _sovrascrivi_dopo_aver_scritto(tmp_path, False, render=False)
+    assert got["chiesto"] == []
+    assert got["sovrascritti"] == 1 and got["reso"] is None
+    assert got["campo"] == "0.75" and got["domanda"] is False
