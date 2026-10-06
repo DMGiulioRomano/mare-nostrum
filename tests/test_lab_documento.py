@@ -941,17 +941,24 @@ console.log(JSON.stringify({doc: labDoc(), bps}));
 # ricorda la firma del file che ha letto e la manda a ogni scrittura; il server
 # non scrive se su disco non e' piu' quella.
 #
-# Il "disco" sta nel `fetch` finto, con la regola del server vero
-# (`cambiato_su_disco`, verificata in `tests/test_serve.py`): `DISCO` e' il
-# documento su disco, `FDISCO` la sua firma, `scriveAltri` l'altro editor che
-# salva. `/stato` risponde da se', perche' `apriPath` e `fSave` chiedono i
-# recenti e quella non e' una scrittura.
+# Il "disco" sta nel `fetch` finto, con le regole del server vero
+# (`gia_su_disco` e poi `cambiato_su_disco`, verificate in
+# `tests/test_serve.py`): `DISCO` e' il documento su disco, `FDISCO` la sua
+# firma, `scriveAltri` l'altro editor che salva. Un documento uguale a quello
+# su disco non si scrive e non e' un file cambiato: la firma resta quella del
+# file. Qui "uguale" e' il JSON a chiavi ordinate, perche' in JS `4` e `4.0`
+# sono lo stesso numero; la distinzione dei tipi la prova `test_serve.py`.
+# `/stato` risponde da se', perche' `apriPath` e `fSave` chiedono i recenti e
+# quella non e' una scrittura.
 
 def _doppio(disco):
     return """
 const POST = [];
 let DISCO = %s, FDISCO = 'sha256:letta';
 function scriveAltri(doc) { DISCO = doc; FDISCO = 'sha256:altro'; }
+const discoCanonico = v => JSON.stringify(v, (k, x) =>
+  x && typeof x === 'object' && !Array.isArray(x)
+    ? Object.keys(x).sort().reduce((o, c) => (o[c] = x[c], o), {}) : x);
 fetch = async (rotta, opt) => {
   if (rotta === '/stato')
     return {ok: true, json: async () => ({ok: true, sessione: 'S', recenti: []})};
@@ -964,6 +971,9 @@ fetch = async (rotta, opt) => {
     return {ok: true, json: async () =>
       ({ok: true, doc: d, path: body.path, firma: f})};
   }
+  if (discoCanonico(body.doc) === discoCanonico(DISCO))
+    return {ok: true, json: async () =>
+      ({ok: true, src: 'x.aif', yaml: 'r.yml', path: body.path, firma: FDISCO})};
   if (body.firma && body.firma !== FDISCO && !body.sovrascrivi)
     return {ok: true, json: async () => ({ok: false, cambiato: true,
       error: "il file e' cambiato su disco da quando l'hai letto."})};
@@ -1024,6 +1034,55 @@ apriPath('/brano/risacca.yml')
     assert (got["firma"], got["domanda"]) == ("sha256:scritta", False)
     assert got["reso"].startswith("x.aif")
     assert "riletto" in got["info"]
+
+
+def _mio_e_altrui_gia_del_laboratorio():
+    """Come `_mio_e_altrui`, ma il file ha gia' l'identita' che il laboratorio
+    scriverebbe (lo `stream_id` del suo nome, il `seed` dello `study.yml`): e'
+    il documento che PGE-ui riscrive tenendo seed e id del file
+    (DMGiulioRomano/PGE-ui#184). Aperto, e' gia' quello che si scriverebbe."""
+    mio, altrui = _mio_e_altrui("stream2")
+    for d in (mio, altrui):
+        d["seed"] = 1441
+        d["streams"][0]["stream_id"] = "risacca"
+    return mio, altrui
+
+
+@node
+def test_senza_toccare_niente_il_render_non_riscrive_il_file(tmp_path):
+    """Aperto e reso senza toccare niente: il documento e' gia' quello su
+    disco, e il server non lo riscrive (`gia_su_disco`). Se lo riscrivesse,
+    ogni ascolto cambierebbe i byte del file e la guardia dell'altro editor
+    parlerebbe a vuoto. La firma resta quella letta, e il render parte."""
+    mio, _ = _mio_e_altrui_gia_del_laboratorio()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => labRender())
+  .then(() => { %s });
+""" % VISTO)
+    assert [p["rotta"] for p in got["post"]] == ["open", "render"]
+    assert got["firma"] == "sha256:letta"
+    assert got["reso"].startswith("x.aif")
+    assert (got["sporco"], got["daPerdere"], got["domanda"]) == (False, False, False)
+
+
+@node
+def test_riletto_senza_modifiche_proprie_il_file_dell_altro_editor_non_si_riscrive(tmp_path):
+    """Il caso per cui `gia_su_disco` c'e': l'altro editor ha scritto, io non
+    ho niente da perdere, quindi rileggo e rendo. Il documento che il secondo
+    `/render` manda e' quello appena riletto, e il file resta dell'altro
+    editor: la firma che ricordo e' la sua, e al suo giro dopo la sua guardia
+    non trova niente di cambiato."""
+    mio, altrui = _mio_e_altrui_gia_del_laboratorio()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => { scriveAltri(%s); return labRender(); })
+  .then(() => { %s });
+""" % (json.dumps(altrui), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "open", "render"]
+    assert got["post"][3]["volume"] == VOL_ALTRI
+    assert (got["firma"], got["disco"]) == ("sha256:altro", VOL_ALTRI)
+    assert got["reso"].startswith("x.aif") and "riletto" in got["info"]
 
 
 @node

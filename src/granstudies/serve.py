@@ -250,6 +250,43 @@ def _scrivi(path: str, doc: dict) -> str:
     return firma_di(raw)
 
 
+def _stesso(a, b) -> bool:
+    """Lo stesso documento, tipi compresi.
+
+    Non e' ``==``: per Python ``4 == 4.0`` e ``1 == True``, per l'engine no
+    (un ``n_reps`` float e' un errore dalla PGE#211, un ``n_reps: true`` pure).
+    Un valore che cambia tipo e' un documento diverso, e si scrive.
+    """
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(_stesso(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return len(a) == len(b) and all(map(_stesso, a, b))
+    return a == b
+
+
+def gia_su_disco(path: str, doc: dict) -> str:
+    """La firma del file se contiene gia' ``doc``, ``""`` se no.
+
+    Il laboratorio scrive il file a ogni `rendi e ascolta`, anche quando non
+    l'ha toccato, e lo scrive a modo suo: due editor scrivono lo stesso
+    documento con byte diversi. La firma e' dei byte, quindi ogni ascolto
+    farebbe dire "cambiato su disco" alla guardia dell'altro editor
+    (DMGiulioRomano/PGE-ui#185) su un documento che nessuno ha cambiato, e si
+    porterebbe via la sua formattazione e i suoi commenti. Un file che
+    contiene gia' il documento non si riscrive: la sua firma torna alla
+    pagina come quella di un file appena scritto, perche' e' cio' che c'e'
+    su disco.
+    """
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        return firma_di(raw) if _stesso(yaml.safe_load(raw), doc) else ""
+    except (OSError, yaml.YAMLError):
+        return ""
+
+
 def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
                renderer: str = "numpy", render: bool = True,
                path: str = "", ascolto: dict | None = None,
@@ -274,6 +311,11 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
     La firma di cio' che si e' scritto torna sempre, anche quando poi e'
     l'engine a fallire: lo YAML si scrive prima di rendere.
 
+    Un file dell'utente che contiene gia' ``doc`` non si riscrive
+    (``gia_su_disco``), e non e' nemmeno un file cambiato: scrivere non
+    cambierebbe niente, quindi non c'e' niente da sovrascrivere ne' da
+    chiedere. Si rende il file com'e', e torna la sua firma.
+
     Il percorso dell'engine e dei sample e' relativo alla radice del repo:
     ``main.py`` risolve ``samples-dir`` da dove gira, non da dove sta lo YAML.
     """
@@ -282,7 +324,11 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
             return {"ok": False, "error": "percorso non scelto da un pannello: "
                                           "usa 'salva con nome'."}
         doc_path = path if path.endswith((".yml", ".yaml")) else path + ".yml"
-        if not sovrascrivi and cambiato_su_disco(doc_path, firma_letta):
+        # Prima della guardia: se il file contiene gia' il documento, i byte
+        # possono essere cambiati (l'altro editor l'ha riscritto a modo suo),
+        # ma una scrittura non toglierebbe niente a nessuno.
+        gia = gia_su_disco(doc_path, doc)
+        if not gia and not sovrascrivi and cambiato_su_disco(doc_path, firma_letta):
             return {"ok": False, "cambiato": True,
                     "error": "il file e' cambiato su disco da quando l'hai "
                              "letto: ricarica o sovrascrivi."}
@@ -296,9 +342,10 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
         os.makedirs(os.path.join(live, "logs"), exist_ok=True)
         doc_path = os.path.join(live, stem + ".yml")
         out_path = os.path.join(live, stem + ".aif")
+        gia = ""
     # La firma di cio' che si e' appena scritto torna alla pagina: senza, il
     # salvataggio dopo si accuserebbe da solo di aver cambiato il file.
-    nuova = _scrivi(doc_path, doc)
+    nuova = gia or _scrivi(doc_path, doc)
 
     def _rel(p: str) -> str:
         """Il path come lo usa la pagina: relativo se sta sotto lo studio

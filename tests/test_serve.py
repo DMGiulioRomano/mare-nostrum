@@ -391,3 +391,102 @@ def test_un_render_fallito_dopo_la_scrittura_torna_la_firma_del_file(tmp_path, m
     due = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
                        path=path, firma_letta=out["firma"])
     assert due["ok"]
+
+
+# --- un documento gia' su disco non si riscrive --------------------------------
+# I due editor scrivono lo stesso documento con formattazioni diverse (PGE-ui
+# con js-yaml e la sua intestazione, il laboratorio con `_Dumper`), e la firma
+# e' dei byte. Se il laboratorio riscrivesse il file a ogni `rendi e ascolta`
+# anche senza averlo toccato, ogni ascolto cambierebbe i byte e la guardia
+# dell'altro editor (DMGiulioRomano/PGE-ui#185, stessa firma) parlerebbe a
+# vuoto: "cambiato su disco" su un documento che nessuno ha cambiato.
+
+# Lo stesso documento di `DOC`, come lo scriverebbe un altro editor: un'altra
+# formattazione e un commento in testa.
+ALTRO_EDITOR = ("# saved: 2026-10-06T12:00:00\n"
+                "duration: 4\n"
+                "streams:\n"
+                "  - stream_id: lab\n"
+                "    grain:\n"
+                "      duration:\n"
+                "        - [0, 0.001]\n"
+                "        - [1, 0.02]\n")
+
+
+def test_un_documento_gia_su_disco_non_si_riscrive(tmp_path, monkeypatch):
+    """Il file contiene gia' il documento: non si scrive, i byte dell'altro
+    editor restano (commento compreso), e la firma che torna e' quella del
+    file com'e'. Il render parte lo stesso, dal file su disco."""
+    chiamate = []
+    monkeypatch.setattr(S.subprocess, "run",
+                        lambda cmd, **k: chiamate.append(cmd) or _ok(cmd))
+    path, letta = _mio(tmp_path, ALTRO_EDITOR)
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=True,
+                       path=path, firma_letta=letta)
+    assert out["ok"] and out["firma"] == letta
+    assert open(path).read() == ALTRO_EDITOR
+    assert chiamate and chiamate[0][2] == path
+
+
+def test_gia_su_disco_e_lo_stesso_documento_non_un_file_cambiato(tmp_path, monkeypatch):
+    """L'altro editor ha riscritto lo stesso documento a modo suo dopo che
+    l'ho letto: i byte sono cambiati, il documento no. Scrivere non
+    cambierebbe niente, quindi non c'e' niente da sovrascrivere e niente da
+    chiedere — e non si scrive."""
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    path, letta = _mio(tmp_path, S.yaml.safe_dump(DOC))
+    open(path, "w").write(ALTRO_EDITOR)
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
+                       path=path, firma_letta=letta)
+    assert out["ok"] and "cambiato" not in out
+    assert open(path).read() == ALTRO_EDITOR
+    assert out["firma"] == S.firma(path) != letta
+
+
+def test_gia_su_disco_vuol_dire_anche_lo_stesso_tipo(tmp_path, monkeypatch):
+    """Per l'engine `4` e `4.0` non sono sempre la stessa cosa (un `n_reps`
+    float e' un errore dalla PGE#211), e nemmeno `1` e `true`: per Python
+    sono uguali, per il documento no. Un valore che cambia tipo si scrive."""
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    for su_disco in (ALTRO_EDITOR.replace("duration: 4\n", "duration: 4.0\n"),
+                     ALTRO_EDITOR.replace("[1, 0.02]", "[true, 0.02]")):
+        path, letta = _mio(tmp_path, su_disco)
+        out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
+                           path=path, firma_letta=letta)
+        assert out["ok"] and open(path).read() != su_disco
+        assert S.yaml.safe_load(open(path).read()) == DOC
+
+
+def test_il_giro_vero_riletto_e_reso_non_riscrive_il_file_dell_altro_editor(tmp_path, monkeypatch):
+    """Il caso per cui c'e' la regola: senza modifiche proprie il laboratorio
+    rilegge il file che l'altro editor ha scritto e lo rende. Il documento
+    che manda e' quello appena riletto, quindi il file resta dell'altro
+    editor, byte per byte: la sua guardia, al giro dopo, non trova niente."""
+    import http.client
+    import threading
+
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    studio = tmp_path / "gen"
+    studio.mkdir()
+    path, _ = _mio(tmp_path, S.yaml.safe_dump({"streams": [{"stream_id": "lab"}]}))
+    srv = S.crea(str(studio), str(tmp_path), 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        def posta(rotta, body):
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
+            c.request("POST", rotta, S.json.dumps(body),
+                      {"Content-Type": "application/json"})
+            return S.json.loads(c.getresponse().read())
+
+        ap = posta("/open", {"path": path})
+        open(path, "w").write(ALTRO_EDITOR)                 # l'altro editor
+        no = posta("/render", {"doc": ap["doc"], "render": True, "path": path,
+                               "firma": ap["firma"]})
+        assert no["cambiato"] is True
+        di_nuovo = posta("/open", {"path": path})
+        si = posta("/render", {"doc": di_nuovo["doc"], "render": True,
+                               "path": path, "firma": di_nuovo["firma"]})
+        assert si["ok"] and si["firma"] == di_nuovo["firma"]
+        assert open(path).read() == ALTRO_EDITOR
+    finally:
+        srv.shutdown()

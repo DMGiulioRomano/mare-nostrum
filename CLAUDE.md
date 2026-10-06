@@ -224,6 +224,20 @@ disco non e' piu' quella, non scrive e risponde `cambiato`.
   stessa firma la calcola PGE-ui (DMGiulioRomano/PGE-ui#185): il giorno che una
   delle due convenzioni cambia si deve vedere che non e' il file a essere
   cambiato.
+- **Un documento che il file ha gia' non si riscrive** (`gia_su_disco` in
+  `serve.py`). `rendi e ascolta` e' anche un salvataggio: senza questa regola
+  il laboratorio riscriveva il file a ogni ascolto, anche senza averlo
+  toccato, e a modo suo — i byte cambiavano, la guardia dell'altro editor
+  (stessa firma) avrebbe detto "cambiato su disco" su un documento che
+  nessuno aveva cambiato, e la formattazione e i commenti di PGE-ui se ne
+  andavano. Se il file contiene gia' il documento da scrivere il server non
+  scrive, rende il file com'e' e torna la sua firma. Viene **prima** della
+  guardia: se l'altro editor ha riscritto lo stesso documento a modo suo, una
+  scrittura non toglierebbe niente a nessuno, e non c'e' niente da chiedere.
+  "Lo stesso" e' con i tipi (`_stesso`): `4` e `4.0`, `1` e `true` per
+  l'engine non sono sempre la stessa cosa, e un valore che cambia tipo si
+  scrive. Il caso che conta e' la rilettura qui sotto: si rende il documento
+  appena riletto, quindi il file resta dell'altro editor, byte per byte.
 - **Senza modifiche proprie non c'e' niente da decidere**: si rilegge e si
   riprova, e il render prosegue sulla versione su disco — quella che l'altro
   editor ha appena scritto e' quella che si vuole sentire. La riga di stato lo
