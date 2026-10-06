@@ -98,6 +98,9 @@
                     cursor:pointer; }
  #lab .bar button:hover { border-color:var(--fg); }
  #lab .bar button:disabled { opacity:.35; cursor:default; border-color:var(--line); }
+ /* `scarto automatico` acceso: cambia cosa fa il prossimo render, come il
+    lucchetto cambia il prossimo cambio di durata. */
+ #lab .bar button.on { border-color:var(--on); color:var(--on); }
  /* Le voci: un blocco per asse, chiuso finche' non serve. Le righe dentro
     restano quelle di sempre, stessa griglia a tre colonne. */
  #labParams details.voce { margin:4px 0 6px; }
@@ -211,6 +214,7 @@
       <button id="bpAll" title="scrive i soli valori che hai appena cambiato su tutti i breakpoint">applica a tutti</button>
       <button id="bpDel" title="delete — i selezionati se c'e' una banda, se no il punto corrente">togli ⌫</button>
       <button id="labRender">rendi e ascolta</button>
+      <button id="labScarta" title="acceso: 'rendi e ascolta' scarta da solo i valori a schermo non salvati sul breakpoint, senza chiedere (la riga di stato dice quali). Spento: chiede.">scarto automatico</button>
     </div>
     <details id="gen">
       <summary>genera breakpoint</summary>
@@ -817,6 +821,8 @@ function labInit() {
   for (const path of PUNTI) document.getElementById("P:" + path).onchange = drawTl;
   if (ENVP) ENVCB = labInfo;
   document.getElementById("labRender").onclick = labRender;
+  const scarta = document.getElementById("labScarta");
+  scarta.onclick = () => { SCARTA = !SCARTA; scarta.classList.toggle("on", SCARTA); };
   document.getElementById("fNew").onclick = fNew;
   document.getElementById("fOpen").onclick = fOpen;
   document.getElementById("fSave").onclick = () => fSave(false);
@@ -2784,7 +2790,40 @@ function leggiPath(st, path) {
   return o;
 }
 
-function labRender() { return labPost(true); }
+// Il render suona i breakpoint, non lo schermo: un valore scritto nel campo e
+// non confermato (`salva modifica`, `applica a tutti`, `+ breakpoint`) nel
+// documento che si rende non c'e'. Rendere senza dirlo faceva sentire un'altra
+// cosa da quella a schermo, e la rilettura della #6 lo buttava via in silenzio
+// e senza undo. Quindi prima si chiede: "si'" lo scarta e rende, "no" non
+// rende e lascia i valori nei campi, da mettere nel documento nel modo che si
+// vuole — le tre strade sono diverse, e indovinarne una sarebbe scegliere al
+// posto di chi compone. `SCARTA` e' il bottone `scarto automatico`: acceso, la
+// risposta e' "si'" senza chiedere. Spento a ogni apertura della pagina.
+// Scartati, la riga di stato lo dice in tutti e due i casi: scartare in
+// silenzio e' proprio cio' che la domanda e' venuta a togliere.
+let SCARTA = false;
+
+async function labRender() {
+  const ks = cambiati();
+  let nota = "";
+  if (ks.length) {
+    const dove = "sul breakpoint " + (curBp + 1) + ": " + ks.join(", ");
+    if (!SCARTA && !confirm("Vuoi scartare i valori modificati e non salvati " + dove + "?\n"
+        + "Il render suona i breakpoint: questi valori non ci sarebbero.\n\n"
+        + "OK per scartarli e rendere. Annulla per tenerli e salvarli tu "
+        + "(salva modifica, applica a tutti o + breakpoint).")) {
+      document.getElementById("labInfo").textContent = "render non partito: valori non salvati "
+        + dove + " — salva modifica, applica a tutti o + breakpoint, poi rendi.";
+      return;
+    }
+    // Lo schermo torna al breakpoint. E' un passo della storia come gli altri
+    // (`bpLoad` -> `labInfo`): un undo rimette i valori nei campi.
+    mostraBp();
+    nota = "  ·  scartati i valori non salvati " + dove;
+  }
+  await labPost(true);
+  if (nota) document.getElementById("labInfo").textContent += nota;
+}
 
 // Cosa la riga di stato dice dell'identita' del documento appena scritto, o
 // appena aperto. Tre cose, e nessuna e' un errore:

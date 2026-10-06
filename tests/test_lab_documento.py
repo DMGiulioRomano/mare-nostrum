@@ -1376,3 +1376,124 @@ apriPath('/brano/risacca.yml')
     assert "non e' un documento con stream" in got["info"]
     assert "rileggo" not in got["info"]
     assert got["firma"] == "sha256:letta" and got["reso"] is None
+
+
+# --- i valori a schermo e il render --------------------------------------------
+# Il render suona i breakpoint, non lo schermo: un valore scritto nel campo e
+# non confermato (`salva modifica`, `applica a tutti`, `+ breakpoint`) non sta
+# nel documento che si rende. Prima di rendere si chiede se scartarlo; col
+# bottone `scarto automatico` acceso si scarta senza chiedere. In tutti e due
+# i casi la riga di stato dice cosa e' stato scartato.
+
+def _schermo(risposta):
+    """Il `confirm` della pagina, registrato: cosa ha chiesto, e la risposta."""
+    return "const CHIESTO = [];\nconfirm = m => { CHIESTO.push(m); return %s; };\n" % (
+        "true" if risposta else "false")
+
+
+# Scritto nel campo del breakpoint 2, e non confermato: il gesto di chi prova un
+# valore e preme subito `rendi e ascolta`.
+A_SCHERMO = ("bpLoad(1); document.getElementById('P:pitch.ratio').value = '0.75';"
+             " document.getElementById('P:pitch.ratio').onchange();\n")
+
+VISTO_SCHERMO = """
+const visto = () => ({
+  chiesto: CHIESTO,
+  resi: POST.filter(p => p.rotta === 'render').map(p => p.doc.streams[0].pitch.ratio),
+  campo: document.getElementById('P:pitch.ratio').value,
+  cambiati: cambiati(),
+  info: document.getElementById('labInfo').textContent,
+  reso: ULTIMO || null,
+  auto: document.getElementById('labScarta').classList.contains('on'),
+});
+"""
+
+
+@node
+def test_valori_a_schermo_non_salvati_si_chiede_e_no_li_tiene(tmp_path):
+    """"No" e' la risposta che non perde niente: il render non parte, i valori
+    restano nei campi, e la riga di stato dice come metterli nel documento."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + _schermo(False) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return labRender();
+}).then(() => console.log(JSON.stringify(visto())));
+""" % A_SCHERMO)
+    assert len(got["chiesto"]) == 1
+    assert "breakpoint 2" in got["chiesto"][0] and "pitch.ratio" in got["chiesto"][0]
+    assert got["resi"] == [] and got["reso"] is None
+    assert got["campo"] == "0.75" and got["cambiati"] == ["pitch.ratio"]
+    assert "salva modifica" in got["info"] and "pitch.ratio" in got["info"]
+
+
+@node
+def test_valori_a_schermo_si_li_scarta_rende_e_un_undo_li_riporta(tmp_path):
+    """"Si'": lo schermo torna al breakpoint, il render parte e la riga di stato
+    dice cosa si e' scartato. Scartare e' un passo della storia come gli altri:
+    un undo rimette i valori nei campi."""
+    mio, _ = _mio_e_altrui()
+    ratio = _stream("stream2")["pitch"]["ratio"]
+    got = _lab(tmp_path, _doppio(mio) + _schermo(True) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return labRender();
+}).then(() => {
+  const dopo = visto();
+  vaiStoria(-1);
+  console.log(JSON.stringify(Object.assign(dopo,
+    {undo: document.getElementById('P:pitch.ratio').value})));
+});
+""" % A_SCHERMO)
+    assert len(got["chiesto"]) == 1
+    # Il documento reso e' quello dei breakpoint: lo 0.75 non c'e'.
+    assert len(got["resi"]) == 1 and got["resi"][0] == ratio
+    assert got["reso"].startswith("x.aif")
+    assert got["cambiati"] == [] and got["campo"] != "0.75"
+    assert "scartati" in got["info"] and "pitch.ratio" in got["info"]
+    assert got["undo"] == "0.75"
+
+
+@node
+def test_con_lo_scarto_automatico_acceso_non_si_chiede(tmp_path):
+    """Il bottone accanto al render: acceso, scartare e' la risposta data una
+    volta per tutte. Non si chiede, ma la riga di stato lo dice lo stesso —
+    scartare in silenzio e' proprio cio' che la domanda e' venuta a togliere."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + _schermo(False) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml').then(() => {
+  document.getElementById('labScarta').onclick();
+  %s
+  return labRender();
+}).then(() => console.log(JSON.stringify(visto())));
+""" % A_SCHERMO)
+    assert got["auto"] is True and got["chiesto"] == []
+    assert len(got["resi"]) == 1 and got["reso"].startswith("x.aif")
+    assert got["cambiati"] == []
+    assert "scartati" in got["info"] and "pitch.ratio" in got["info"]
+
+
+@node
+def test_senza_valori_a_schermo_non_si_chiede_niente(tmp_path):
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + _schermo(False) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml')
+  .then(() => labRender())
+  .then(() => console.log(JSON.stringify(visto())));
+""")
+    assert got["chiesto"] == [] and len(got["resi"]) == 1
+    assert "scartati" not in got["info"]
+
+
+@node
+def test_lo_scarto_automatico_parte_spento(tmp_path):
+    """Spento a ogni apertura della pagina: scartare senza chiedere e' una
+    scelta, non il comportamento di partenza."""
+    got = _lab(tmp_path, _schermo(False) + """
+const b = document.getElementById('labScarta');
+const stati = [b.classList.contains('on')];
+b.onclick(); stati.push(b.classList.contains('on'));
+b.onclick(); stati.push(b.classList.contains('on'));
+console.log(JSON.stringify(stati));
+""")
+    assert got == [False, True, False]

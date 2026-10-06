@@ -413,6 +413,22 @@ finire, tranne durante un gesto (`GESTO`): un trascinamento e' un passo solo,
 non cento. Dentro un campo di testo `cmd+Z` resta l'undo del testo. Aprire un
 file o fare `nuovo` azzera la storia.
 
+**Il render suona i breakpoint, non lo schermo.** Un valore scritto nel campo
+e non confermato — `salva modifica`, `applica a tutti` o `+ breakpoint` — nel
+documento non c'e' (la riga di stato lo dice: `non salvati sul breakpoint N`),
+e rendere senza dirlo faceva sentire un'altra cosa da quella a schermo.
+`rendi e ascolta` percio' chiede prima se scartarlo (`labRender`): «si'» lo
+scarta — lo schermo torna al breakpoint, ed e' un passo dell'undo — e rende;
+«no» non rende e lascia i valori nei campi, da mettere nel documento nel modo
+che si vuole: le tre strade danno documenti diversi, e il laboratorio non
+sceglie al posto di chi compone. Accanto al render c'e' **`scarto
+automatico`**: acceso, la risposta e' «si'» senza chiedere; spento a ogni
+apertura della pagina. In tutti e due i casi la riga di stato dice cosa e'
+stato scartato. Cosi' anche la rilettura di un file cambiato su disco (sopra,
+«Due editor, un file»), che azzera la storia, non trova piu' valori a schermo
+da buttare in silenzio. Vale per `rendi e ascolta`: `salva` scrive i
+breakpoint come prima, senza chiedere.
+
 **I tempi sul documento seguono il suo `time_mode`.** Nella pagina i tempi
 dei breakpoint sono frazioni dello stream, ma l'engine li legge cosi' solo con
 `time_mode: normalized`; senza, sono secondi. Decide lo stream: quello
