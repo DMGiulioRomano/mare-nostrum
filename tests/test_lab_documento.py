@@ -42,18 +42,28 @@ def _predefiniti():
     return parameter_path_defaults()
 
 
-def _pagina(tmp_path, study="001-41"):
+# Il `seed:` dello `study.yml` servito si tiene com'e' scritto, salvo quando un
+# test vuole l'altro ramo (#5): `seed_studio=None` e' uno studio che non ne
+# dichiara, un numero e' un altro seed.
+TIENE = object()
+
+
+def _pagina(tmp_path, study="001-41", seed_studio=TIENE):
     with open(os.path.join(ROOT, "studies", study, "study.yml")) as fh:
         raw = yaml.safe_load(fh)
+    if seed_studio is not TIENE:
+        raw.pop("seed", None)
+        if seed_studio is not None:
+            raw["seed"] = seed_studio
     p = tmp_path / "graph.html"
     p.write_text(build_html(study, lab_completo(raw, CAMPIONI, {}, lambda _p: None,
                                                 _predefiniti())))
     return p
 
 
-def _lab(tmp_path, scenario, prima=None, study="001-41"):
+def _lab(tmp_path, scenario, prima=None, study="001-41", seed_studio=TIENE):
     """Fa girare lo scenario sulla pagina; l'ultima riga stampata e' JSON."""
-    args = ["node", HARNESS, str(_pagina(tmp_path, study))]
+    args = ["node", HARNESS, str(_pagina(tmp_path, study, seed_studio))]
     sc = tmp_path / "scenario.js"
     sc.write_text(scenario)
     args.append(str(sc))
@@ -268,18 +278,204 @@ def test_la_finestra_che_cambia_diventa_a_stati(tmp_path):
 def test_il_foglio_bianco_nasce_da_defaults_e_base(tmp_path):
     doc = _lab(tmp_path, "bpAdd();\n" + STAMPA)
     out = doc["streams"][0]
-    assert (out["stream_id"], out["onset"], out["time_mode"]) == ("lab", 0, "normalized")
+    # Lo `stream_id` di un foglio mai salvato e' il campo `nome` (#5): non
+    # c'e' un file da cui prenderlo, e `lab` non era il nome di niente.
+    assert (out["stream_id"], out["onset"], out["time_mode"]) == \
+        ("nuovo stream", 0, "normalized")
     assert out["grain"]["duration"] == 0.064             # DEFAULTS
     assert out["distribution_mode"] == "uniform"         # base:
 
 
 @node
 def test_nuovo_dopo_un_documento_aperto_non_se_lo_porta_dietro(tmp_path):
-    """`nuovo` torna al foglio bianco: lo stream di prima non e' piu' la base."""
+    """`nuovo` torna al foglio bianco: lo stream di prima non e' piu' la base.
+
+    E nemmeno il suo nome: `fNew` riporta il campo a `nuovo stream`, quindi
+    l'id torna quello del foglio bianco e non quello del file che si aveva
+    aperto.
+    """
     doc = _lab(tmp_path, _apri(_stream("stream2")) + "fNew(); bpAdd();\n" + STAMPA)
     out = doc["streams"][0]
-    assert (out["stream_id"], out["onset"]) == ("lab", 0)
+    assert (out["stream_id"], out["onset"]) == ("nuovo stream", 0)
     assert "read_direction" not in out["grain"]
+
+
+# --- #5: l'identita' dello stream e' il nome del file -------------------------
+# L'RNG dell'engine e' (seed, rng_group o stream_id, componente), quindi l'id
+# non e' un'etichetta: decide il suono. Il seed, l'altra meta', sta in
+# `tests/test_graph_js.py`.
+
+@node
+def test_lo_stream_id_e_il_nome_del_file_non_quello_che_c_era_scritto(tmp_path):
+    """Il piano (regola 3): nel master l'id di uno stream importato e' il nome
+    del file. Il laboratorio scrive quello, e non passa dal "toccato" della
+    #3 — l'id non e' una chiave che si scelga, e' il file."""
+    st = _stream("stream2")                     # stream_id: stream2
+    doc = _lab(tmp_path, _apri(st, "/brano/risacca.yml") + STAMPA)
+    assert doc["streams"][0]["stream_id"] == "risacca"
+    # Il resto dello stream resta quello di prima: cambia solo l'identita'.
+    atteso = dict(st, stream_id="risacca")
+    assert doc["streams"][0] == atteso
+
+
+@node
+@pytest.mark.parametrize("path,atteso", [
+    ("/brano/risacca.yml", "risacca"),
+    ("/brano/risacca.yaml", "risacca"),
+    ("/brano/risacca", "risacca"),          # il server gli mette .yml lui
+    ("/brano/ri.sacca.yml", "ri.sacca"),    # il punto nel nome non e' l'estensione
+])
+def test_l_estensione_non_entra_nell_id(tmp_path, path, atteso):
+    doc = _lab(tmp_path, _apri(_stream("stream2"), path) + STAMPA)
+    assert doc["streams"][0]["stream_id"] == atteso
+
+
+@node
+def test_il_foglio_mai_salvato_prende_l_id_dal_campo_nome(tmp_path):
+    doc = _lab(tmp_path, "document.getElementById('labName').value = 'risacca';\n"
+                         "bpAdd();\n" + STAMPA)
+    assert doc["streams"][0]["stream_id"] == "risacca"
+
+
+@node
+def test_salva_con_nome_scrive_l_id_nuovo_e_la_riga_di_stato_lo_dice(tmp_path):
+    """`salva con nome` cambia il nome, quindi l'id, quindi la realizzazione.
+
+    E' accettato, ma deve dirlo: a orecchio un suono diverso dopo un
+    salvataggio non si spiega. L'id e' quello del file di **destinazione**,
+    che quando `labDoc` gira non e' ancora `FILE`.
+    """
+    got = _lab(tmp_path, _apri(_stream("stream2"), "/brano/a.yml") + """
+const POST = [];
+fetch = async (rotta, opt) => { POST.push(JSON.parse(opt.body));
+  return {ok: true, json: async () => ({ok: true, yaml: 'b.yml', path: '/brano/b.yml'})}; };
+labPost(false, '/brano/b.yml').then(() => console.log(JSON.stringify({
+  id: POST[0].doc.streams[0].stream_id,
+  info: document.getElementById('labInfo').textContent,
+  file: FILE, nome: document.getElementById('labName').value})));
+""")
+    assert got["id"] == "b"
+    assert "stream_id: b" in got["info"]
+    # Il campo `nome` segue il file: il pannello dopo non deve riproporre `a`,
+    # e la riga del `nome` non deve dire un id che non e' quello scritto.
+    assert (got["file"], got["nome"]) == ("/brano/b.yml", "b")
+
+
+@node
+def test_un_render_su_un_foglio_mai_salvato_non_diventa_il_file(tmp_path):
+    """Il server scrive in `live/` col nome ripulito (`_SAFE`), e adottarlo
+    cambiava l'id fra il primo render e il secondo: lo stesso documento dava
+    due audio. `FILE` e' il file scelto in un pannello, non quello scritto."""
+    got = _lab(tmp_path, """
+bpAdd();
+const POST = [];
+fetch = async (rotta, opt) => { POST.push(JSON.parse(opt.body));
+  return {ok: true, json: async () => ({ok: true, src: 'x.aif', yaml: 'live/nuovo_stream.yml',
+                                        path: '/gen/live/nuovo_stream.yml'})}; };
+labPost(true).then(() => labPost(true)).then(() => console.log(JSON.stringify({
+  id: POST.map(b => b.doc.streams[0].stream_id), file: FILE,
+  nome: document.getElementById('labName').value})));
+""")
+    assert got["id"] == ["nuovo stream", "nuovo stream"]
+    assert (got["file"], got["nome"]) == ("", "nuovo stream")
+
+
+# Lo stato "salvato" (`SALVATO`) e' com'e' il file su disco: il `• modificato`,
+# il `salva` acceso e la conferma prima di `nuovo`/`apri` leggono tutti da li'.
+
+# Cosa la barra dei file dice del lavoro, e se `nuovo` chiederebbe conferma.
+STATO_FILE = """{sporco: sporco(), salva: !document.getElementById('fSave').disabled,
+  dirty: document.getElementById('fFile').classList.contains('dirty'),
+  etichetta: document.getElementById('fFile').textContent,
+  info: document.getElementById('labInfo').textContent,
+  chiede: (() => { let c = false; const v = confirm;
+                   confirm = () => { c = true; return false; };
+                   confermaPerdita('x'); confirm = v; return c; })()}"""
+
+
+@node
+def test_un_render_su_un_foglio_mai_salvato_lo_lascia_da_salvare(tmp_path):
+    """Il render scrive in `live/`, ma quel file non e' `FILE`: il lavoro resta
+    non salvato, e la pagina deve dirlo tutta insieme.
+
+    Prima `SALVATO` si aggiornava a ogni scrittura, anche questa: la barra
+    diceva `(non salvato)` senza `• modificato`, il `salva` era spento — su un
+    foglio che non ha un file, cioe' proprio dove serve — e `nuovo` buttava il
+    lavoro senza chiedere.
+    """
+    got = _lab(tmp_path, """
+bpAdd();
+fetch = async () => ({ok: true, json: async () => ({ok: true, src: 'x.aif',
+  yaml: 'live/nuovo_stream.yml', path: '/gen/live/nuovo_stream.yml'})});
+labPost(true).then(() => console.log(JSON.stringify(%s)));
+""" % STATO_FILE)
+    assert got["etichetta"] == "(non salvato)"
+    assert (got["sporco"], got["dirty"], got["salva"], got["chiede"]) == (True,) * 4
+
+
+@node
+def test_scritto_sul_file_scelto_il_lavoro_e_salvato(tmp_path):
+    """L'altra meta': un render o un `salva` che scrivono su `FILE` (o sul
+    file appena scelto) rendono pulito il documento, come prima."""
+    for azione in ("labPost(false, '/brano/b.yml')", "labPost(true)"):
+        got = _lab(tmp_path, _apri(_stream("stream2")) + _tocca(0, "pitch.ratio", 0.75) + """
+fetch = async (rotta, opt) => ({ok: true, json: async () => ({ok: true, src: 'x.aif',
+  yaml: 'x.yml', path: JSON.parse(opt.body).path})});
+%s.then(() => console.log(JSON.stringify(%s)));
+""" % (azione, STATO_FILE))
+        assert (got["sporco"], got["dirty"], got["salva"], got["chiede"]) == (False,) * 4, azione
+
+
+@node
+def test_aperto_con_la_sua_identita_e_pulito(tmp_path):
+    """Un file il cui nome e' gia' il suo `stream_id`, e che ha un seed: il
+    laboratorio lo riscriverebbe uguale, quindi niente da salvare e niente da
+    dire sull'identita'."""
+    got = _lab(tmp_path, "carica(%s, '/brano/stream2.yml');\n"
+               % json.dumps(_con_testa(_stream("stream2")))
+               + "console.log(JSON.stringify(%s));\n" % STATO_FILE)
+    assert (got["sporco"], got["dirty"], got["salva"]) == (False,) * 3
+    assert "stream_id" not in got["info"] and "seed" not in got["info"]
+
+
+@node
+def test_aperto_con_un_altro_id_e_da_salvare_e_lo_dice(tmp_path):
+    """Il laboratorio scrive l'id del file, non quello che c'era dentro (#5):
+    quello su disco non e' piu' il documento che si scriverebbe. Prima la
+    pagina lo dava per salvato — `salva` spento, nessuna conferma — e la riga
+    di stato taceva, cosi' il primo render suonava diverso dal file aperto
+    senza che niente lo avesse detto."""
+    doc = _con_testa(_stream("stream2"))                  # seed 1441, id stream2
+    got = _lab(tmp_path, "carica(%s, '/brano/risacca.yml');\n" % json.dumps(doc)
+               + "console.log(JSON.stringify(%s));\n" % STATO_FILE)
+    assert (got["sporco"], got["dirty"], got["salva"], got["chiede"]) == (True,) * 4
+    assert "stream_id: risacca (era stream2)" in got["info"]
+
+
+@node
+def test_aperto_senza_seed_prende_quello_dello_studio_e_lo_dice(tmp_path):
+    """Stessa cosa per il seed: il file non ne ha, il documento che si
+    scriverebbe porta quello dello `study.yml`."""
+    doc = _documento(_stream("stream2"))                  # nessun seed
+    got = _lab(tmp_path, "carica(%s, '/brano/stream2.yml');\n" % json.dumps(doc)
+               + "console.log(JSON.stringify(%s));\n" % STATO_FILE)
+    assert (got["sporco"], got["dirty"], got["salva"]) == (True,) * 3
+    assert "seed 1441 dallo study.yml" in got["info"]
+    assert "stream_id" not in got["info"]
+
+
+@node
+def test_il_nome_di_un_foglio_mai_salvato_entra_nella_bozza(tmp_path):
+    """Sul foglio bianco il `nome` e' lo `stream_id`: cambiarlo cambia il
+    documento, e un refresh subito dopo non deve riportare l'id di prima."""
+    got = _lab(tmp_path, """
+bpAdd();
+const n = document.getElementById('labName');
+n.value = 'risacca';
+n.dispatchEvent(new Event('change'));
+console.log(localStorage.getItem('lab:001-41'));
+""")
+    assert got["name"] == "risacca"
 
 
 @node

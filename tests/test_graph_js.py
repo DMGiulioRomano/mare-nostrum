@@ -918,6 +918,10 @@ def _lab_tempi(base: str, coda: str, tmp_path) -> list:
         "const durata = () => 30;",
         # Foglio bianco: niente documento aperto, labDoc scrive labView intera.
         "let APERTO = null, VISTA0 = null, TESTA = null;",
+        # L'identita' (#5) non c'entra coi tempi, ma `labDoc` la scrive: un
+        # file finto basta a dare un id a `idDa` senza un DOM, e senza un
+        # `seed` ne' nel documento ne' in `L` la testa non ne prende uno.
+        'let FILE = "/x/tempi.yml", NOME0 = "nuovo stream";',
         # vociDoc vero e' accoppiato alle righe delle voci: qui basta la
         # progressione, che e' l'unica cosa sua che porta tempi.
         "function vociDoc(st) { st.voices = {pitch: {strategy: 'chord_progression',"
@@ -934,6 +938,7 @@ def _lab_tempi(base: str, coda: str, tmp_path) -> list:
         _fn(js, "progressione"), _fn(js, "setPath"), _fn(js, "leggiPath"),
         _fn(js, "scalaTempi"), _fn(js, "inSecondi"), _fn(js, "tempiFrazione"),
         _fn(js, "labView"), _fn(js, "clona"), _fn(js, "forma"),
+        _fn(js, "idDa"), _fn(js, "seedDoc"), _fn(js, "conSeed"),
         _fn(js, "labDoc"), coda,
     ]))
     out = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
@@ -975,3 +980,120 @@ def test_senza_normalized_i_tempi_vanno_in_secondi(tmp_path):
     assert [p[0] for p in prog] == [0, 15]
     assert vr == [[0, 0], [10, 3]]                   # del base:, gia' secondi
     assert back == [[0, 10, "step"], [0.5, 80], [1, 20]]
+
+
+# --- #5: il seed del documento ------------------------------------------------
+# L'altra meta' dell'identita' di uno stream, insieme all'id: l'RNG dell'engine
+# e' (seed, rng_group o stream_id, componente), quindi senza un seed scritto
+# ogni render pesca un seed di sessione e le curve realizzate sono un'altra
+# estrazione rispetto a quella che ha suonato. Tre regole, e la terza e' un
+# rifiuto: il laboratorio non inventa un seed che non e' di nessuno.
+# L'id sta in `tests/test_lab_documento.py`, dove sta il giro del documento.
+
+def _seed(tmp_path, testa, **kw):
+    """Il `seed` del documento scritto, e cosa ne dice il chip accanto al nome
+    del file. `None` = la chiave non c'e' affatto."""
+    from test_lab_documento import _lab, _stream
+    doc = dict(testa, bpm=120, streams=[_stream("stream2")])
+    return _lab(tmp_path, "carica(%s, '/brano/stream2.yml');\n" % json.dumps(doc) + """
+const d = labDoc();
+console.log(JSON.stringify({seed: 'seed' in d ? d.seed : null,
+  chip: document.getElementById('fSeed').textContent,
+  manca: document.getElementById('fSeed').classList.contains('manca'),
+  tag: document.getElementById('fSeed').tagName}));
+""", **kw)
+
+
+@node
+def test_il_seed_del_documento_aperto_si_conserva(tmp_path):
+    """Vince su quello dello studio: e' una scelta che qualcuno ha scritto."""
+    got = _seed(tmp_path, {"duration": 10, "seed": 7})
+    assert (got["seed"], got["chip"], got["manca"]) == (7, "seed 7", False)
+
+
+@node
+def test_un_documento_senza_seed_prende_quello_dello_studio(tmp_path):
+    """`lab_data` passa alla pagina il `seed:` dello `study.yml` servito."""
+    got = _seed(tmp_path, {"duration": 10})
+    assert (got["seed"], got["chip"]) == (1441, "seed 1441")
+
+
+@node
+def test_seed_zero_e_un_seed_come_gli_altri(tmp_path):
+    """L'engine deriva su sha256, non sulla verita' del valore: `0` non deve
+    cadere nel ramo "non c'e'" di un controllo sulla truthiness."""
+    got = _seed(tmp_path, {"duration": 10, "seed": 0})
+    assert (got["seed"], got["chip"], got["manca"]) == (0, "seed 0", False)
+
+
+@node
+def test_senza_seed_nello_studio_il_laboratorio_non_ne_inventa_uno(tmp_path):
+    """Un numero scelto qui non sarebbe il seed di nessuno. La chiave non si
+    scrive, e il chip lo dice (`manca`) — con esso la riga di stato di ogni
+    scrittura, vedi `notaIdentita`."""
+    got = _seed(tmp_path, {"duration": 10}, seed_studio=None)
+    assert (got["seed"], got["chip"], got["manca"]) == (None, "senza seed", True)
+
+
+@node
+def test_un_seed_nullo_nel_documento_non_e_un_seed(tmp_path):
+    """`seed:` vuoto e assente sono la stessa cosa per l'engine (genera un
+    seed di sessione): vale lo studio, come per un documento che non ne ha."""
+    assert _seed(tmp_path, {"duration": 10, "seed": None})["seed"] == 1441
+
+
+@node
+def test_il_seed_si_mostra_e_non_si_cambia(tmp_path):
+    """Cambiarlo qui romperebbe l'identita' col brano, dove il master usa il
+    proprio seed e ignora quello del file importato (il piano, regola 3).
+
+    Percio' non e' un controllo: e' un testo, e nella barra dei file non c'e'
+    nessun campo da cui scriverlo. Il test lo chiede alla pagina, non alla
+    sorgente: un `<input>` aggiunto li' domani lo fa parlare.
+    """
+    from test_lab_documento import _lab
+    got = _lab(tmp_path, """
+const bar = document.getElementById('fBar');
+console.log(JSON.stringify({
+  tag: document.getElementById('fSeed').tagName,
+  scrivibili: bar.querySelectorAll('input').length + bar.querySelectorAll('textarea').length,
+  gestori: ['onchange', 'oninput', 'onclick'].filter(
+    k => typeof document.getElementById('fSeed')[k] === 'function')}));
+""")
+    assert got["tag"] == "SPAN"
+    assert got["scrivibili"] == 0
+    assert got["gestori"] == []
+
+
+@node
+def test_il_seed_entra_anche_nel_documento_d_ascolto(tmp_path):
+    """Il render passa dal documento `ascolto` (onset 0, senza mute/solo): se
+    il seed restasse fuori da quello, l'audio sarebbe di un'altra estrazione
+    rispetto al file salvato — e rispetto al disegno, che ricarica il file reso.
+    """
+    from test_lab_documento import _lab, _stream
+    doc = {"duration": 10, "bpm": 120, "seed": 7, "streams": [_stream("stream5")]}
+    got = _lab(tmp_path, "carica(%s, '/brano/stream5.yml');\n" % json.dumps(doc) + """
+const POST = [];
+fetch = async (rotta, opt) => { POST.push(JSON.parse(opt.body));
+  return {ok: true, json: async () => ({ok: false, error: 'fermo qui'})}; };
+labRender().then(() => console.log(JSON.stringify(
+  {doc: POST[0].doc.seed, ascolto: POST[0].ascolto.seed,
+   id: POST[0].ascolto.streams[0].stream_id})));
+""")
+    assert got == {"doc": 7, "ascolto": 7, "id": "stream5"}
+
+
+@node
+def test_il_nome_del_file_si_legge_in_un_posto_solo(tmp_path):
+    """`idDa` e' la regola: il basename senza estensione, col campo `nome`
+    quando un file non c'e'.
+
+    Ne esistevano tre copie — `carica` aprendo, `labPost` dopo un
+    salvataggio, e questa — e finche' l'id era una cosa e il nome un'altra
+    potevano divergere in silenzio. Ora l'id dipende da quella lettura, e due
+    letture diverse sarebbero due id.
+    """
+    js = _script()
+    assert js.count("ya?ml") == 1
+    assert "ya?ml" in _fn(js, "idDa")

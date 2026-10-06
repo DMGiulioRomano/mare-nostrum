@@ -54,7 +54,7 @@ stesso id. Il laboratorio scrive `stream_id` = nome del file e un `seed`.
 
 ## Passi
 
-1. **Il laboratorio conserva il documento che apre** (questo branch).
+1. **Il laboratorio conserva il documento che apre** (fatto: #3, #4, #9).
    `labDoc()` oggi ricostruisce lo stream dal `base:` dello studio piu' i
    parametri che conosce, e `carica()` legge solo quelli: aperto e risalvato,
    uno stream del brano perde `grain.read_direction` (8 stream su 10), legge
@@ -65,8 +65,8 @@ stesso id. Il laboratorio scrive `stream_id` = nome del file e un `seed`.
 2. **`file:` nel motore** (PythonGranularEngine): risolto in `load_yaml`,
    prima di tutto il resto; cache, fingerprint, solo/mute invariati. Errori
    che nominano master e file importato. Poi bump del submodule.
-3. **Laboratorio:** `stream_id` = nome del file, `seed` nel documento,
-   guardia sul file cambiato su disco (regola 7).
+3. **Laboratorio:** `stream_id` = nome del file, `seed` nel documento
+   (fatto: #5), guardia sul file cambiato su disco (regola 7).
 4. **PGE-ui:** import risolti in lettura, file-stream riscritti in
    salvataggio e prima del render, stessa guardia, duplica e split (regole
    5-6). Qui si decide quale `mare-nostrum.yml` diventa il master (oggi ce ne

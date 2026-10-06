@@ -247,11 +247,16 @@ def _analisi(doc_path: str, repo_root: str, live: str) -> dict:
     derivate (``effective_density``), gli offset per-voce e i grani veri, che
     nel documento non ci sono affatto.
 
+    Sono la realizzazione che ha suonato, non un'altra estrazione: il
+    documento porta un ``seed`` e lo ``stream_id`` del file (#5), e l'RNG
+    dell'engine e' ``(seed, rng_group o stream_id, componente)`` — ricaricare
+    lo stesso YAML ridisegna gli stessi grani, anche con una strategia
+    stocastica. Senza seed ne' nel documento ne' nello ``study.yml`` il
+    laboratorio non ne inventa uno e lo dice nella riga di stato: li' ogni
+    render e' un'altra estrazione, e questo disegno con esso.
+
     ponytail: un ascolto non deve fallire perche' il disegno non si sa fare,
-    quindi qualunque inciampo qui vale "niente da disegnare". E il documento
-    del laboratorio non porta un ``seed``, quindi le curve di una strategia
-    **stocastica** sono un'altra estrazione rispetto a quella che ha suonato:
-    scrivere il seed nel documento, se dara' fastidio.
+    quindi qualunque inciampo qui vale "niente da disegnare".
     """
     from . import engine_bridge
 

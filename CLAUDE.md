@@ -131,9 +131,10 @@ da `VISTA0` (`toccati`). Il confronto scende nei blocchi (`grain`, `pointer`,
 `voices.pitch`...) ma non nei valori: un inviluppo cambia o resta tutto
 intero. Cosi' restano com'erano le chiavi che il laboratorio non ha
 (`grain.read_direction`, che in `mare-nostrum.yml` hanno 8 stream su 10),
-`stream_id` e `onset`, e i parametri che il documento lascia al default
-dell'engine anche se il laboratorio ha un campo per loro. Il loop e' un
-gruppo (`GRUPPO_LOOP`): se una delle sue chiavi cambia, si scrivono tutte come
+`onset`, e i parametri che il documento lascia al default dell'engine anche se
+il laboratorio ha un campo per loro. Lo `stream_id` no: dalla #5 e' il nome del
+file, e l'identita' non passa dal "toccato" (sotto). Il loop e' un gruppo
+(`GRUPPO_LOOP`): se una delle sue chiavi cambia, si scrivono tutte come
 `scriviLoop` le vuole. Anche la **testa** del documento si conserva (`TESTA`):
 `seed`, `bpm`, la `duration` del tutto, le chiavi di PGE-ui come `ui_tracks`
 restano com'erano, e del laboratorio c'e' solo la durata, che si scrive in
@@ -161,6 +162,51 @@ documento `ascolto` con `onset: 0` e senza `mute`/`solo` (`perAscolto`), e il
 server rende quello (scritto in `logs/<nome>.ascolto.yml`) accanto allo YAML
 salvato. Senza, uno stream con onset 43 s partirebbe dopo 43 s di silenzio e
 uno con `mute` non suonerebbe affatto.
+
+**L'identita' dello stream: il nome del file e il seed** (#5). L'RNG
+dell'engine e' `(seed, rng_group o stream_id, componente)`
+(`shared/seeding.py`), quindi lo stesso stream suona uguale in due posti solo
+con lo stesso seed e lo stesso id. Nessuno dei due e' una manopola del
+laboratorio: non si scelgono, si leggono.
+
+- **`stream_id` = il nome del file**, senza estensione (`idDa`), che e' anche
+  il modo in cui il master nomina uno stream importato (il piano, regola 3).
+  Un foglio mai salvato non ha un nome di file: vale il campo `nome`, che e'
+  poi quello che il pannello di salvataggio propone. **`salva con nome` cambia
+  il nome, quindi l'id, quindi la realizzazione**: e' accettato, e la riga di
+  stato lo dice (`notaIdentita`) — a orecchio non si capirebbe da dove viene.
+- **`seed`**: si conserva quello del documento aperto; se il documento non ne
+  ha, vale il `seed:` dello `study.yml` servito, che `lab_data` passa alla
+  pagina. Se nemmeno lo studio ne ha uno il laboratorio **non lo inventa** —
+  un numero scelto qui non e' il seed di nessuno — e lo dice nella riga di
+  stato e nel chip. `seed: 0` e' un seed come gli altri (l'engine deriva su
+  sha256), quindi il controllo e' su null/undefined.
+- **Il seed si mostra e non si cambia**, in un testo accanto al nome del file
+  e non in un campo: cambiarlo qui romperebbe l'identita' col brano, dove il
+  master usa il proprio seed e ignora quello del file importato (regola 3).
+
+Da qui viene che **due render dello stesso documento danno lo stesso audio**, e
+che le curve realizzate e il piano dei grani sono la realizzazione che ha
+suonato anche con una strategia stocastica (vedi "Gli inviluppi realizzati").
+
+Il corollario e' su `FILE`, il file su cui si lavora: e' quello scelto in un
+pannello, non quello che il server scrive. Un `rendi e ascolta` su un foglio
+mai salvato scrive in `live/` col nome ripulito (`_SAFE` in `serve.py`), e
+adottarlo faceva due cose sbagliate — `salva` provava a riscrivere un percorso
+che nessun pannello aveva autorizzato, e l'id cambiava fra il primo render e il
+secondo, cioe' lo stesso documento dava due audio. Dopo un salvataggio invece
+il campo `nome` segue il file, come fa `carica` aprendo. Per la stessa ragione
+**salvato vuol dire scritto su `FILE`**: un render del foglio mai salvato
+lascia il `• modificato`, il `salva` acceso e la conferma prima di `nuovo` e
+`apri`.
+
+E un file **aperto** il cui `stream_id` non e' il suo nome, o che non ha un
+seed mentre lo studio si', non e' gia' il documento che il laboratorio
+scriverebbe: `SALVATO` e' preso con l'identita' che il file aveva su disco
+(`comeLetto`), quindi si apre gia' `• modificato`, e la riga di stato dice
+perche' (`stream_id: risacca (era stream2)`, `seed 1441 dallo study.yml`).
+Senza, il `salva` restava spento e il primo render suonava diverso dal file
+aperto senza che niente l'avesse detto.
 
 Il lavoro non salvato sopravvive a un refresh (localStorage, per studio): e'
 una rete di sicurezza, non un salvataggio. La verita' e' il file.
@@ -506,8 +552,8 @@ giro. La legenda sotto dice il colore, il nome e l'escursione vera
 (`10.0ms … 200ms`), che e' l'unica cosa che una curva normalizzata non puo'
 mostrare da se'.
 
-Il conto lo fa il server dopo il render (`engine_bridge.stream_envelopes`,
-chiamato da `_inviluppi` in `serve.py`) ricaricando lo YAML appena scritto, e
+Il conto lo fa il server dopo il render (`engine_bridge.stream_analysis`,
+chiamato da `_analisi` in `serve.py`) ricaricando lo YAML appena scritto, e
 le curve tornano nella risposta di `POST /render` gia' campionate e
 normalizzate: la pagina tira una linea e basta. Le **costanti restano fuori**
 (`show_static=False`), come nella partitura: qui si guarda cio' che si muove.
@@ -534,9 +580,13 @@ Le curve occupano la frazione di larghezza che lo stream occupa nel file
 (la coda dell'ultimo grano puo' allungarlo), verificata in
 `tests/test_graph_js.py`.
 
-Una cosa non torna esatta: il documento del laboratorio non porta un `seed`,
-quindi le curve di una strategia **stocastica** sono una realizzazione diversa
-da quella che ha suonato. Si aggiusta scrivendo il seed nel documento.
+Sono la realizzazione **che ha suonato**, non un'altra estrazione, anche con
+una strategia stocastica: il documento porta un `seed` e lo `stream_id` del
+file (#5) e l'analisi ricarica quello stesso YAML, quindi l'RNG
+`(seed, stream_id, componente)` ripesca le stesse sequenze. L'unico caso in cui
+non torna e' un documento senza seed su uno studio senza seed, dove il
+laboratorio non ne inventa uno: li' lo dice la riga di stato, e il chip accanto
+al nome del file legge `senza seed`.
 
 **L'altezza dei pannelli di analisi** e' quella dell'attributo `height` del
 canvas e basta: `width:100%` da solo la lascerebbe al rapporto fra gli
