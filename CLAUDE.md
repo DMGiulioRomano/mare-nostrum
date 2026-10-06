@@ -208,6 +208,76 @@ perche' (`stream_id: risacca (era stream2)`, `seed 1441 dallo study.yml`).
 Senza, il `salva` restava spento e il primo render suonava diverso dal file
 aperto senza che niente l'avesse detto.
 
+**Due editor, un file** (#6, regola 7 del piano). Lo stesso
+`streams/risacca.yml` puo' stare aperto nel laboratorio e in PGE-ui. Il
+laboratorio ricorda com'era il file quando l'ha letto (`FIRMA`, l'hash che
+torna da `/open`) e la manda a ogni scrittura; il server confronta e, se su
+disco non e' piu' quella, non scrive e risponde `cambiato`.
+
+- **La firma e' l'hash del contenuto, non l'mtime** (`serve.py`: `firma`,
+  `firma_di`, `cambiato_su_disco`). Un mtime dice che qualcuno ha scritto, non
+  che il file sia diverso, e le due risposte portano a cose opposte: rileggere,
+  oppure lasciar passare la riscrittura di un file identico. Si firmano i
+  **byte**, non il documento caricato — la domanda e' "il file su disco e'
+  quello che ho letto", e due editor scrivono lo stesso documento con
+  formattazioni diverse. L'algoritmo sta nel prefisso (`sha256:`) perche' la
+  stessa firma la calcola PGE-ui (DMGiulioRomano/PGE-ui#185): il giorno che una
+  delle due convenzioni cambia si deve vedere che non e' il file a essere
+  cambiato.
+- **Un documento che il file ha gia' non si riscrive** (`gia_su_disco` in
+  `serve.py`). `rendi e ascolta` e' anche un salvataggio: senza questa regola
+  il laboratorio riscriveva il file a ogni ascolto, anche senza averlo
+  toccato, e a modo suo — i byte cambiavano, la guardia dell'altro editor
+  (stessa firma) avrebbe detto "cambiato su disco" su un documento che
+  nessuno aveva cambiato, e la formattazione e i commenti di PGE-ui se ne
+  andavano. Se il file contiene gia' il documento da scrivere il server non
+  scrive, rende il file com'e' e torna la sua firma. Viene **prima** della
+  guardia: se l'altro editor ha riscritto lo stesso documento a modo suo, una
+  scrittura non toglierebbe niente a nessuno, e non c'e' niente da chiedere.
+  "Lo stesso" e' con i tipi (`_stesso`): `4` e `4.0`, `1` e `true` per
+  l'engine non sono sempre la stessa cosa, e un valore che cambia tipo si
+  scrive. Il caso che conta e' la rilettura qui sotto: si rende il documento
+  appena riletto, quindi il file resta dell'altro editor, byte per byte.
+- **Senza modifiche proprie non c'e' niente da decidere**: si rilegge e si
+  riprova, e il render prosegue sulla versione su disco — quella che l'altro
+  editor ha appena scritto e' quella che si vuole sentire. La riga di stato lo
+  dice (`RILETTO`), perche' il documento a schermo non e' piu' quello di prima
+  e sarebbe l'unica modifica che il laboratorio fa da solo senza che si veda.
+  Si riprova **una volta sola**: se il file cambia ancora fra la rilettura e
+  la scrittura lo si dice, invece di rincorrerlo.
+- **Con modifiche proprie decide l'utente**, e sono due bottoni accanto al nome
+  del file — non un `confirm`, che ha due risposte, mentre qui le scelte sono
+  tre: `ricarica`, `sovrascrivi`, e non scrivere niente, che non deve costare
+  un click ne' finire sotto il tasto Annulla accanto a una che perde lavoro.
+  Modifiche proprie (`daPerdere`) sono i breakpoint toccati **e i valori
+  scritti a schermo e non salvati sul breakpoint**: nel documento non ci sono,
+  ma la rilettura li riporterebbe al file senza undo. Un `salva` con valori a
+  schermo su un file cambiato chiede, invece di rileggere.
+  La scrittura resta ferma finche' non si risponde, e ogni scrittura nuova
+  sostituisce la domanda in attesa (la via d'uscita piu' ovvia e' salvare le
+  proprie da un'altra parte). `ricarica` e' un `apri` dello stesso file:
+  `carica` azzera la storia, o un undo riporterebbe indietro una versione che
+  su disco non c'e' piu' e la scrittura dopo la riscriverebbe.
+- **La firma e' di `FILE` e vale solo per lui.** Un `salva con nome` scrive un
+  file che il laboratorio non ha letto — li' non si manda niente, e della
+  sovrascrittura ha chiesto il pannello nativo. Due casi non sono un file
+  cambiato: nessuna firma letta, e un file **che non c'e' piu'** (non ci sta
+  il lavoro di nessuno, e rifiutare lascerebbe la domanda senza via d'uscita —
+  "ricarica" non puo' rileggere un file cancellato). La guardia non vale per
+  il `live/<nome>.yml` di un foglio mai salvato: e' la cartella di lavoro del
+  server, che nessuno rilegge.
+- **La firma di cio' che si e' appena scritto torna dalla risposta** e prende
+  il posto di quella letta: senza, il salvataggio dopo manderebbe la firma di
+  prima e si rifiuterebbe da se'. Torna anche quando e' l'engine a fallire:
+  lo YAML si scrive prima di rendere, quindi il file e' gia' quello nuovo, e
+  un render fallito (un valore fuori bounds) lasciava la firma vecchia — il
+  render dopo, corretto il valore, si accusava da solo. Sta anche nella bozza,
+  o un refresh disarmerebbe la guardia proprio sul file su cui si stava
+  lavorando, e la bozza si riscrive **dopo ogni scrittura**: se no un refresh
+  dopo un salvataggio riprendeva la firma letta aprendo, cioe' quella di un
+  file che il laboratorio stesso aveva riscritto. Nella storia dell'undo no,
+  come `FILE`: non e' lavoro, e' un fatto sul disco.
+
 Il lavoro non salvato sopravvive a un refresh (localStorage, per studio): e'
 una rete di sicurezza, non un salvataggio. La verita' e' il file.
 
@@ -361,6 +431,29 @@ finire, tranne durante un gesto (`GESTO`): un trascinamento e' un passo solo,
 non cento. Dentro un campo di testo `cmd+Z` resta l'undo del testo. Aprire un
 file o fare `nuovo` azzera la storia.
 
+**Il render suona i breakpoint, non lo schermo.** Un valore scritto nel campo
+e non confermato — `salva modifica`, `applica a tutti` o `+ breakpoint` — nel
+documento non c'e' (la riga di stato lo dice: `non salvati sul breakpoint N`),
+e rendere senza dirlo faceva sentire un'altra cosa da quella a schermo.
+`rendi e ascolta` percio' chiede prima se scartarlo (`primaDelRender`): «si'» lo
+scarta — lo schermo torna al breakpoint, ed e' un passo dell'undo — e rende;
+«no» non rende e lascia i valori nei campi, da mettere nel documento nel modo
+che si vuole: le tre strade danno documenti diversi, e il laboratorio non
+sceglie al posto di chi compone. Accanto al render c'e' **`scarto
+automatico`**: acceso, la risposta e' «si'» senza chiedere; spento a ogni
+apertura della pagina. In tutti e due i casi la riga di stato dice cosa e'
+stato scartato. Vale per `rendi e ascolta`, e per il `sovrascrivi` di un
+render rimasto in attesa sulla domanda del file cambiato: quella domanda non
+ferma la tastiera, e un valore scritto nel frattempo nel render non ci sarebbe
+come in qualunque altro — con «no» il render non parte e la domanda resta
+aperta. `salva` scrive i breakpoint come prima, senza chiedere, e i valori
+restano nei campi; il suo `sovrascrivi` pure. La rilettura di un file
+cambiato su disco (sopra, «Due editor, un file»), che azzera la storia, non
+li butta in silenzio in nessuno dei due casi: dopo la domanda del render non
+ce ne sono piu', e su `salva` contano come lavoro proprio, quindi si chiede.
+Con `segui il render` acceso lo schermo e' la lettura al cursore, non un
+valore scritto: li' non si chiede niente (`aSchermo`, sotto).
+
 **I tempi sul documento seguono il suo `time_mode`.** Nella pagina i tempi
 dei breakpoint sono frazioni dello stream, ma l'engine li legge cosi' solo con
 `time_mode: normalized`; senza, sono secondi. Decide lo stream: quello
@@ -426,7 +519,12 @@ breakpoint letta come l'engine, cubica compresa), l'estremo fuori
 dagli estremi. E' una lettura: non tocca i breakpoint, non entra nell'undo, e
 spegnendolo si torna al punto selezionato (`mostraBp`). Vale solo sul render
 dello stream, non sull'ascolto di un sample. Verificato in
-`tests/test_graph_js.py`.
+`tests/test_graph_js.py`. Per la stessa ragione la lettura non e' un valore
+a schermo non salvato: `cambiati()` la vedrebbe diversa dal breakpoint
+(`mostraSegui` la riscrive a ogni frame, anche in pausa), e chi chiede se
+scartare i valori o li conta come lavoro da perdere passa da `aSchermo`, che
+col render seguito non ne ha. La condizione e' una sola, `segue()`, per chi
+scrive la lettura e per chi la riconosce.
 
 **Selezione multipla.** Trascinando sul **vuoto** della linea dei breakpoint
 si disegna una banda, come su una scrivania, e i punti che ci cadono dentro
