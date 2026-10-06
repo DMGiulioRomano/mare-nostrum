@@ -371,3 +371,23 @@ def test_il_giro_vero_open_poi_render_rifiutato(tmp_path, monkeypatch):
         assert si["ok"] and S.yaml.safe_load(open(path).read()) == DOC
     finally:
         srv.shutdown()
+
+
+def test_un_render_fallito_dopo_la_scrittura_torna_la_firma_del_file(tmp_path, monkeypatch):
+    """Lo YAML si scrive prima di rendere: se poi l'engine fallisce, il file
+    su disco e' gia' quello nuovo. Senza la sua firma nella risposta la pagina
+    terrebbe quella di prima, e la scrittura dopo si accuserebbe da sola di
+    aver cambiato il file — che e' proprio quello che ha scritto lei."""
+    def _ko(*a, **k):
+        return subprocess.CompletedProcess(a, 1, "", "ValueError: bounds")
+    monkeypatch.setattr(S.subprocess, "run", _ko)
+    path, letta = _mio(tmp_path)
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=True,
+                       path=path, firma_letta=letta)
+    assert out["ok"] is False and "bounds" in out["error"]
+    assert out["path"] == path and out["firma"] == S.firma(path) != letta
+    # Il giro dopo, con quella firma, passa.
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    due = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
+                       path=path, firma_letta=out["firma"])
+    assert due["ok"]

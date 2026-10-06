@@ -271,6 +271,8 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
     pagina. ``sovrascrivi`` e' quella decisione presa. La guardia vale solo
     per ``path``, il file dell'utente: il ``live/<name>.yml`` di un foglio mai
     salvato e' la cartella di lavoro del server, che nessuno rilegge.
+    La firma di cio' che si e' scritto torna sempre, anche quando poi e'
+    l'engine a fallire: lo YAML si scrive prima di rendere.
 
     Il percorso dell'engine e dei sample e' relativo alla radice del repo:
     ``main.py`` risolve ``samples-dir`` da dove gira, non da dove sta lo YAML.
@@ -324,7 +326,11 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
         # Le ultime righe: l'errore dell'engine sta in fondo, e la pagina lo
         # mostra in una riga di stato, non in un pannello.
         tail = (p.stderr or p.stdout).strip().splitlines()[-12:]
-        return {"ok": False, "error": "\n".join(tail)}
+        # Lo YAML pero' e' gia' scritto, e la sua firma deve arrivare alla
+        # pagina come dopo un render riuscito: se no la scrittura dopo
+        # manderebbe quella di prima e si accuserebbe da sola.
+        return {"ok": False, "error": "\n".join(tail), "yaml": _rel(doc_path),
+                "path": doc_path, "firma": nuova}
     return {"ok": True, "src": _rel(out_path), "yaml": _rel(doc_path),
             "path": doc_path, "firma": nuova,
             **_analisi(src_path, repo_root, live)}

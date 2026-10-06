@@ -1268,3 +1268,95 @@ labRender().then(() => { %s });
 """ % VISTO, prima=prima)
     assert [p["rotta"] for p in got["post"]] == ["render", "open", "render"]
     assert got["domanda"] is False and got["reso"].startswith("x.aif")
+
+
+@node
+def test_salvato_e_poi_un_refresh_la_scrittura_dopo_non_si_accusa(tmp_path):
+    """La bozza va riscritta dopo ogni scrittura: e' li' che stanno `FIRMA`,
+    `SALVATO` e `SCRITTO0`. Senza, un refresh dopo un salvataggio riprendeva
+    quelli di prima — la firma letta aprendo, il documento com'era aperto — e
+    il giro dopo mandava al server la firma di un file che il laboratorio
+    stesso aveva riscritto: "cambiato su disco", e la domanda "hai modifiche
+    non salvate" su un documento appena salvato."""
+    mio, _ = _mio_e_altrui()
+    bozza = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return fSave(false);
+}).then(() => console.log(localStorage.getItem('lab:001-41')));
+""" % _tocca(0, "pitch.ratio", 0.75))
+    assert bozza["firma"] == "sha256:scritta"
+    bozza["sess"] = "S"
+    prima = """
+localStorage.setItem('lab:001-41', %s);
+fetch = async () => ({ok: true, json: async () => ({ok: true, sessione: 'S', recenti: []})});
+""" % json.dumps(json.dumps(bozza))
+    # Sul disco c'e' quello che il laboratorio ha scritto, e nessun altro l'ha
+    # toccato.
+    got = _lab(tmp_path, _doppio(mio) + """
+FDISCO = 'sha256:scritta';
+const fuori = {sporco: sporco(), daPerdere: daPerdere()};
+labRender().then(() => { %s });
+""" % VISTO.replace("console.log(JSON.stringify({",
+                    "console.log(JSON.stringify({fuori,"), prima=prima)
+    assert got["fuori"] == {"sporco": False, "daPerdere": False}
+    assert [p["firma"] for p in got["post"]] == ["sha256:scritta"]
+    assert got["domanda"] is False and got["reso"].startswith("x.aif")
+
+
+@node
+def test_un_render_fallito_dopo_la_scrittura_non_fa_accusare_il_giro_dopo(tmp_path):
+    """Il server scrive lo YAML prima di rendere: se l'engine poi fallisce (un
+    valore fuori bounds, la cosa piu' comune in un laboratorio) il file e' gia'
+    quello nuovo, e la risposta ne porta la firma. La pagina la prende come
+    dopo una scrittura riuscita — o il render dopo, corretto il valore,
+    trovava il file "cambiato su disco" per mano propria e chiedeva."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+const server = fetch;
+let muore = true;
+fetch = async (rotta, opt) => {
+  const r = await server(rotta, opt);
+  if (rotta !== 'render' || !muore) return r;
+  muore = false;
+  const out = await r.json();
+  return {ok: true, json: async () => ({ok: false, error: 'ValueError: bounds',
+                                        path: out.path, yaml: out.yaml,
+                                        firma: out.firma})};
+};
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return labRender();
+}).then(() => {
+  const dopo = {info: document.getElementById('labInfo').textContent,
+                sporco: sporco(), daPerdere: daPerdere()};
+  %s
+  return labRender().then(() => dopo);
+}).then(dopo => { %s });
+""" % (_tocca(0, "pitch.ratio", 0.75), _tocca(0, "pitch.ratio", 0.5),
+       VISTO.replace("console.log(JSON.stringify({",
+                     "console.log(JSON.stringify({dopo,")))
+    # Il fallimento si dice, e il file scritto non e' piu' "modificato".
+    assert "bounds" in got["dopo"]["info"]
+    assert got["dopo"]["sporco"] is False and got["dopo"]["daPerdere"] is False
+    assert [p["firma"] for p in got["post"]] == [
+        None, "sha256:letta", "sha256:scritta"]
+    assert got["domanda"] is False and got["reso"].startswith("x.aif")
+
+
+@node
+def test_riletto_un_file_che_non_e_piu_un_documento_non_si_riprova(tmp_path):
+    """Se l'altro editor ha lasciato un file senza stream, la rilettura non
+    carica niente: riprovare la scrittura col documento di prima e la firma di
+    prima darebbe un secondo "cambiato" e la riga di stato direbbe "cambia
+    mentre lo rileggo", che non e' vero — il motivo e' un altro, e va detto."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => { scriveAltri({streams: []}); return labRender(); })
+  .then(() => { %s });
+""" % VISTO.replace("disco: DISCO.streams[0].volume", "disco: null"))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "open"]
+    assert "non e' un documento con stream" in got["info"]
+    assert "rileggo" not in got["info"]
+    assert got["firma"] == "sha256:letta" and got["reso"] is None

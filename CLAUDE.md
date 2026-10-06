@@ -250,9 +250,15 @@ disco non e' piu' quella, non scrive e risponde `cambiato`.
   server, che nessuno rilegge.
 - **La firma di cio' che si e' appena scritto torna dalla risposta** e prende
   il posto di quella letta: senza, il salvataggio dopo manderebbe la firma di
-  prima e si rifiuterebbe da se'. Sta anche nella bozza, o un refresh
-  disarmerebbe la guardia proprio sul file su cui si stava lavorando. Nella
-  storia dell'undo no, come `FILE`: non e' lavoro, e' un fatto sul disco.
+  prima e si rifiuterebbe da se'. Torna anche quando e' l'engine a fallire:
+  lo YAML si scrive prima di rendere, quindi il file e' gia' quello nuovo, e
+  un render fallito (un valore fuori bounds) lasciava la firma vecchia — il
+  render dopo, corretto il valore, si accusava da solo. Sta anche nella bozza,
+  o un refresh disarmerebbe la guardia proprio sul file su cui si stava
+  lavorando, e la bozza si riscrive **dopo ogni scrittura**: se no un refresh
+  dopo un salvataggio riprendeva la firma letta aprendo, cioe' quella di un
+  file che il laboratorio stesso aveva riscritto. Nella storia dell'undo no,
+  come `FILE`: non e' lavoro, e' un fatto sul disco.
 
 Il lavoro non salvato sopravvive a un refresh (localStorage, per studio): e'
 una rete di sicurezza, non un salvataggio. La verita' e' il file.

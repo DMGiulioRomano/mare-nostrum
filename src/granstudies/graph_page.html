@@ -2462,8 +2462,10 @@ async function apriPath(path) {
 async function rileggi(path) {
   const out = await post("open", {path});
   if (!out.ok) { document.getElementById("labInfo").textContent = out.error; return false; }
-  carica(out.doc, path, out.firma);
-  return true;
+  // Un file che non e' piu' un documento con stream non si carica: chi
+  // rilegge per riprovare la scrittura deve fermarsi, o riproverebbe col
+  // documento e la firma di prima.
+  return carica(out.doc, path, out.firma);
 }
 
 // Cosa dice il server all'apertura: questa sessione e i file recenti. Se non
@@ -2529,10 +2531,11 @@ async function fSave(chiediDove) {
 
 // Carica un documento nel laboratorio: i breakpoint sono i tempi che
 // compaiono negli inviluppi, e ogni parametro vale li' quanto vale il suo.
+// Torna se l'ha caricato: un file senza stream lascia tutto com'era.
 function carica(doc, path, firma) {
   if (!doc || !doc.streams || !doc.streams[0]) {
     document.getElementById("labInfo").textContent = "non e' un documento con stream.";
-    return;
+    return false;
   }
   // La copia va presa prima di `leggiLoop`, che sul documento ci scrive.
   APERTO = clona(doc.streams[0]);
@@ -2618,6 +2621,7 @@ function carica(doc, path, firma) {
   // e dalla #6 risultava anche tutto lavoro proprio, quindi la guardia
   // chiedeva invece di rileggere.
   bozzaSalva();
+  return true;
 }
 
 // Il documento che `labDoc` scriverebbe, con l'identita' che il file aperto
@@ -2905,7 +2909,12 @@ async function labPost(render, path, sovrascrivi, riletto) {
     if (render) body.ascolto = perAscolto(doc);
     const out = await post("render", body);
     if (out.cambiato) return cambiatoSuDisco(render, path, out.error, riletto);
-    if (!out.ok) { info.textContent = out.error; return; }
+    // Scritto e' quando il server ha scritto lo YAML, e lo dice con la firma:
+    // anche se poi e' l'engine a fallire, il file su disco e' gia' questo
+    // documento, e quello che segue vale lo stesso. Fermarsi qui teneva la
+    // firma di prima, e il render dopo — corretto il valore fuori bounds —
+    // trovava il file "cambiato su disco" per mano propria.
+    if (!out.ok && !out.firma) { info.textContent = out.error; return; }
     // `FILE` e' il file che l'utente ha scelto in un pannello, non il file
     // che il server scrive: un `rendi e ascolta` su un foglio mai salvato
     // scrive in `live/` col nome ripulito (`_SAFE` in serve.py), e adottarlo
@@ -2934,6 +2943,12 @@ async function labPost(render, path, sovrascrivi, riletto) {
     // compresa, quindi non c'e' ne' da dire "modificato" ne' da perdere.
     if (dest) SALVATO = SCRITTO0 = statoOra();
     segna();
+    // `FILE`, `FIRMA`, `SALVATO` e `SCRITTO0` stanno nella bozza, e qui sono
+    // appena cambiati: senza riscriverla un refresh riprendeva quelli di prima
+    // — la firma letta aprendo — e la scrittura dopo si accusava da sola di
+    // aver cambiato un file che aveva riscritto lei.
+    bozzaSalva();
+    if (!out.ok) { info.textContent = out.error + (riletto ? RILETTO : ""); return; }
     info.textContent = out.yaml + (render ? "" : "  (salvato)") + notaIdentita(doc, prima)
                        + (riletto ? RILETTO : "");
     if (!render) return;
