@@ -42,6 +42,22 @@ def _predefiniti():
     return parameter_path_defaults()
 
 
+_FINESTRE = None
+
+
+def _finestre():
+    """Le finestre dell'engine, come le passa `cmd_graph`. Senza, la pagina
+    ripiega su un menu delle sole tacche dello studio, e un documento con una
+    finestra che non sta fra quelle (lo `hanning` del brano) leggeva `""`:
+    `grain.envelope` risultava sempre non salvato sul breakpoint, cosa che
+    servita da `make serve` non succede. Senza submodule: nessuna."""
+    global _FINESTRE
+    if _FINESTRE is None:
+        from granstudies.__main__ import _finestre as engine
+        _FINESTRE = engine()
+    return _FINESTRE
+
+
 # Il `seed:` dello `study.yml` servito si tiene com'e' scritto, salvo quando un
 # test vuole l'altro ramo (#5): `seed_studio=None` e' uno studio che non ne
 # dichiara, un numero e' un altro seed.
@@ -56,7 +72,7 @@ def _pagina(tmp_path, study="001-41", seed_studio=TIENE):
         if seed_studio is not None:
             raw["seed"] = seed_studio
     p = tmp_path / "graph.html"
-    p.write_text(build_html(study, lab_completo(raw, CAMPIONI, {}, lambda _p: None,
+    p.write_text(build_html(study, lab_completo(raw, CAMPIONI, _finestre(), lambda _p: None,
                                                 _predefiniti())))
     return p
 
