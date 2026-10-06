@@ -1,0 +1,35 @@
+# Master di prova dello stream come file (#7, passo 2 del piano).
+#
+# `streams/risacca.yml` e' un documento del laboratorio, scritto dalla pagina
+# (non a mano): porta il seed dello study.yml, lo stream_id uguale al nome del
+# file e il piazzamento dello stream da cui e' stato aperto (onset 12.5, mute).
+# Qui decide il master: lo stream entra a 2.5 s e suona. `riva` e' scritto
+# dentro, come gli stream di oggi, per vedere che i due convivono.
+#
+# Verificato in tests/test_stream_come_file.py: questo master genera gli
+# stessi grani dello stesso master con risacca scritto dentro.
+seed: 1441
+streams:
+  - file: streams/risacca.yml
+    onset: 2.5
+  - stream_id: riva
+    onset: 0
+    duration: 3
+    sample: onda.wav
+    time_mode: normalized
+    density: 40
+    distribution: 0.5
+    grain:
+      duration: 0.04
+      duration_range: 0.01
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+      offset_range: 0.05
+    pitch:
+      ratio: 1
+      range: 0.1
+    pan: 0
+    pan_range: 180
+    volume: -9
