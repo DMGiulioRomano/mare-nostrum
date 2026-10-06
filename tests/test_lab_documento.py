@@ -380,6 +380,104 @@ labPost(true).then(() => labPost(true)).then(() => console.log(JSON.stringify({
     assert (got["file"], got["nome"]) == ("", "nuovo stream")
 
 
+# Lo stato "salvato" (`SALVATO`) e' com'e' il file su disco: il `• modificato`,
+# il `salva` acceso e la conferma prima di `nuovo`/`apri` leggono tutti da li'.
+
+# Cosa la barra dei file dice del lavoro, e se `nuovo` chiederebbe conferma.
+STATO_FILE = """{sporco: sporco(), salva: !document.getElementById('fSave').disabled,
+  dirty: document.getElementById('fFile').classList.contains('dirty'),
+  etichetta: document.getElementById('fFile').textContent,
+  info: document.getElementById('labInfo').textContent,
+  chiede: (() => { let c = false; const v = confirm;
+                   confirm = () => { c = true; return false; };
+                   confermaPerdita('x'); confirm = v; return c; })()}"""
+
+
+@node
+def test_un_render_su_un_foglio_mai_salvato_lo_lascia_da_salvare(tmp_path):
+    """Il render scrive in `live/`, ma quel file non e' `FILE`: il lavoro resta
+    non salvato, e la pagina deve dirlo tutta insieme.
+
+    Prima `SALVATO` si aggiornava a ogni scrittura, anche questa: la barra
+    diceva `(non salvato)` senza `• modificato`, il `salva` era spento — su un
+    foglio che non ha un file, cioe' proprio dove serve — e `nuovo` buttava il
+    lavoro senza chiedere.
+    """
+    got = _lab(tmp_path, """
+bpAdd();
+fetch = async () => ({ok: true, json: async () => ({ok: true, src: 'x.aif',
+  yaml: 'live/nuovo_stream.yml', path: '/gen/live/nuovo_stream.yml'})});
+labPost(true).then(() => console.log(JSON.stringify(%s)));
+""" % STATO_FILE)
+    assert got["etichetta"] == "(non salvato)"
+    assert (got["sporco"], got["dirty"], got["salva"], got["chiede"]) == (True,) * 4
+
+
+@node
+def test_scritto_sul_file_scelto_il_lavoro_e_salvato(tmp_path):
+    """L'altra meta': un render o un `salva` che scrivono su `FILE` (o sul
+    file appena scelto) rendono pulito il documento, come prima."""
+    for azione in ("labPost(false, '/brano/b.yml')", "labPost(true)"):
+        got = _lab(tmp_path, _apri(_stream("stream2")) + _tocca(0, "pitch.ratio", 0.75) + """
+fetch = async (rotta, opt) => ({ok: true, json: async () => ({ok: true, src: 'x.aif',
+  yaml: 'x.yml', path: JSON.parse(opt.body).path})});
+%s.then(() => console.log(JSON.stringify(%s)));
+""" % (azione, STATO_FILE))
+        assert (got["sporco"], got["dirty"], got["salva"], got["chiede"]) == (False,) * 4, azione
+
+
+@node
+def test_aperto_con_la_sua_identita_e_pulito(tmp_path):
+    """Un file il cui nome e' gia' il suo `stream_id`, e che ha un seed: il
+    laboratorio lo riscriverebbe uguale, quindi niente da salvare e niente da
+    dire sull'identita'."""
+    got = _lab(tmp_path, "carica(%s, '/brano/stream2.yml');\n"
+               % json.dumps(_con_testa(_stream("stream2")))
+               + "console.log(JSON.stringify(%s));\n" % STATO_FILE)
+    assert (got["sporco"], got["dirty"], got["salva"]) == (False,) * 3
+    assert "stream_id" not in got["info"] and "seed" not in got["info"]
+
+
+@node
+def test_aperto_con_un_altro_id_e_da_salvare_e_lo_dice(tmp_path):
+    """Il laboratorio scrive l'id del file, non quello che c'era dentro (#5):
+    quello su disco non e' piu' il documento che si scriverebbe. Prima la
+    pagina lo dava per salvato — `salva` spento, nessuna conferma — e la riga
+    di stato taceva, cosi' il primo render suonava diverso dal file aperto
+    senza che niente lo avesse detto."""
+    doc = _con_testa(_stream("stream2"))                  # seed 1441, id stream2
+    got = _lab(tmp_path, "carica(%s, '/brano/risacca.yml');\n" % json.dumps(doc)
+               + "console.log(JSON.stringify(%s));\n" % STATO_FILE)
+    assert (got["sporco"], got["dirty"], got["salva"], got["chiede"]) == (True,) * 4
+    assert "stream_id: risacca (era stream2)" in got["info"]
+
+
+@node
+def test_aperto_senza_seed_prende_quello_dello_studio_e_lo_dice(tmp_path):
+    """Stessa cosa per il seed: il file non ne ha, il documento che si
+    scriverebbe porta quello dello `study.yml`."""
+    doc = _documento(_stream("stream2"))                  # nessun seed
+    got = _lab(tmp_path, "carica(%s, '/brano/stream2.yml');\n" % json.dumps(doc)
+               + "console.log(JSON.stringify(%s));\n" % STATO_FILE)
+    assert (got["sporco"], got["dirty"], got["salva"]) == (True,) * 3
+    assert "seed 1441 dallo study.yml" in got["info"]
+    assert "stream_id" not in got["info"]
+
+
+@node
+def test_il_nome_di_un_foglio_mai_salvato_entra_nella_bozza(tmp_path):
+    """Sul foglio bianco il `nome` e' lo `stream_id`: cambiarlo cambia il
+    documento, e un refresh subito dopo non deve riportare l'id di prima."""
+    got = _lab(tmp_path, """
+bpAdd();
+const n = document.getElementById('labName');
+n.value = 'risacca';
+n.dispatchEvent(new Event('change'));
+console.log(localStorage.getItem('lab:001-41'));
+""")
+    assert got["name"] == "risacca"
+
+
 @node
 def test_l_undo_torna_allo_stream_aperto(tmp_path):
     """Lo stream e la testa del documento: tutti e due stanno nella storia."""
@@ -869,7 +967,7 @@ console.log(JSON.stringify({
   post: POST.map(p => ({rotta: p.rotta, firma: p.firma || null,
                         sovrascrivi: !!p.sovrascrivi,
                         volume: p.doc ? p.doc.streams[0].volume : null})),
-  firma: FIRMA, file: FILE,
+  firma: FIRMA, file: FILE, sporco: sporco(), daPerdere: daPerdere(),
   info: document.getElementById('labInfo').textContent,
   domanda: !document.getElementById('fCambiato').hidden,
   disco: DISCO.streams[0].volume, reso: ULTIMO || null,
@@ -1091,3 +1189,82 @@ apriPath('/brano/risacca.yml')
     # E non e' una domanda: senza modifiche proprie non c'e' niente da
     # decidere, solo da riprovare.
     assert got["domanda"] is False
+
+
+@node
+def test_l_identita_riscritta_non_e_lavoro_da_perdere(tmp_path):
+    """Dalla #5 il laboratorio riscrive l'identita' — `stream_id` col nome del
+    file, e il `seed` dello studio se il documento non ne ha — e `SALVATO` ne
+    tiene conto (`comeLetto`): un file il cui id non e' il suo nome, e ogni
+    file scritto prima della #5, e' `• modificato` dal primo istante.
+
+    Quella differenza una rilettura la ricalcola identica, quindi non e'
+    lavoro da perdere: la guardia legge `daPerdere()` e non `sporco()`.
+    Chiedere li' direbbe "hai modifiche non salvate" a chi non ha toccato
+    niente, e su quella popolazione — che e' la maggioranza — la regola 7
+    vuole che si rilegga.
+    """
+    mio, altrui = _mio_e_altrui()             # stream_id: stream2, nessun seed
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  const subito = {sporco: sporco(), daPerdere: daPerdere()};
+  scriveAltri(%s);
+  return labRender().then(() => console.log(JSON.stringify({subito,
+    post: POST.map(p => p.rotta),
+    domanda: !document.getElementById('fCambiato').hidden,
+    info: document.getElementById('labInfo').textContent})));
+});
+""" % json.dumps(altrui))
+    # Le due domande divergono, ed e' qui che si vede.
+    assert got["subito"] == {"sporco": True, "daPerdere": False}
+    assert got["post"] == ["open", "render", "open", "render"]
+    assert got["domanda"] is False
+    assert "modifiche non salvate" not in got["info"]
+
+
+@node
+def test_dopo_un_salvataggio_non_c_e_piu_niente_da_perdere(tmp_path):
+    """Salvato, il file E' il documento: `SCRITTO0` si sposta col salvataggio,
+    o il lavoro appena messo al sicuro continuerebbe a contare come da
+    perdere e la domanda comparirebbe su un documento che non ha piu' niente
+    di proprio."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return fSave(false);
+}).then(() => {
+  const prima = {sporco: sporco(), daPerdere: daPerdere()};
+  scriveAltri(%s);
+  return labRender().then(() => console.log(JSON.stringify({prima,
+    post: POST.map(p => p.rotta),
+    domanda: !document.getElementById('fCambiato').hidden})));
+});
+""" % (_tocca(0, "pitch.ratio", 0.75), json.dumps(altrui)))
+    assert got["prima"] == {"sporco": False, "daPerdere": False}
+    # Salvataggio, render rifiutato, rilettura, render: nessuna domanda.
+    assert got["post"] == ["open", "render", "render", "open", "render"]
+    assert got["domanda"] is False
+
+
+@node
+def test_un_refresh_senza_lavoro_proprio_rilegge_invece_di_chiedere(tmp_path):
+    """L'altra meta' della bozza: `FIRMA` tiene armata la guardia, `SCRITTO0`
+    le fa dare la risposta giusta. Senza, dopo un refresh ogni file risulta
+    tutto lavoro proprio e la domanda compare sempre."""
+    mio, altrui = _mio_e_altrui()
+    bozza = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => console.log(localStorage.getItem('lab:001-41')));
+""")
+    bozza["sess"] = "S"
+    prima = """
+localStorage.setItem('lab:001-41', %s);
+fetch = async () => ({ok: true, json: async () => ({ok: true, sessione: 'S', recenti: []})});
+""" % json.dumps(json.dumps(bozza))
+    got = _lab(tmp_path, _doppio(altrui) + """
+FDISCO = 'sha256:altro';
+labRender().then(() => { %s });
+""" % VISTO, prima=prima)
+    assert [p["rotta"] for p in got["post"]] == ["render", "open", "render"]
+    assert got["domanda"] is False and got["reso"].startswith("x.aif")

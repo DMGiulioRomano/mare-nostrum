@@ -510,7 +510,8 @@ let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
 // lo stesso stream: si parte da lui e si sovrascrive solo cio' che il
 // laboratorio conosce E che e' stato toccato. Tutto il resto — chiavi che il
 // laboratorio non ha (`grain.read_direction`), parametri che il documento
-// lascia al default dell'engine, `stream_id`, `onset` — resta com'era.
+// lascia al default dell'engine, `onset` — resta com'era. Lo `stream_id` no:
+// e' il nome del file (#5, `labDoc`).
 //   APERTO: lo stream cosi' com'e' arrivato. null = foglio bianco, che invece
 //           nasce da `base:` e DEFAULTS e il laboratorio scrive per intero.
 //   VISTA0: come il laboratorio lo scriveva appena aperto (`labView`), prima
@@ -825,7 +826,9 @@ function labInit() {
   // Finche' il foglio non e' salvato il `nome` E' lo `stream_id` (#5):
   // cambiarlo cambia il documento, e il `• modificato` deve dirlo subito
   // invece di aspettare il prossimo disegno.
-  document.getElementById("labName").onchange = segna;
+  // Per la stessa ragione va nella bozza: un refresh subito dopo non deve
+  // riportare l'id di prima.
+  document.getElementById("labName").onchange = () => { bozzaSalva(); segna(); };
   segna();
   avvio();
 }
@@ -2259,7 +2262,20 @@ function preview() {
 // render su un foglio mai salvato scrive in `live/` ma non riempie questo:
 // quel file non e' stato scelto da nessuno (vedi `labPost`).
 let FILE = "";
-let SALVATO = "";     // com'era il documento all'ultimo salvataggio
+let SALVATO = "";     // com'e' il FILE su disco, identita' compresa (#5)
+
+// E com'era il DOCUMENTO del laboratorio l'ultima volta che lui e il file
+// erano d'accordo: appena letto (`carica`) o appena scritto (`labPost`). Le due
+// cose non coincidono piu' dalla #5, perche' il laboratorio riscrive
+// l'identita' — `stream_id` col nome del file, e il `seed` dello studio se il
+// documento non ne ha — e `SALVATO` tiene conto di quella differenza
+// (`comeLetto`). Da qui le due domande, che hanno due lettori:
+//   sporco()    — il file e' diverso da quello che scriverei? Da cui il
+//                 `• modificato`, il `salva` acceso, la conferma prima di
+//                 `nuovo`/`apri`.
+//   daPerdere() — una rilettura mi perderebbe qualcosa? Da cui la guardia
+//                 della #6, sotto.
+let SCRITTO0 = "";
 
 // Due editor, un file (#6, regola 7 del piano). `FIRMA` e' com'era il
 // contenuto di `FILE` quando il laboratorio l'ha letto o scritto — l'hash che
@@ -2289,6 +2305,15 @@ let SESSIONE = "";     // l'avvio del server, che risponde /stato
 
 function statoOra() { return JSON.stringify(bps.length ? labDoc() : null); }
 function sporco() { return statoOra() !== SALVATO; }
+
+// Il lavoro proprio, cioe' quello che una rilettura perderebbe. Non e'
+// `sporco()`: l'identita' che il laboratorio riscrive una rilettura la
+// ricalcola identica, quindi li' non c'e' niente da perdere. E la differenza
+// non e' un caso di confine — un documento senza `seed` su uno studio che ne
+// ha uno, cioe' ogni file scritto prima della #5, e' "modificato" dal primo
+// istante: chiedere li' direbbe "hai modifiche non salvate" a chi non ha
+// toccato niente, e la regola 7 vuole che si rilegga.
+function daPerdere() { return statoOra() !== SCRITTO0; }
 
 function segna() {
   const el = document.getElementById("fFile");
@@ -2322,7 +2347,8 @@ const SENZA_SEED = "ne' il documento ne' lo study.yml dichiarano un seed: "
 function bozzaSalva() {
   try {
     localStorage.setItem(BOZZA, JSON.stringify({
-      bps, file: FILE, firma: FIRMA, salvato: SALVATO, sess: SESSIONE,
+      bps, file: FILE, firma: FIRMA, salvato: SALVATO, scritto0: SCRITTO0,
+      sess: SESSIONE,
       aperto: APERTO, vista0: VISTA0, testa: TESTA,
       name: document.getElementById("labName").value,
       dur: document.getElementById("labDur").value,
@@ -2343,6 +2369,7 @@ function ripristina() {
   // passerebbe senza confronto proprio sul file che si stava lavorando.
   FIRMA = b.firma || "";
   SALVATO = b.salvato || "";
+  SCRITTO0 = b.scritto0 || "";
   document.getElementById("labName").value = b.name || NOME0;
   document.getElementById("labDur").value = b.dur || DUR;
   for (const [path, v] of Object.entries(b.cat || {})) setSel(path, v);
@@ -2410,7 +2437,7 @@ function fNew() {
   FILE = "";
   FIRMA = "";
   chiusaLaDomanda();               // riguardava un file che non e' piu' questo
-  SALVATO = statoOra();
+  SALVATO = SCRITTO0 = statoOra();
   document.getElementById("labName").value = NOME0;
   document.getElementById("labInfo").textContent = "nuovo stream.";
   drawTl();
@@ -2568,10 +2595,40 @@ function carica(doc, path, firma) {
   VISTA0 = labView();
   storiaReset();
   bpLoad(0);
-  SALVATO = statoOra();
+  // "Salvato" e' com'e' il file su disco. Il laboratorio lo riscriverebbe
+  // uguale (#3), salvo l'identita' (#5): l'id e' il nome del file, e il seed,
+  // se il documento non ne ha, e' quello dello studio. Dove non coincidono
+  // il file non e' gia' il documento che si scriverebbe: il `• modificato`
+  // deve dirlo, il `salva` poterlo scrivere, e la riga di stato spiegare
+  // perche', prima che lo dica l'orecchio al primo render.
+  const scritto = labDoc();
+  SALVATO = JSON.stringify(comeLetto(scritto));
+  // Appena letto, il laboratorio non ha nessun lavoro proprio: quello che
+  // scriverebbe e' questo, e una rilettura lo rifarebbe identico.
+  SCRITTO0 = JSON.stringify(scritto);
   segna();
   document.getElementById("labInfo").textContent =
-    (path || "documento") + " — " + bps.length + " breakpoint";
+    (path || "documento") + " — " + bps.length + " breakpoint"
+    + notaIdentita(scritto, APERTO.stream_id, TESTA.seed === undefined || TESTA.seed === null);
+  // La bozza va riscritta a caricamento finito. Quella di `drawTl`, dentro
+  // `bpLoad` qui sopra, l'ha scritta prima che `SALVATO` e `SCRITTO0`
+  // esistessero, e si portava dietro quelli del documento di prima (sul primo
+  // caricamento: vuoti). Un refresh li rileggeva da li': il file appena
+  // aperto risultava `• modificato` senza che nessuno avesse toccato niente,
+  // e dalla #6 risultava anche tutto lavoro proprio, quindi la guardia
+  // chiedeva invece di rileggere.
+  bozzaSalva();
+}
+
+// Il documento che `labDoc` scriverebbe, con l'identita' che il file aperto
+// aveva su disco: lo `stream_id` di `APERTO`, il `seed` di `TESTA` o nessuno.
+// Tutto il resto coincide per costruzione (#3), quindi i due differiscono
+// solo dove il laboratorio riscrive l'identita'.
+function comeLetto(doc) {
+  const d = clona(doc);
+  d.streams[0].stream_id = APERTO.stream_id;
+  if ("seed" in TESTA) d.seed = TESTA.seed; else delete d.seed;
+  return d;
 }
 
 // Il valore di un parametro al tempo t: il punto se c'e', altrimenti quello
@@ -2725,19 +2782,24 @@ function leggiPath(st, path) {
 
 function labRender() { return labPost(true); }
 
-// Cosa la riga di stato dice dell'identita' del documento appena scritto.
-// Due cose, e nessuna delle due e' un errore:
-//   - l'id e' cambiato, cioe' il nome del file e' cambiato: `salva con nome`
-//     e' accettato, ma l'RNG dipende dall'id e il suono quindi non e' piu'
-//     quello di prima. Dirlo e' l'unico modo di non scoprirlo a orecchio;
+// Cosa la riga di stato dice dell'identita' del documento appena scritto, o
+// appena aperto. Tre cose, e nessuna e' un errore:
+//   - l'id e' cambiato, cioe' il nome del file non e' piu' l'id di prima:
+//     `salva con nome`, o un file aperto il cui `stream_id` non e' il suo
+//     nome. E' accettato, ma l'RNG dipende dall'id e il suono quindi non e'
+//     piu' quello di prima. Dirlo e' l'unico modo di non scoprirlo a orecchio;
+//   - il documento aperto non aveva un seed e prende quello dello studio
+//     (`senzaSeedPrima`, solo da `carica`: scrivendo, il seed non cambia);
 //   - non c'e' un seed da nessuna parte, e allora vale `SENZA_SEED`.
-function notaIdentita(doc, prima) {
+function notaIdentita(doc, prima, senzaSeedPrima) {
   const id = doc.streams[0].stream_id;
+  const senza = doc.seed === undefined || doc.seed === null;
   return (id !== prima
-            ? "  ·  stream_id: " + id + " — un altro nome e' un'altra "
-              + "realizzazione (l'RNG dell'engine lo usa)"
+            ? "  ·  stream_id: " + id + (prima == null ? "" : " (era " + prima + ")")
+              + " — un altro nome e' un'altra realizzazione (l'RNG dell'engine lo usa)"
             : "")
-       + (doc.seed === undefined || doc.seed === null ? "  ·  " + SENZA_SEED : "");
+       + (senza ? "  ·  " + SENZA_SEED
+                : senzaSeedPrima ? "  ·  seed " + doc.seed + " dallo study.yml" : "");
 }
 
 // Il documento da ascoltare: lo stesso, senza il suo posto nel brano. Uno
@@ -2758,7 +2820,9 @@ function perAscolto(doc) {
 //
 //   - senza modifiche proprie non c'e' niente da decidere: si rilegge e si
 //     riprova, e il render prosegue sulla versione su disco — che e' quella
-//     che l'altro editor ha appena scritto, cioe' quella che si vuole sentire;
+//     che l'altro editor ha appena scritto, cioe' quella che si vuole sentire.
+//     "Modifiche proprie" e' `daPerdere()` e non `sporco()`: l'identita' che
+//     il laboratorio riscrive (#5) una rilettura la ricalcola identica;
 //   - con modifiche proprie la decisione e' dell'utente, e sono due bottoni
 //     accanto al nome del file. Non un `confirm`, che ha due risposte e qui le
 //     scelte sono tre: ricarica, sovrascrivi, e non scrivere niente — e la
@@ -2774,7 +2838,7 @@ async function cambiatoSuDisco(render, path, msg, riletto) {
     info.textContent = msg + "  ·  e cambia mentre lo rileggo: riprova.";
     return;
   }
-  if (sporco()) { chiediCambiato(render, path, msg); return; }
+  if (daPerdere()) { chiediCambiato(render, path, msg); return; }
   if (!(await rileggi(path || FILE))) return;
   return labPost(render, path, false, true);
 }
@@ -2862,7 +2926,13 @@ async function labPost(render, path, sovrascrivi, riletto) {
     // un foglio mai salvato scrive in `live/`, che non e' `FILE` (sopra) e non
     // ha una firma da ricordare.
     if (FILE) FIRMA = out.firma || "";
-    SALVATO = statoOra();
+    // Salvato vuol dire scritto su `FILE`, per la stessa ragione: un render
+    // del foglio mai salvato non lo e'. Contarlo come salvataggio lasciava
+    // `(non salvato)` senza `• modificato`, il `salva` spento proprio dove
+    // non c'e' un file, e `nuovo`/`apri` buttavano il lavoro senza chiedere.
+    // Appena scritto, le due coincidono: il file E' il documento, identita'
+    // compresa, quindi non c'e' ne' da dire "modificato" ne' da perdere.
+    if (dest) SALVATO = SCRITTO0 = statoOra();
     segna();
     info.textContent = out.yaml + (render ? "" : "  (salvato)") + notaIdentita(doc, prima)
                        + (riletto ? RILETTO : "");
