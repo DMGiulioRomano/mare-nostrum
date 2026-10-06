@@ -145,6 +145,10 @@
     estrazione e le curve realizzate non sono quelle che hai sentito. */
  #fSeed { color:var(--dim); font-size:11px; margin-left:10px; }
  #fSeed.manca { color:var(--on); }
+ /* La domanda del file cambiato su disco: due bottoni accesi, perche' finche'
+    sono li' la scrittura e' ferma (#6). */
+ #fCambiato { margin-left:10px; }
+ #lab .bar #fCambiato button { border-color:var(--on); color:var(--on); }
  /* La coppia spectroscope/stereoscope non ha margine sotto: lo mette qui
     chi le sta sotto. */
  #envView { margin-top:10px; }
@@ -190,6 +194,13 @@
       <button id="fSaveAs">salva con nome…</button>
       <span id="fFile"></span>
       <span id="fSeed"></span>
+      <!-- La domanda del file cambiato su disco (#6): compare solo quando c'e'
+           una decisione da prendere, e non scrivere niente e' il non fare
+           nulla. -->
+      <span id="fCambiato" hidden>
+        <button id="fReload">ricarica</button>
+        <button id="fOverwrite">sovrascrivi</button>
+      </span>
     </div>
     <div id="labFixed"></div>
     <h2>parametri</h2>
@@ -809,6 +820,8 @@ function labInit() {
   document.getElementById("fOpen").onclick = fOpen;
   document.getElementById("fSave").onclick = () => fSave(false);
   document.getElementById("fSaveAs").onclick = () => fSave(true);
+  document.getElementById("fReload").onclick = fRicarica;
+  document.getElementById("fOverwrite").onclick = fSovrascrivi;
   // Finche' il foglio non e' salvato il `nome` E' lo `stream_id` (#5):
   // cambiarlo cambia il documento, e il `• modificato` deve dirlo subito
   // invece di aspettare il prossimo disegno.
@@ -2248,6 +2261,18 @@ function preview() {
 let FILE = "";
 let SALVATO = "";     // com'era il documento all'ultimo salvataggio
 
+// Due editor, un file (#6, regola 7 del piano). `FIRMA` e' com'era il
+// contenuto di `FILE` quando il laboratorio l'ha letto o scritto — l'hash che
+// torna da `/open` e da `/render` — e viaggia con ogni scrittura: il server
+// non scrive se su disco non e' piu' quella. "" = nessun file, o un file che
+// il laboratorio non ha letto, e li' non c'e' niente da confrontare.
+// Non sta nella storia dell'undo, come `FILE`: non e' lavoro, e' un fatto sul
+// disco, e un undo non riporta indietro un file.
+let FIRMA = "";
+// La scrittura in attesa di una risposta: {render, path}. Null = nessuna
+// domanda aperta.
+let SOSPESO = null;
+
 // Rete di sicurezza per il refresh accidentale: il lavoro in corso torna da
 // solo. Non e' un salvataggio — quello e' il file.
 const BOZZA = "lab:" + D.study;
@@ -2297,7 +2322,7 @@ const SENZA_SEED = "ne' il documento ne' lo study.yml dichiarano un seed: "
 function bozzaSalva() {
   try {
     localStorage.setItem(BOZZA, JSON.stringify({
-      bps, file: FILE, salvato: SALVATO, sess: SESSIONE,
+      bps, file: FILE, firma: FIRMA, salvato: SALVATO, sess: SESSIONE,
       aperto: APERTO, vista0: VISTA0, testa: TESTA,
       name: document.getElementById("labName").value,
       dur: document.getElementById("labDur").value,
@@ -2314,6 +2339,9 @@ function ripristina() {
   VISTA0 = b.vista0 || null;
   TESTA = b.testa || null;
   FILE = b.file || "";
+  // Senza la firma il refresh disarmerebbe la guardia: la scrittura dopo
+  // passerebbe senza confronto proprio sul file che si stava lavorando.
+  FIRMA = b.firma || "";
   SALVATO = b.salvato || "";
   document.getElementById("labName").value = b.name || NOME0;
   document.getElementById("labDur").value = b.dur || DUR;
@@ -2380,6 +2408,8 @@ function fNew() {
   setSel("pointer.loop", "off");   // il loop si disegna, non si eredita
   APERTO = VISTA0 = TESTA = null;  // si torna a `base:`, non al documento di prima
   FILE = "";
+  FIRMA = "";
+  chiusaLaDomanda();               // riguardava un file che non e' piu' questo
   SALVATO = statoOra();
   document.getElementById("labName").value = NOME0;
   document.getElementById("labInfo").textContent = "nuovo stream.";
@@ -2395,10 +2425,18 @@ async function fOpen() {
 }
 
 async function apriPath(path) {
+  if (await rileggi(path)) recenti();         // il file aperto va in testa
+}
+
+// L'unico lettore di `/open`: aprire un file e rileggerlo perche' su disco e'
+// cambiato (#6) sono la stessa cosa — `carica` azzera la storia (l'undo non
+// deve riportare indietro una versione che su disco non c'e' piu') e prende la
+// firma nuova, che e' quella che la scrittura dopo manda al server.
+async function rileggi(path) {
   const out = await post("open", {path});
-  if (!out.ok) { document.getElementById("labInfo").textContent = out.error; return; }
-  carica(out.doc, path);
-  recenti();                                  // il file aperto va in testa
+  if (!out.ok) { document.getElementById("labInfo").textContent = out.error; return false; }
+  carica(out.doc, path, out.firma);
+  return true;
 }
 
 // Cosa dice il server all'apertura: questa sessione e i file recenti. Se non
@@ -2464,7 +2502,7 @@ async function fSave(chiediDove) {
 
 // Carica un documento nel laboratorio: i breakpoint sono i tempi che
 // compaiono negli inviluppi, e ogni parametro vale li' quanto vale il suo.
-function carica(doc, path) {
+function carica(doc, path, firma) {
   if (!doc || !doc.streams || !doc.streams[0]) {
     document.getElementById("labInfo").textContent = "non e' un documento con stream.";
     return;
@@ -2516,6 +2554,10 @@ function carica(doc, path) {
   for (const [path, v] of Object.entries(fissiLoop)) setSel(path, v);
   SELEZIONE.clear();        // i breakpoint di prima non esistono piu'
   FILE = path || "";
+  // Senza firma (un `carica` che non viene da `/open`) la guardia resta
+  // disarmata invece di confrontare il documento con un hash che non e' suo.
+  FIRMA = firma || "";
+  chiusaLaDomanda();        // riguardava il documento di prima
   document.getElementById("labName").value = idDa(path || NOME0);
   // La durata dello stream, prima di quella del documento: aperto un brano,
   // la `duration` in testa e' quella del brano intero.
@@ -2709,19 +2751,96 @@ function perAscolto(doc) {
   return d;
 }
 
-async function labPost(render, path) {
+// Due editor, un file (#6). Il laboratorio manda al server la firma del file
+// che ha letto, e il server non scrive se su disco non e' piu' quella. Qui si
+// decide cosa fare del rifiuto, e la decisione dipende da una cosa sola: se
+// c'e' del lavoro proprio da perdere.
+//
+//   - senza modifiche proprie non c'e' niente da decidere: si rilegge e si
+//     riprova, e il render prosegue sulla versione su disco — che e' quella
+//     che l'altro editor ha appena scritto, cioe' quella che si vuole sentire;
+//   - con modifiche proprie la decisione e' dell'utente, e sono due bottoni
+//     accanto al nome del file. Non un `confirm`, che ha due risposte e qui le
+//     scelte sono tre: ricarica, sovrascrivi, e non scrivere niente — e la
+//     terza non deve costare un click ne' finire sotto il tasto Annulla
+//     accanto a una che perde lavoro.
+//
+// `riletto` e' la rilettura gia' fatta: si riprova una volta sola. Se il file
+// cambia ancora fra la rilettura e la scrittura lo si dice, invece di
+// rincorrerlo — a rincorrerlo non si finisce mai, e intanto non si scrive.
+async function cambiatoSuDisco(render, path, msg, riletto) {
+  const info = document.getElementById("labInfo");
+  if (riletto) {
+    info.textContent = msg + "  ·  e cambia mentre lo rileggo: riprova.";
+    return;
+  }
+  if (sporco()) { chiediCambiato(render, path, msg); return; }
+  if (!(await rileggi(path || FILE))) return;
+  return labPost(render, path, false, true);
+}
+
+// La domanda resta aperta finche' non si risponde: la scrittura e' ferma, e i
+// due bottoni sono li' a dirlo. Ogni scrittura nuova la sostituisce (vedi
+// `labPost`), e aprire un file o fare `nuovo` la chiude: riguardava quel file.
+function chiediCambiato(render, path, msg) {
+  SOSPESO = {render, path};
+  document.getElementById("fCambiato").hidden = false;
+  document.getElementById("labInfo").textContent = msg
+    + "  ·  hai modifiche non salvate: 'ricarica' le perde e riparte dal file "
+    + "(come `apri`), 'sovrascrivi' scrive le tue.";
+}
+
+function chiusaLaDomanda() {
+  SOSPESO = null;
+  const el = document.getElementById("fCambiato");
+  if (el) el.hidden = true;
+}
+
+// Le due risposte. Riprendono la scrittura da dove si era interrotta: era
+// stata chiesta, e la risposta dice solo con quale documento farla.
+async function fRicarica() {
+  const s = SOSPESO;
+  if (!s) return;
+  chiusaLaDomanda();
+  if (!(await rileggi(s.path || FILE))) return;
+  return labPost(s.render, s.path, false, true);
+}
+
+function fSovrascrivi() {
+  const s = SOSPESO;
+  if (!s) return;
+  chiusaLaDomanda();
+  return labPost(s.render, s.path, true);
+}
+
+// Cosa la riga di stato dice di una rilettura: il documento a schermo non e'
+// piu' quello di prima. Senza, sarebbe l'unica modifica che il laboratorio fa
+// da solo senza che si veda.
+const RILETTO = "  ·  il file era cambiato su disco: riletto, e quello che hai "
+  + "davanti e' la versione su disco";
+
+async function labPost(render, path, sovrascrivi, riletto) {
   if (!bps.length) { document.getElementById("labInfo").textContent = "nessun breakpoint."; return; }
   const name = document.getElementById("labName").value || NOME0;
   const info = document.getElementById("labInfo");
   info.textContent = render ? "render in corso…" : "salvo…";
+  chiusaLaDomanda();          // questa scrittura sostituisce quella in attesa
   try {
-    // Il documento va verso `path`, che in un `salva con nome` non e' ancora
+    // Il documento va verso `dest`, che in un `salva con nome` non e' ancora
     // `FILE`: l'id e' quello del file che si scrive (#5).
+    const dest = path || FILE;
     const prima = idDa(FILE);
-    const doc = labDoc(path || FILE);
-    const body = {name, doc, render, path: path || FILE};
+    const doc = labDoc(dest);
+    const body = {name, doc, render, path: dest};
+    // La firma e' quella di `FILE` e vale solo per lui: un `salva con nome`
+    // scrive un file che il laboratorio non ha letto, e di quello ha chiesto
+    // il pannello nativo. Mandarla comunque accuserebbe un file qualunque di
+    // essere cambiato — cosa che e', rispetto a un altro file.
+    if (FILE && FIRMA && dest === FILE) body.firma = FIRMA;
+    if (sovrascrivi) body.sovrascrivi = true;
     if (render) body.ascolto = perAscolto(doc);
     const out = await post("render", body);
+    if (out.cambiato) return cambiatoSuDisco(render, path, out.error, riletto);
     if (!out.ok) { info.textContent = out.error; return; }
     // `FILE` e' il file che l'utente ha scelto in un pannello, non il file
     // che il server scrive: un `rendi e ascolta` su un foglio mai salvato
@@ -2738,9 +2857,15 @@ async function labPost(render, path) {
       // id che non e' quello scritto. Passa da `idDa`, che e' la regola.
       document.getElementById("labName").value = idDa(FILE);
     }
+    // La firma e' sempre quella di `FILE`, e il server l'ha appena scritto:
+    // senza aggiornarla la scrittura dopo si accuserebbe da sola. Un render su
+    // un foglio mai salvato scrive in `live/`, che non e' `FILE` (sopra) e non
+    // ha una firma da ricordare.
+    if (FILE) FIRMA = out.firma || "";
     SALVATO = statoOra();
     segna();
-    info.textContent = out.yaml + (render ? "" : "  (salvato)") + notaIdentita(doc, prima);
+    info.textContent = out.yaml + (render ? "" : "  (salvato)") + notaIdentita(doc, prima)
+                       + (riletto ? RILETTO : "");
     if (!render) return;
     // `?t=` perche' rirendendo con lo stesso nome il browser servirebbe il
     // file vecchio dalla cache.

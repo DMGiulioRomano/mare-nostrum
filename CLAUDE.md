@@ -197,6 +197,52 @@ che nessun pannello aveva autorizzato, e l'id cambiava fra il primo render e il
 secondo, cioe' lo stesso documento dava due audio. Dopo un salvataggio invece
 il campo `nome` segue il file, come fa `carica` aprendo.
 
+**Due editor, un file** (#6, regola 7 del piano). Lo stesso
+`streams/risacca.yml` puo' stare aperto nel laboratorio e in PGE-ui. Il
+laboratorio ricorda com'era il file quando l'ha letto (`FIRMA`, l'hash che
+torna da `/open`) e la manda a ogni scrittura; il server confronta e, se su
+disco non e' piu' quella, non scrive e risponde `cambiato`.
+
+- **La firma e' l'hash del contenuto, non l'mtime** (`serve.py`: `firma`,
+  `firma_di`, `cambiato_su_disco`). Un mtime dice che qualcuno ha scritto, non
+  che il file sia diverso, e le due risposte portano a cose opposte: rileggere,
+  oppure lasciar passare la riscrittura di un file identico. Si firmano i
+  **byte**, non il documento caricato — la domanda e' "il file su disco e'
+  quello che ho letto", e due editor scrivono lo stesso documento con
+  formattazioni diverse. L'algoritmo sta nel prefisso (`sha256:`) perche' la
+  stessa firma la calcola PGE-ui (DMGiulioRomano/PGE-ui#185): il giorno che una
+  delle due convenzioni cambia si deve vedere che non e' il file a essere
+  cambiato.
+- **Senza modifiche proprie non c'e' niente da decidere**: si rilegge e si
+  riprova, e il render prosegue sulla versione su disco — quella che l'altro
+  editor ha appena scritto e' quella che si vuole sentire. La riga di stato lo
+  dice (`RILETTO`), perche' il documento a schermo non e' piu' quello di prima
+  e sarebbe l'unica modifica che il laboratorio fa da solo senza che si veda.
+  Si riprova **una volta sola**: se il file cambia ancora fra la rilettura e
+  la scrittura lo si dice, invece di rincorrerlo.
+- **Con modifiche proprie decide l'utente**, e sono due bottoni accanto al nome
+  del file — non un `confirm`, che ha due risposte, mentre qui le scelte sono
+  tre: `ricarica`, `sovrascrivi`, e non scrivere niente, che non deve costare
+  un click ne' finire sotto il tasto Annulla accanto a una che perde lavoro.
+  La scrittura resta ferma finche' non si risponde, e ogni scrittura nuova
+  sostituisce la domanda in attesa (la via d'uscita piu' ovvia e' salvare le
+  proprie da un'altra parte). `ricarica` e' un `apri` dello stesso file:
+  `carica` azzera la storia, o un undo riporterebbe indietro una versione che
+  su disco non c'e' piu' e la scrittura dopo la riscriverebbe.
+- **La firma e' di `FILE` e vale solo per lui.** Un `salva con nome` scrive un
+  file che il laboratorio non ha letto — li' non si manda niente, e della
+  sovrascrittura ha chiesto il pannello nativo. Due casi non sono un file
+  cambiato: nessuna firma letta, e un file **che non c'e' piu'** (non ci sta
+  il lavoro di nessuno, e rifiutare lascerebbe la domanda senza via d'uscita —
+  "ricarica" non puo' rileggere un file cancellato). La guardia non vale per
+  il `live/<nome>.yml` di un foglio mai salvato: e' la cartella di lavoro del
+  server, che nessuno rilegge.
+- **La firma di cio' che si e' appena scritto torna dalla risposta** e prende
+  il posto di quella letta: senza, il salvataggio dopo manderebbe la firma di
+  prima e si rifiuterebbe da se'. Sta anche nella bozza, o un refresh
+  disarmerebbe la guardia proprio sul file su cui si stava lavorando. Nella
+  storia dell'undo no, come `FILE`: non e' lavoro, e' un fatto sul disco.
+
 Il lavoro non salvato sopravvive a un refresh (localStorage, per studio): e'
 una rete di sicurezza, non un salvataggio. La verita' e' il file.
 
