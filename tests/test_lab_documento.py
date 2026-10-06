@@ -1497,3 +1497,74 @@ b.onclick(); stati.push(b.classList.contains('on'));
 console.log(JSON.stringify(stati));
 """)
     assert got == [False, True, False]
+
+
+# Con `segui il render` acceso lo schermo non e' lavoro: e' la lettura degli
+# inviluppi al cursore, che `mostraSegui` riscrive a ogni frame (anche in
+# pausa). Lontano dal breakpoint selezionato i campi ne differiscono, e
+# `cambiati()` li conta: chi chiede se scartarli chiederebbe di valori che
+# nessuno ha scritto. Il cursore va a meta' fra i primi due breakpoint, dove
+# gli inviluppi di stream2 che si muovono stanno fra i due valori.
+SEGUE = """
+SEGUI = true; LAB_AUDIO = true;
+mostraSegui((bps[0].t + bps[1].t) / 2 * durata());
+const letti = cambiati();
+"""
+
+
+@node
+def test_con_segui_il_render_la_lettura_a_schermo_non_e_un_valore_da_scartare(tmp_path):
+    """Il render non chiede, non dice di aver scartato niente, e parte: lo
+    schermo e' la lettura, non un valore scritto e non salvato."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + _schermo(False) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  return labRender().then(() => letti);
+}).then(letti => console.log(JSON.stringify(Object.assign(visto(), {letti}))));
+""" % SEGUE)
+    assert got["letti"]                        # lo scenario dice qualcosa
+    assert got["chiesto"] == []
+    assert len(got["resi"]) == 1 and got["reso"].startswith("x.aif")
+    assert "scartati" not in got["info"]
+
+
+@node
+def test_con_segui_il_render_il_file_cambiato_si_rilegge_senza_chiedere(tmp_path):
+    """Per la stessa ragione la lettura non e' lavoro da perdere: senza
+    modifiche proprie il file cambiato su disco si rilegge e il render
+    prosegue, come a schermo fermo."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return labRender();
+}).then(() => { %s });
+""" % (SEGUE, json.dumps(altrui), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "open", "render"]
+    assert got["domanda"] is False and got["reso"].startswith("x.aif")
+
+
+@node
+def test_salva_su_un_file_cambiato_con_valori_a_schermo_chiede_invece_di_rileggere(tmp_path):
+    """`salva` scrive i breakpoint senza chiedere, e i valori a schermo restano
+    nei campi. Ma se il file e' cambiato su disco la rilettura li butterebbe —
+    in silenzio, e senza undo, perche' `carica` azzera la storia. Sono lavoro
+    proprio come i breakpoint toccati: si chiede, e finche' non si risponde i
+    campi restano come sono."""
+    mio, altrui = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return fSave(false);
+}).then(() => { %s });
+""" % (A_SCHERMO, json.dumps(altrui), VISTO.replace(
+        "console.log(JSON.stringify({",
+        "console.log(JSON.stringify({campo: document.getElementById('P:pitch.ratio').value,")))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render"]
+    assert got["domanda"] is True
+    assert "modifiche non salvate" in got["info"]
+    assert got["campo"] == "0.75"
+    assert got["disco"] == VOL_ALTRI

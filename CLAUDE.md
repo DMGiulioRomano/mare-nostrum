@@ -235,6 +235,10 @@ disco non e' piu' quella, non scrive e risponde `cambiato`.
   del file — non un `confirm`, che ha due risposte, mentre qui le scelte sono
   tre: `ricarica`, `sovrascrivi`, e non scrivere niente, che non deve costare
   un click ne' finire sotto il tasto Annulla accanto a una che perde lavoro.
+  Modifiche proprie (`daPerdere`) sono i breakpoint toccati **e i valori
+  scritti a schermo e non salvati sul breakpoint**: nel documento non ci sono,
+  ma la rilettura li riporterebbe al file senza undo. Un `salva` con valori a
+  schermo su un file cambiato chiede, invece di rileggere.
   La scrittura resta ferma finche' non si risponde, e ogni scrittura nuova
   sostituisce la domanda in attesa (la via d'uscita piu' ovvia e' salvare le
   proprie da un'altra parte). `ricarica` e' un `apri` dello stesso file:
@@ -424,10 +428,13 @@ che si vuole: le tre strade danno documenti diversi, e il laboratorio non
 sceglie al posto di chi compone. Accanto al render c'e' **`scarto
 automatico`**: acceso, la risposta e' «si'» senza chiedere; spento a ogni
 apertura della pagina. In tutti e due i casi la riga di stato dice cosa e'
-stato scartato. Cosi' anche la rilettura di un file cambiato su disco (sopra,
-«Due editor, un file»), che azzera la storia, non trova piu' valori a schermo
-da buttare in silenzio. Vale per `rendi e ascolta`: `salva` scrive i
-breakpoint come prima, senza chiedere.
+stato scartato. Vale per `rendi e ascolta`: `salva` scrive i breakpoint come
+prima, senza chiedere, e i valori restano nei campi. La rilettura di un file
+cambiato su disco (sopra, «Due editor, un file»), che azzera la storia, non
+li butta in silenzio in nessuno dei due casi: dopo la domanda del render non
+ce ne sono piu', e su `salva` contano come lavoro proprio, quindi si chiede.
+Con `segui il render` acceso lo schermo e' la lettura al cursore, non un
+valore scritto: li' non si chiede niente (`aSchermo`, sotto).
 
 **I tempi sul documento seguono il suo `time_mode`.** Nella pagina i tempi
 dei breakpoint sono frazioni dello stream, ma l'engine li legge cosi' solo con
@@ -494,7 +501,12 @@ breakpoint letta come l'engine, cubica compresa), l'estremo fuori
 dagli estremi. E' una lettura: non tocca i breakpoint, non entra nell'undo, e
 spegnendolo si torna al punto selezionato (`mostraBp`). Vale solo sul render
 dello stream, non sull'ascolto di un sample. Verificato in
-`tests/test_graph_js.py`.
+`tests/test_graph_js.py`. Per la stessa ragione la lettura non e' un valore
+a schermo non salvato: `cambiati()` la vedrebbe diversa dal breakpoint
+(`mostraSegui` la riscrive a ogni frame, anche in pausa), e chi chiede se
+scartare i valori o li conta come lavoro da perdere passa da `aSchermo`, che
+col render seguito non ne ha. La condizione e' una sola, `segue()`, per chi
+scrive la lettura e per chi la riconosce.
 
 **Selezione multipla.** Trascinando sul **vuoto** della linea dei breakpoint
 si disegna una banda, come su una scrivania, e i punti che ci cadono dentro

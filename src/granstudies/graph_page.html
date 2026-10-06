@@ -885,9 +885,15 @@ function bottoneSegui() {
   dur.parentNode.after(r);
 }
 
-// Chiamata a ogni frame dal cursore: scrive e basta, non salva niente.
+// Se lo schermo e' la lettura al cursore invece del breakpoint selezionato.
+// Una regola sola per chi la scrive (`mostraSegui`) e chi la deve riconoscere
+// (`aSchermo`): con due copie una delle due smette di vedere l'altra.
+function segue() { return SEGUI && LAB_AUDIO; }
+
+// Chiamata a ogni frame dal cursore, anche in pausa: scrive e basta, non
+// salva niente.
 function mostraSegui(t) {
-  if (!SEGUI || !LAB_AUDIO) return;
+  if (!segue()) return;
   const b = bpA(Math.min(1, Math.max(0, t / (ENVDUR || durata()))));
   if (!b) return;
   for (const [path, v] of Object.entries(b.vals)) setSel(path, v);
@@ -1129,6 +1135,15 @@ function selezionaFra(a, b) {
 // `cambiati()` li segnerebbe come non salvati su un punto che nessuno ha
 // toccato. Senza piu' punti non c'e' niente da mostrare: si ridisegna e basta.
 function mostraBp() { if (curBp >= 0) bpLoad(curBp); else drawTl(); }
+
+// I valori scritti a schermo e non salvati sul breakpoint, cioe' il lavoro che
+// sta nei campi e non nel documento: `cambiati()`, salvo quando lo schermo non
+// e' lavoro ma la lettura di `segui il render` — gli inviluppi al cursore, che
+// `mostraSegui` riscrive a ogni frame. Li' un campo diverso dal breakpoint e'
+// una lettura, e chi chiedesse se scartarlo (`labRender`) o lo contasse come
+// da perdere (`daPerdere`) parlerebbe di valori che nessuno ha scritto.
+// `cambiati()` resta com'e' per `salva modifica` e `applica a tutti`.
+function aSchermo() { return segue() ? [] : cambiati(); }
 
 function bpDel() {
   // Con una banda aperta si tolgono tutti insieme; senza, il punto corrente,
@@ -2319,7 +2334,12 @@ function sporco() { return statoOra() !== SALVATO; }
 // ha uno, cioe' ogni file scritto prima della #5, e' "modificato" dal primo
 // istante: chiedere li' direbbe "hai modifiche non salvate" a chi non ha
 // toccato niente, e la regola 7 vuole che si rilegga.
-function daPerdere() { return statoOra() !== SCRITTO0; }
+// Sono lavoro proprio anche i valori a schermo non salvati sul breakpoint
+// (`aSchermo`): nel documento non ci sono, ma una rilettura li riporta al file
+// e `carica` azzera la storia, quindi nemmeno un undo li rimette. Prima di un
+// render non ce ne sono piu' (`labRender` ha gia' chiesto); restano su `salva`,
+// che scrive i breakpoint senza chiedere e li lascia nei campi.
+function daPerdere() { return statoOra() !== SCRITTO0 || aSchermo().length > 0; }
 
 function segna() {
   const el = document.getElementById("fFile");
@@ -2801,10 +2821,12 @@ function leggiPath(st, path) {
 // risposta e' "si'" senza chiedere. Spento a ogni apertura della pagina.
 // Scartati, la riga di stato lo dice in tutti e due i casi: scartare in
 // silenzio e' proprio cio' che la domanda e' venuta a togliere.
+// Con `segui il render` acceso lo schermo e' la lettura al cursore, non un
+// valore scritto: li' non c'e' niente da chiedere (`aSchermo`).
 let SCARTA = false;
 
 async function labRender() {
-  const ks = cambiati();
+  const ks = aSchermo();
   let nota = "";
   if (ks.length) {
     const dove = "sul breakpoint " + (curBp + 1) + ": " + ks.join(", ");
