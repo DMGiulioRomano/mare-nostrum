@@ -2825,24 +2825,33 @@ function leggiPath(st, path) {
 // valore scritto: li' non c'e' niente da chiedere (`aSchermo`).
 let SCARTA = false;
 
-async function labRender() {
+// La domanda, una sola per ogni render che parte da un click: `rendi e
+// ascolta`, e `sovrascrivi` quando la scrittura in attesa era un render — la
+// domanda del file cambiato non ferma la tastiera, e i valori scritti nel
+// frattempo nel render non ci sarebbero come in qualunque altro. Torna la nota
+// per la riga di stato ("" se non c'era niente da scartare), o null se il
+// render non deve partire.
+function primaDelRender() {
   const ks = aSchermo();
-  let nota = "";
-  if (ks.length) {
-    const dove = "sul breakpoint " + (curBp + 1) + ": " + ks.join(", ");
-    if (!SCARTA && !confirm("Vuoi scartare i valori modificati e non salvati " + dove + "?\n"
-        + "Il render suona i breakpoint: questi valori non ci sarebbero.\n\n"
-        + "OK per scartarli e rendere. Annulla per tenerli e salvarli tu "
-        + "(salva modifica, applica a tutti o + breakpoint).")) {
-      document.getElementById("labInfo").textContent = "render non partito: valori non salvati "
-        + dove + " — salva modifica, applica a tutti o + breakpoint, poi rendi.";
-      return;
-    }
-    // Lo schermo torna al breakpoint. E' un passo della storia come gli altri
-    // (`bpLoad` -> `labInfo`): un undo rimette i valori nei campi.
-    mostraBp();
-    nota = "  ·  scartati i valori non salvati " + dove;
+  if (!ks.length) return "";
+  const dove = "sul breakpoint " + (curBp + 1) + ": " + ks.join(", ");
+  if (!SCARTA && !confirm("Vuoi scartare i valori modificati e non salvati " + dove + "?\n"
+      + "Il render suona i breakpoint: questi valori non ci sarebbero.\n\n"
+      + "OK per scartarli e rendere. Annulla per tenerli e salvarli tu "
+      + "(salva modifica, applica a tutti o + breakpoint).")) {
+    document.getElementById("labInfo").textContent = "render non partito: valori non salvati "
+      + dove + " — salva modifica, applica a tutti o + breakpoint, poi rendi.";
+    return null;
   }
+  // Lo schermo torna al breakpoint. E' un passo della storia come gli altri
+  // (`bpLoad` -> `labInfo`): un undo rimette i valori nei campi.
+  mostraBp();
+  return "  ·  scartati i valori non salvati " + dove;
+}
+
+async function labRender() {
+  const nota = primaDelRender();
+  if (nota === null) return;
   await labPost(true);
   if (nota) document.getElementById("labInfo").textContent += nota;
 }
@@ -2935,11 +2944,18 @@ async function fRicarica() {
   return labPost(s.render, s.path, false, true);
 }
 
-function fSovrascrivi() {
+// `sovrascrivi` di un render e' un render: chiede dei valori a schermo come
+// `rendi e ascolta` (`primaDelRender`). Con "no" la domanda del file cambiato
+// resta aperta — la scrittura e' ancora in attesa, e la si riprende da qui
+// dopo aver salvato i valori sul breakpoint.
+async function fSovrascrivi() {
   const s = SOSPESO;
   if (!s) return;
+  const nota = s.render ? primaDelRender() : "";
+  if (nota === null) return;
   chiusaLaDomanda();
-  return labPost(s.render, s.path, true);
+  await labPost(s.render, s.path, true);
+  if (nota) document.getElementById("labInfo").textContent += nota;
 }
 
 // Cosa la riga di stato dice di una rilettura: il documento a schermo non e'

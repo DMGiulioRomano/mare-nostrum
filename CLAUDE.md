@@ -435,15 +435,19 @@ file o fare `nuovo` azzera la storia.
 e non confermato — `salva modifica`, `applica a tutti` o `+ breakpoint` — nel
 documento non c'e' (la riga di stato lo dice: `non salvati sul breakpoint N`),
 e rendere senza dirlo faceva sentire un'altra cosa da quella a schermo.
-`rendi e ascolta` percio' chiede prima se scartarlo (`labRender`): «si'» lo
+`rendi e ascolta` percio' chiede prima se scartarlo (`primaDelRender`): «si'» lo
 scarta — lo schermo torna al breakpoint, ed e' un passo dell'undo — e rende;
 «no» non rende e lascia i valori nei campi, da mettere nel documento nel modo
 che si vuole: le tre strade danno documenti diversi, e il laboratorio non
 sceglie al posto di chi compone. Accanto al render c'e' **`scarto
 automatico`**: acceso, la risposta e' «si'» senza chiedere; spento a ogni
 apertura della pagina. In tutti e due i casi la riga di stato dice cosa e'
-stato scartato. Vale per `rendi e ascolta`: `salva` scrive i breakpoint come
-prima, senza chiedere, e i valori restano nei campi. La rilettura di un file
+stato scartato. Vale per `rendi e ascolta`, e per il `sovrascrivi` di un
+render rimasto in attesa sulla domanda del file cambiato: quella domanda non
+ferma la tastiera, e un valore scritto nel frattempo nel render non ci sarebbe
+come in qualunque altro — con «no» il render non parte e la domanda resta
+aperta. `salva` scrive i breakpoint come prima, senza chiedere, e i valori
+restano nei campi; il suo `sovrascrivi` pure. La rilettura di un file
 cambiato su disco (sopra, «Due editor, un file»), che azzera la storia, non
 li butta in silenzio in nessuno dei due casi: dopo la domanda del render non
 ce ne sono piu', e su `salva` contano come lavoro proprio, quindi si chiede.

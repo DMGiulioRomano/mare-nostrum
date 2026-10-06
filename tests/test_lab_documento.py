@@ -1627,3 +1627,66 @@ apriPath('/brano/risacca.yml').then(() => {
     assert "modifiche non salvate" in got["info"]
     assert got["campo"] == "0.75"
     assert got["disco"] == VOL_ALTRI
+
+
+# La domanda del file cambiato non ferma la tastiera: mentre e' aperta si puo'
+# scrivere nei campi. `sovrascrivi` riprende la scrittura in attesa, e se era un
+# render vale la regola di `rendi e ascolta` — il render suona i breakpoint,
+# non lo schermo, e non parte senza dirlo. Prima `fSovrascrivi` andava dritto a
+# `labPost`: il render partiva senza il valore scritto, e niente lo diceva.
+
+def _sovrascrivi_dopo_aver_scritto(tmp_path, risposta, render=True):
+    """Il mio documento toccato, l'altro editor che scrive, la domanda aperta
+    da un render (o da un `salva`); poi un valore scritto a schermo e
+    `sovrascrivi`."""
+    mio, altrui = _mio_e_altrui()
+    scrittura = "labRender()" if render else "fSave(false)"
+    return _lab(tmp_path, _doppio(mio) + _schermo(risposta) + VISTO_SCHERMO + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return %s;
+}).then(() => {
+  %s
+  return document.getElementById('fOverwrite').onclick();
+}).then(() => console.log(JSON.stringify(Object.assign(visto(), {
+  sovrascritti: POST.filter(p => p.sovrascrivi).length,
+  domanda: !document.getElementById('fCambiato').hidden,
+}))));
+""" % (_tocca(0, "pitch.ratio", 0.5), json.dumps(altrui), scrittura, A_SCHERMO))
+
+
+@node
+def test_sovrascrivi_di_un_render_chiede_dei_valori_scritti_a_schermo_e_no_li_tiene(tmp_path):
+    """"No": il render non parte, i valori restano nei campi, e la domanda del
+    file cambiato resta aperta — la scrittura e' ancora in attesa, e chi ha
+    salvato i suoi valori sul breakpoint la riprende con `sovrascrivi`."""
+    got = _sovrascrivi_dopo_aver_scritto(tmp_path, False)
+    assert len(got["chiesto"]) == 1
+    assert "breakpoint 2" in got["chiesto"][0] and "pitch.ratio" in got["chiesto"][0]
+    assert got["sovrascritti"] == 0 and got["reso"] is None
+    assert got["campo"] == "0.75" and got["cambiati"] == ["pitch.ratio"]
+    assert got["domanda"] is True
+    assert "salva modifica" in got["info"]
+
+
+@node
+def test_sovrascrivi_di_un_render_si_scarta_i_valori_a_schermo_e_lo_dice(tmp_path):
+    """"Si'": lo schermo torna al breakpoint, il render sovrascrive e parte, e
+    la riga di stato dice cosa si e' scartato, come in `rendi e ascolta`."""
+    got = _sovrascrivi_dopo_aver_scritto(tmp_path, True)
+    assert len(got["chiesto"]) == 1
+    assert got["sovrascritti"] == 1 and got["reso"].startswith("x.aif")
+    assert got["cambiati"] == [] and got["campo"] != "0.75"
+    assert got["domanda"] is False
+    assert "scartati i valori non salvati sul breakpoint 2: pitch.ratio" in got["info"]
+
+
+@node
+def test_sovrascrivi_di_un_salva_non_chiede_dei_valori_a_schermo(tmp_path):
+    """L'altra direzione: `salva` scrive i breakpoint senza chiedere e lascia
+    i valori nei campi, e il suo `sovrascrivi` fa lo stesso."""
+    got = _sovrascrivi_dopo_aver_scritto(tmp_path, False, render=False)
+    assert got["chiesto"] == []
+    assert got["sovrascritti"] == 1 and got["reso"] is None
+    assert got["campo"] == "0.75" and got["domanda"] is False
