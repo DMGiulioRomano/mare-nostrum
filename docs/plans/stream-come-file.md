@@ -64,7 +64,9 @@ stesso id. Il laboratorio scrive `stream_id` = nome del file e un `seed`.
    risalvato senza toccare niente, da' al motore lo stesso stream.
 2. **`file:` nel motore** (PythonGranularEngine): risolto in `load_yaml`,
    prima di tutto il resto; cache, fingerprint, solo/mute invariati. Errori
-   che nominano master e file importato. Poi bump del submodule.
+   che nominano master e file importato. Poi bump del submodule (fatto:
+   PythonGranularEngine#291, #7; la fixture e' in
+   `tests/fixtures/stream_come_file/`).
 3. **Laboratorio:** `stream_id` = nome del file, `seed` nel documento
    (fatto: #5), guardia sul file cambiato su disco (regola 7).
 4. **PGE-ui:** import risolti in lettura, file-stream riscritti in
