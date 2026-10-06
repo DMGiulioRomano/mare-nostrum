@@ -136,6 +136,7 @@ def test_la_fixture_importa_davvero(cartella, tmp_path):
     assert a != b
 
 
+@engine
 @node
 def test_la_fixture_e_un_documento_del_laboratorio(tmp_path):
     """`streams/risacca.yml` e' il documento come lo scrive il laboratorio.
@@ -143,25 +144,32 @@ def test_la_fixture_e_un_documento_del_laboratorio(tmp_path):
     Aperto nella pagina col suo nome e riscritto senza toccare niente, torna
     identico, e la pagina lo da' per salvato: l'identita' (lo `stream_id` del
     nome del file, il `seed` dello `study.yml` servito) e' gia' quella che il
-    laboratorio scriverebbe. Se il laboratorio cambia il modo di scrivere un
+    laboratorio scriverebbe, e a schermo non resta nessun valore che il
+    breakpoint non abbia. Se il laboratorio cambia il modo di scrivere un
     documento, la fixture va riscritta da lui, non a mano.
+
+    La pagina ha il corredo che le da' `make serve`, finestre dell'engine
+    comprese: con `{}` il menu di `grain.envelope` ha le sole tacche dello
+    studio, l'`hanning` della fixture si legge `""` e risulta un valore a
+    schermo non salvato, cosa che servita da `make serve` non succede.
     """
+    from granstudies.__main__ import _finestre
     with open(os.path.join(ROOT, "studies", "001-41", "study.yml")) as fh:
         raw = yaml.safe_load(fh)
-    predefiniti = {}
-    if os.path.isdir(engine_bridge.ENGINE_SRC):
-        predefiniti = engine_bridge.parameter_path_defaults()
     pagina = tmp_path / "graph.html"
     pagina.write_text(build_html("001-41", lab_completo(
-        raw, ["onda.wav"], {}, lambda _p: None, predefiniti)))
+        raw, ["onda.wav"], _finestre(), lambda _p: None,
+        engine_bridge.parameter_path_defaults())))
     doc = _leggi(os.path.join(FIXTURE, DOCUMENTO))
     scenario = tmp_path / "scenario.js"
     scenario.write_text(
         "carica(%s, '/brano/risacca.yml');\n" % json.dumps(doc)
-        + "console.log(JSON.stringify({doc: labDoc(), sporco: sporco()}));\n")
+        + "console.log(JSON.stringify({doc: labDoc(), sporco: sporco(),"
+          " cambiati: cambiati()}));\n")
     out = subprocess.run(["node", HARNESS, str(pagina), str(scenario)],
                          capture_output=True, text=True, timeout=120)
     assert out.returncode == 0, out.stderr
     got = json.loads(out.stdout.strip().splitlines()[-1])
     assert got["doc"] == doc
     assert got["sporco"] is False
+    assert got["cambiati"] == []
