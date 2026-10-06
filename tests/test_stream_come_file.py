@@ -26,6 +26,7 @@ import yaml
 
 from granstudies import engine_bridge
 from granstudies.graph import build_html, lab_completo
+from granstudies.serve import gia_su_disco
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FIXTURE = os.path.join(ROOT, "tests", "fixtures", "stream_come_file")
@@ -148,6 +149,14 @@ def test_la_fixture_e_un_documento_del_laboratorio(tmp_path):
     breakpoint non abbia. Se il laboratorio cambia il modo di scrivere un
     documento, la fixture va riscritta da lui, non a mano.
 
+    "Identico" e' quello della guardia sul file (#6), non l'`==` di Python:
+    il documento che la pagina riscrive e' gia' quello su disco anche coi
+    tipi (`gia_su_disco`), quindi un `rendi e ascolta` sulla fixture aperta
+    non la riscrive, e la firma che l'altro editor ricorda resta buona. Per
+    `==` invece `4` e `4.0` sono lo stesso valore, e per l'engine no. E non
+    c'e' lavoro proprio (`daPerdere`): se PGE-ui la riscrive mentre e' aperta
+    qui, il laboratorio la rilegge invece di chiedere.
+
     La pagina ha il corredo che le da' `make serve` (`cmd_graph`), finestre
     dell'engine e limiti dei parametri compresi; i campioni sono quelli della
     fixture, non della cartella dello studio. Con `{}` come finestre il menu di
@@ -168,11 +177,13 @@ def test_la_fixture_e_un_documento_del_laboratorio(tmp_path):
     scenario.write_text(
         "carica(%s, '/brano/risacca.yml');\n" % json.dumps(doc)
         + "console.log(JSON.stringify({doc: labDoc(), sporco: sporco(),"
-          " cambiati: cambiati()}));\n")
+          " cambiati: cambiati(), daPerdere: daPerdere()}));\n")
     out = subprocess.run(["node", HARNESS, str(pagina), str(scenario)],
                          capture_output=True, text=True, timeout=120)
     assert out.returncode == 0, out.stderr
     got = json.loads(out.stdout.strip().splitlines()[-1])
     assert got["doc"] == doc
+    assert gia_su_disco(os.path.join(FIXTURE, DOCUMENTO), got["doc"])
     assert got["sporco"] is False
     assert got["cambiati"] == []
+    assert got["daPerdere"] is False

@@ -68,7 +68,7 @@ stesso id. Il laboratorio scrive `stream_id` = nome del file e un `seed`.
    PythonGranularEngine#291, #7; la fixture e' in
    `tests/fixtures/stream_come_file/`).
 3. **Laboratorio:** `stream_id` = nome del file, `seed` nel documento
-   (fatto: #5), guardia sul file cambiato su disco (regola 7).
+   (fatto: #5), guardia sul file cambiato su disco (regola 7; fatto: #6).
 4. **PGE-ui:** import risolti in lettura, file-stream riscritti in
    salvataggio e prima del render, stessa guardia, duplica e split (regole
    5-6). Qui si decide quale `mare-nostrum.yml` diventa il master (oggi ce ne
