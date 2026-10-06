@@ -244,3 +244,130 @@ def test_i_recenti_sopravvivono_al_riavvio_e_restano_autorizzati(tmp_path, monke
     S.recenti_carica(str(gen))
     assert S._RECENTI == [scelti[3], scelti[1]]
     assert S.autorizzato(scelti[3]) and not S.autorizzato(scelti[2])
+
+
+# --- due editor, un file: la guardia sulla firma (#6) ----------------------
+# Lo stesso file puo' stare aperto qui e in PGE-ui (regola 7 del piano). Chi
+# scrive manda la firma che il file aveva quando l'ha letto; il server
+# confronta e, se non coincide, non scrive.
+
+def _mio(tmp_path, testo="streams: [{stream_id: risacca}]\n"):
+    """Un file dell'utente, autorizzato, con la firma che l'editor ha letto."""
+    f = tmp_path / "risacca.yml"
+    f.write_text(testo)
+    S._AUTORIZZATI.add(os.path.abspath(str(f)))
+    return str(f), S.firma(str(f))
+
+
+def test_la_firma_e_del_contenuto_non_dell_mtime(tmp_path):
+    """Un mtime dice che qualcuno ha scritto, non che il file sia diverso — e
+    le due risposte portano a cose opposte: rileggere, oppure lasciar passare
+    la riscrittura di un file identico. L'algoritmo e' nel prefisso perche' la
+    stessa firma la calcola PGE-ui (DMGiulioRomano/PGE-ui#185)."""
+    f = tmp_path / "a.yml"
+    f.write_text("streams: []\n")
+    prima = S.firma(str(f))
+    assert prima.startswith("sha256:")
+    time.sleep(0.01)
+    f.write_text("streams: []\n")              # l'altro editor salva identico
+    assert S.firma(str(f)) == prima and not S.cambiato_su_disco(str(f), prima)
+    f.write_text("streams: [x]\n")
+    assert S.firma(str(f)) != prima and S.cambiato_su_disco(str(f), prima)
+
+
+def test_non_si_scrive_se_il_file_su_disco_non_e_quello_letto(tmp_path, monkeypatch):
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    path, letta = _mio(tmp_path)
+    open(path, "w").write("streams: [{stream_id: altro}]\n")   # l'altro editor
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
+                       path=path, firma_letta=letta)
+    assert out["ok"] is False and out["cambiato"] is True
+    assert "cambiato su disco" in out["error"]
+    # E non ha scritto: il lavoro dell'altro editor e' ancora li'.
+    assert "altro" in open(path).read()
+
+
+def test_si_scrive_se_la_firma_coincide_e_torna_quella_nuova(tmp_path, monkeypatch):
+    """La firma di cio' che si e' appena scritto torna alla pagina: senza, il
+    salvataggio dopo manderebbe quella di prima e si accuserebbe da solo."""
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    path, letta = _mio(tmp_path)
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
+                       path=path, firma_letta=letta)
+    assert out["ok"] and out["firma"] == S.firma(path) != letta
+    assert S.yaml.safe_load(open(path).read()) == DOC
+    # Il giro dopo, con la firma che e' tornata, passa.
+    due = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
+                       path=path, firma_letta=out["firma"])
+    assert due["ok"] and due["firma"] == S.firma(path)
+
+
+def test_sovrascrivi_scrive_sul_file_cambiato(tmp_path, monkeypatch):
+    """La decisione dell'utente, presa nella pagina: qui si esegue."""
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    path, letta = _mio(tmp_path)
+    open(path, "w").write("streams: [{stream_id: altro}]\n")
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
+                       path=path, firma_letta=letta, sovrascrivi=True)
+    assert out["ok"] and S.yaml.safe_load(open(path).read()) == DOC
+
+
+def test_un_file_che_non_c_e_piu_non_e_un_file_cambiato(tmp_path, monkeypatch):
+    """Non ci sta il lavoro di nessuno, e rifiutare lascerebbe la domanda
+    senza via d'uscita: "ricarica" non puo' rileggere un file cancellato, e
+    scriverlo e' esattamente cio' che si stava chiedendo."""
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    path, letta = _mio(tmp_path)
+    os.remove(path)
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
+                       path=path, firma_letta=letta)
+    assert out["ok"] and os.path.isfile(path)
+
+
+def test_senza_firma_letta_non_c_e_niente_da_confrontare(tmp_path, monkeypatch):
+    """E' il `salva con nome` su un percorso nuovo: il laboratorio quel file
+    non l'ha letto, e della sovrascrittura ha chiesto il pannello nativo."""
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    path, _ = _mio(tmp_path, "streams: [{stream_id: di-qualcun-altro}]\n")
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
+                       path=path)
+    assert out["ok"] and S.yaml.safe_load(open(path).read()) == DOC
+
+
+def test_il_giro_vero_open_poi_render_rifiutato(tmp_path, monkeypatch):
+    """Le due rotte insieme, come le usa la pagina: `/open` da' il documento e
+    la sua firma, `/render` la riporta. In mezzo scrive l'altro editor."""
+    import http.client
+    import threading
+
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    studio = tmp_path / "gen"
+    studio.mkdir()
+    path, _ = _mio(tmp_path)
+    srv = S.crea(str(studio), str(tmp_path), 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        def posta(rotta, body):
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
+            c.request("POST", rotta, S.json.dumps(body),
+                      {"Content-Type": "application/json"})
+            return S.json.loads(c.getresponse().read())
+
+        ap = posta("/open", {"path": path})
+        assert ap["ok"] and ap["firma"] == S.firma(path)
+        # La firma e' di esattamente il documento che e' tornato: una lettura
+        # sola, non un hash preso a parte.
+        assert ap["doc"] == S.yaml.safe_load(open(path, "rb").read())
+
+        open(path, "w").write("streams: [{stream_id: altro}]\n")
+        corpo = {"doc": DOC, "render": False, "path": path, "firma": ap["firma"]}
+        no = posta("/render", corpo)
+        assert no["ok"] is False and no["cambiato"] is True
+        assert "altro" in open(path).read()
+
+        # Rileggere e riprovare: la firma nuova passa.
+        di_nuovo = posta("/open", {"path": path})
+        si = posta("/render", dict(corpo, firma=di_nuovo["firma"]))
+        assert si["ok"] and S.yaml.safe_load(open(path).read()) == DOC
+    finally:
+        srv.shutdown()
