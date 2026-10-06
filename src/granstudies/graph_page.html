@@ -499,7 +499,8 @@ let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
 // lo stesso stream: si parte da lui e si sovrascrive solo cio' che il
 // laboratorio conosce E che e' stato toccato. Tutto il resto — chiavi che il
 // laboratorio non ha (`grain.read_direction`), parametri che il documento
-// lascia al default dell'engine, `stream_id`, `onset` — resta com'era.
+// lascia al default dell'engine, `onset` — resta com'era. Lo `stream_id` no:
+// e' il nome del file (#5, `labDoc`).
 //   APERTO: lo stream cosi' com'e' arrivato. null = foglio bianco, che invece
 //           nasce da `base:` e DEFAULTS e il laboratorio scrive per intero.
 //   VISTA0: come il laboratorio lo scriveva appena aperto (`labView`), prima
@@ -812,7 +813,9 @@ function labInit() {
   // Finche' il foglio non e' salvato il `nome` E' lo `stream_id` (#5):
   // cambiarlo cambia il documento, e il `• modificato` deve dirlo subito
   // invece di aspettare il prossimo disegno.
-  document.getElementById("labName").onchange = segna;
+  // Per la stessa ragione va nella bozza: un refresh subito dopo non deve
+  // riportare l'id di prima.
+  document.getElementById("labName").onchange = () => { bozzaSalva(); segna(); };
   segna();
   avvio();
 }
@@ -2526,10 +2529,29 @@ function carica(doc, path) {
   VISTA0 = labView();
   storiaReset();
   bpLoad(0);
-  SALVATO = statoOra();
+  // "Salvato" e' com'e' il file su disco. Il laboratorio lo riscriverebbe
+  // uguale (#3), salvo l'identita' (#5): l'id e' il nome del file, e il seed,
+  // se il documento non ne ha, e' quello dello studio. Dove non coincidono
+  // il file non e' gia' il documento che si scriverebbe: il `• modificato`
+  // deve dirlo, il `salva` poterlo scrivere, e la riga di stato spiegare
+  // perche', prima che lo dica l'orecchio al primo render.
+  const scritto = labDoc();
+  SALVATO = JSON.stringify(comeLetto(scritto));
   segna();
   document.getElementById("labInfo").textContent =
-    (path || "documento") + " — " + bps.length + " breakpoint";
+    (path || "documento") + " — " + bps.length + " breakpoint"
+    + notaIdentita(scritto, APERTO.stream_id, TESTA.seed === undefined || TESTA.seed === null);
+}
+
+// Il documento che `labDoc` scriverebbe, con l'identita' che il file aperto
+// aveva su disco: lo `stream_id` di `APERTO`, il `seed` di `TESTA` o nessuno.
+// Tutto il resto coincide per costruzione (#3), quindi i due differiscono
+// solo dove il laboratorio riscrive l'identita'.
+function comeLetto(doc) {
+  const d = clona(doc);
+  d.streams[0].stream_id = APERTO.stream_id;
+  if ("seed" in TESTA) d.seed = TESTA.seed; else delete d.seed;
+  return d;
 }
 
 // Il valore di un parametro al tempo t: il punto se c'e', altrimenti quello
@@ -2683,19 +2705,24 @@ function leggiPath(st, path) {
 
 function labRender() { return labPost(true); }
 
-// Cosa la riga di stato dice dell'identita' del documento appena scritto.
-// Due cose, e nessuna delle due e' un errore:
-//   - l'id e' cambiato, cioe' il nome del file e' cambiato: `salva con nome`
-//     e' accettato, ma l'RNG dipende dall'id e il suono quindi non e' piu'
-//     quello di prima. Dirlo e' l'unico modo di non scoprirlo a orecchio;
+// Cosa la riga di stato dice dell'identita' del documento appena scritto, o
+// appena aperto. Tre cose, e nessuna e' un errore:
+//   - l'id e' cambiato, cioe' il nome del file non e' piu' l'id di prima:
+//     `salva con nome`, o un file aperto il cui `stream_id` non e' il suo
+//     nome. E' accettato, ma l'RNG dipende dall'id e il suono quindi non e'
+//     piu' quello di prima. Dirlo e' l'unico modo di non scoprirlo a orecchio;
+//   - il documento aperto non aveva un seed e prende quello dello studio
+//     (`senzaSeedPrima`, solo da `carica`: scrivendo, il seed non cambia);
 //   - non c'e' un seed da nessuna parte, e allora vale `SENZA_SEED`.
-function notaIdentita(doc, prima) {
+function notaIdentita(doc, prima, senzaSeedPrima) {
   const id = doc.streams[0].stream_id;
+  const senza = doc.seed === undefined || doc.seed === null;
   return (id !== prima
-            ? "  ·  stream_id: " + id + " — un altro nome e' un'altra "
-              + "realizzazione (l'RNG dell'engine lo usa)"
+            ? "  ·  stream_id: " + id + (prima == null ? "" : " (era " + prima + ")")
+              + " — un altro nome e' un'altra realizzazione (l'RNG dell'engine lo usa)"
             : "")
-       + (doc.seed === undefined || doc.seed === null ? "  ·  " + SENZA_SEED : "");
+       + (senza ? "  ·  " + SENZA_SEED
+                : senzaSeedPrima ? "  ·  seed " + doc.seed + " dallo study.yml" : "");
 }
 
 // Il documento da ascoltare: lo stesso, senza il suo posto nel brano. Uno
@@ -2718,8 +2745,9 @@ async function labPost(render, path) {
     // Il documento va verso `path`, che in un `salva con nome` non e' ancora
     // `FILE`: l'id e' quello del file che si scrive (#5).
     const prima = idDa(FILE);
-    const doc = labDoc(path || FILE);
-    const body = {name, doc, render, path: path || FILE};
+    const dest = path || FILE;
+    const doc = labDoc(dest);
+    const body = {name, doc, render, path: dest};
     if (render) body.ascolto = perAscolto(doc);
     const out = await post("render", body);
     if (!out.ok) { info.textContent = out.error; return; }
@@ -2738,7 +2766,11 @@ async function labPost(render, path) {
       // id che non e' quello scritto. Passa da `idDa`, che e' la regola.
       document.getElementById("labName").value = idDa(FILE);
     }
-    SALVATO = statoOra();
+    // Salvato vuol dire scritto su `FILE`, per la stessa ragione: un render
+    // del foglio mai salvato non lo e'. Contarlo come salvataggio lasciava
+    // `(non salvato)` senza `• modificato`, il `salva` spento proprio dove
+    // non c'e' un file, e `nuovo`/`apri` buttavano il lavoro senza chiedere.
+    if (dest) SALVATO = statoOra();
     segna();
     info.textContent = out.yaml + (render ? "" : "  (salvato)") + notaIdentita(doc, prima);
     if (!render) return;

@@ -195,7 +195,18 @@ mai salvato scrive in `live/` col nome ripulito (`_SAFE` in `serve.py`), e
 adottarlo faceva due cose sbagliate — `salva` provava a riscrivere un percorso
 che nessun pannello aveva autorizzato, e l'id cambiava fra il primo render e il
 secondo, cioe' lo stesso documento dava due audio. Dopo un salvataggio invece
-il campo `nome` segue il file, come fa `carica` aprendo.
+il campo `nome` segue il file, come fa `carica` aprendo. Per la stessa ragione
+**salvato vuol dire scritto su `FILE`**: un render del foglio mai salvato
+lascia il `• modificato`, il `salva` acceso e la conferma prima di `nuovo` e
+`apri`.
+
+E un file **aperto** il cui `stream_id` non e' il suo nome, o che non ha un
+seed mentre lo studio si', non e' gia' il documento che il laboratorio
+scriverebbe: `SALVATO` e' preso con l'identita' che il file aveva su disco
+(`comeLetto`), quindi si apre gia' `• modificato`, e la riga di stato dice
+perche' (`stream_id: risacca (era stream2)`, `seed 1441 dallo study.yml`).
+Senza, il `salva` restava spento e il primo render suonava diverso dal file
+aperto senza che niente l'avesse detto.
 
 Il lavoro non salvato sopravvive a un refresh (localStorage, per studio): e'
 una rete di sicurezza, non un salvataggio. La verita' e' il file.
