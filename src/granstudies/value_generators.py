@@ -667,7 +667,13 @@ def expand_compact(spec: Sequence[Any], path: str) -> List[List[float]]:
     try:
         return expand_compact_env(list(spec))
     except ValueError as exc:
-        raise ValueError(f"{path}: forma compatta, {exc}") from exc
+        # Il builder dell'engine (dalla PGE #211) nomina una sotto-posizione
+        # (`envelope.compact.pattern`) e mette il perche' nell'hint: senza,
+        # resterebbe "valore invalido: 150" e nient'altro.
+        perche = getattr(exc, "hint", None)
+        raise ValueError(
+            f"{path}: forma compatta, {exc}" + (f" — {perche}" if perche else "")
+        ) from exc
 
 
 def expand_env(spec: Threshold, *, seed: int, path: str, depth: int = 0) -> Threshold:

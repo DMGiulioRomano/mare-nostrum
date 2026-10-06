@@ -80,3 +80,41 @@ def test_punto_pattern_a_tre_elementi_e_errore():
                 axes={"density": {"base": {"expr": "mix(10, 20, s)"}}},
             )
         )
+
+
+# --- i guard di forma del motore (PGE #211) -----------------------------------
+# La forma compatta si espande con l'`EnvelopeBuilder` del motore, e dal bump
+# che porta PythonGranularEngine#287 (#7) il builder rifiuta i corpi che prima
+# espandeva in silenzio: x del pattern fuori da [0, 100] o all'indietro, y che
+# non e' un numero. Il suo errore nomina una sotto-posizione
+# (`envelope.compact.pattern`) e mette il perche' nell'hint: senza l'hint il
+# messaggio dice "valore invalido: 150" e basta. E una distribuzione temporale
+# sbagliata, che prima elencava quelle disponibili, le elencava solo li'.
+
+def _perche_del_motore(compatto):
+    from granstudies import engine_bridge
+    engine_bridge._ensure_engine_on_path()
+    from pge.envelopes.envelope_builder import EnvelopeBuilder
+    with pytest.raises(ValueError) as info:
+        EnvelopeBuilder.parse(list(compatto))
+    return info.value.hint
+
+
+@pytest.mark.parametrize("compatto", [
+    [[[0, 0], [150, 1]], 1, 2],                           # x oltre 100
+    [[[50, 0], [10, 1]], 1, 2],                           # x all'indietro
+    [[[0, True], [100, 1]], 1, 2],                        # y che non e' un numero
+    [[[0, 0], [100, 1]], 1, 2, "linear", {"type": "boh"}],  # distribuzione ignota
+])
+def test_il_rifiuto_del_motore_arriva_col_suo_perche(compatto):
+    perche = _perche_del_motore(compatto)
+    assert perche
+    with pytest.raises(SpecError) as info:
+        apply_document_let(
+            _doc(
+                {"s": compatto},
+                axes={"density": {"base": {"expr": "mix(10, 20, s)"}}},
+            )
+        )
+    assert "forma compatta" in str(info.value)
+    assert perche in str(info.value)
