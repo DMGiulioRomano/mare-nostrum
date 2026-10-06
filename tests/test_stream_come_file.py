@@ -148,17 +148,20 @@ def test_la_fixture_e_un_documento_del_laboratorio(tmp_path):
     breakpoint non abbia. Se il laboratorio cambia il modo di scrivere un
     documento, la fixture va riscritta da lui, non a mano.
 
-    La pagina ha il corredo che le da' `make serve`, finestre dell'engine
-    comprese: con `{}` il menu di `grain.envelope` ha le sole tacche dello
-    studio, l'`hanning` della fixture si legge `""` e risulta un valore a
-    schermo non salvato, cosa che servita da `make serve` non succede.
+    La pagina ha il corredo che le da' `make serve` (`cmd_graph`), finestre
+    dell'engine e limiti dei parametri compresi; i campioni sono quelli della
+    fixture, non della cartella dello studio. Con `{}` come finestre il menu di
+    `grain.envelope` ha le sole tacche dello studio, l'`hanning` della fixture
+    si legge `""` e risulta un valore a schermo non salvato, cosa che servita
+    da `make serve` non succede.
     """
+    from granstudies import bounds
     from granstudies.__main__ import _finestre
     with open(os.path.join(ROOT, "studies", "001-41", "study.yml")) as fh:
         raw = yaml.safe_load(fh)
     pagina = tmp_path / "graph.html"
     pagina.write_text(build_html("001-41", lab_completo(
-        raw, ["onda.wav"], _finestre(), lambda _p: None,
+        raw, ["onda.wav"], _finestre(), bounds.bounds_for,
         engine_bridge.parameter_path_defaults())))
     doc = _leggi(os.path.join(FIXTURE, DOCUMENTO))
     scenario = tmp_path / "scenario.js"
