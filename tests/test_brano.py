@@ -307,11 +307,12 @@ def test_il_master_con_i_file_genera_gli_stessi_grani(due_master, campioni, gran
             assert np.array_equal(a, b) and na == nb, sid
 
 
-def _rendi(yml, out, campioni, logs, per_stream):
+def _rendi(yml, out, campioni, logs, per_stream, jobs=None):
     cmd = [sys.executable, os.path.join(B.ROOT, "engine", "src", "main.py"), str(yml), str(out),
-           "--renderer", "numpy", "--samples-dir", campioni, "--log-dir", str(logs)]
+           "--renderer", "numpy", "--samples-dir", campioni, "--log-dir", str(logs),
+           "--jobs", str(jobs or os.cpu_count() or 1)]
     if per_stream:
-        cmd += ["--per-stream", "--jobs", str(os.cpu_count() or 1)]
+        cmd.append("--per-stream")
     p = subprocess.run(cmd, cwd=B.ROOT, capture_output=True, text=True)
     assert p.returncode == 0, (p.stdout + p.stderr)[-3000:]
 
@@ -358,7 +359,18 @@ def test_ogni_file_da_solo_suona_come_nel_brano(file, campioni, grani_con_file, 
     """Reso da solo, il file da' i grani che ha nel brano, spostati del suo
     onset (a meno dell'arrotondamento della somma: l'onset di un grano e'
     `onset dello stream + tempo trascorso`), e lo stesso audio dello stem del
-    brano, campione per campione."""
+    brano, campione per campione.
+
+    Campione per campione a ordine di somma fisso, cioe' con `--jobs 1`. Nel
+    brano ogni stem si somma voce per voce dentro il suo worker, l'ordine di
+    `jobs=1`; uno stream reso da solo con piu' job (`rendi e ascolta` non
+    passa `--jobs`, e l'engine fa `auto`) e' uno stream denso solo, e l'engine
+    divide il suo overlap-add in chunk in ordine di onset. Con una voce
+    l'ordine e' lo stesso; con piu' voci cambia l'ordine delle somme float64,
+    e qualche campione differisce di un ULP del float32 (misurato sul brano:
+    stream3, 3 campioni su 12 milioni, 4.7e-10; stream10, uno, 1.4e-17). E'
+    la differenza che l'engine dichiara per il suo path parallelo, non una
+    differenza del file."""
     sid = B.id_del_file(file)
     solo = _solo(tmp_path, file)
     (onset_solo, voci_solo), = _grani(solo, campioni, tmp_path / "logs").values()
@@ -368,7 +380,7 @@ def test_ogni_file_da_solo_suona_come_nel_brano(file, campioni, grani_con_file, 
         assert a.shape == b.shape and len(a), sid
         assert np.array_equal(a[:, 1:], b[:, 1:]) and na == nb, sid
         assert np.allclose(a[:, 0] - onset, b[:, 0], rtol=0, atol=1e-9), sid
-    _rendi(solo, tmp_path / "solo.aif", campioni, tmp_path / "logs", per_stream=False)
+    _rendi(solo, tmp_path / "solo.aif", campioni, tmp_path / "logs", per_stream=False, jobs=1)
     a, _ = sf.read(str(stem_con_file / ("brano__%s.aif" % sid)))
     b, _ = sf.read(str(tmp_path / "solo.aif"))
     assert len(a) and np.array_equal(a, b), sid

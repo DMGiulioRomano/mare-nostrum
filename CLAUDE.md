@@ -126,7 +126,12 @@ gia' pulito e si ascolta come lo stream del brano a meno del piazzamento.
 `make brano-tests` (minuti: rende il brano intero piu' volte) confronta grani
 e audio: il master coi `file:` e quello scritto dentro danno gli stessi grani e
 gli stessi stem, campione per campione, e ogni file reso da solo da' i grani
-che ha nel brano, spostati del suo onset, e lo stesso audio del suo stem. Coi
+che ha nel brano, spostati del suo onset, e lo stesso audio del suo stem —
+campione per campione a ordine di somma fisso (`--jobs 1`). `rendi e ascolta`
+non passa `--jobs`, e l'engine divide l'overlap-add di uno stream denso reso da
+solo in chunk in ordine di onset: con piu' voci cambia l'ordine delle somme, e
+qualche campione differisce di un ULP del float32 (stream3: 3 su 12 milioni).
+E' l'arrotondamento che l'engine dichiara per il suo path parallelo. Coi
 sample veri in `samples/` confronta il brano com'e'; senza, usa sample sintetici
 dai nomi giusti.
 
