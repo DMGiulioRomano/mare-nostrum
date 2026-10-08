@@ -31,7 +31,7 @@ della cartella-scala.
 
 | Cartella | Cos'è | `STUDY=` |
 |----------|-------|----------|
-| `001-41-duration-pitch` | grain.duration x pitch.ratio su `001-41_5-5_5_norm.flac`, il sample più ricorrente del brano; base presa da `stream2` di `mare-nostrum.yml` | `001-41-duration-pitch` |
+| `001-41-duration-pitch` | grain.duration x pitch.ratio su `001-41_5-5_5_norm.flac`, il sample più ricorrente del brano; base presa da `stream2` del brano (oggi `configs/streams/stream2.yml`) | `001-41-duration-pitch` |
 | `001-41-duration-fill-factor` | grain.duration x fill_factor sullo stesso sample; pitch.ratio fissato a 1.0 | `001-41-duration-fill-factor` |
 | `ascolto` | diario di ascolto dello studio — non è uno `STUDY` | — |
 
@@ -46,6 +46,89 @@ grain.duration. Le varianti di **stack** (più stream ascoltati insieme)
 prendono il prefisso `stack_` seguito dallo stesso range: `stack_1-50smp`.
 La cartella `stack` senza suffisso resta quella storica delle curve non
 cartesiane, non legata a un range.
+
+## Il brano (`configs/`)
+
+Il brano e' un **master** che importa i suoi stream, ciascuno un file (#8,
+ultimo passo di `docs/plans/stream-come-file.md`):
+
+```
+configs/
+├── mare-nostrum.yml        il master: seed, testa del brano, piazzamento
+└── streams/
+    ├── stream2.yml         uno stream per file: un documento del laboratorio
+    └── ...                 (tutti e dieci)
+```
+
+`make brano` lo rende in `generated/brano/` (`BRANO_YML`, in `make/render.mk`).
+Le decisioni, prese nella #8:
+
+- **Il master e' uno solo, ed e' in `configs/`.** Prima i `mare-nostrum.yml`
+  erano due: quello in radice, versionato, e la copia che PGE-ui apriva nel
+  suo workspace. Il master e' il primo, spostato dove lo apre il secondo:
+  `pge-ui` lanciato dalla radice del repo ha qui il workspace (`configs/`,
+  `output/`, `cache/`, e i sample da `samples/`), importa solo file sotto
+  `configs/` e nella lista dei progetti mette solo i `.yml` direttamente in
+  `configs/` — quelli di `configs/streams/` si importano, non si aprono come
+  brani. Il laboratorio apre i file dal pannello, ovunque stiano.
+- **Tutti gli stream sono file.** Cosi' il master e' solo piazzamento, e
+  qualunque stream si apre nel laboratorio senza estrarlo prima.
+- **Il nome del file e' lo `stream_id` di prima** (`stream2.yml` per
+  `stream2`), e nel master lo `stream_id` non si scrive: e' il default.
+  L'RNG del motore e' `(seed, rng_group o stream_id, componente)`, quindi id e
+  realizzazione restano quelli. **Rinominare cambia il suono**: il file
+  `risacca.yml` e' lo stream `risacca`, nel brano e nel laboratorio. Con
+  `stream_id: stream2` nella sua voce del master il brano resterebbe com'era,
+  ma il file aperto da solo nel laboratorio (che scrive l'id del nome del file,
+  #5) suonerebbe un'altra realizzazione: l'unico modo perche' i due suonino
+  uguale e' che l'id sia il nome del file.
+- **`seed: 1441`** nel master, lo stesso degli `study.yml` (deciso nella #2),
+  e lo stesso in testa a ogni file: il motore ignora quello del file importato,
+  e avvisa (`[SEED]`) se e' diverso; il laboratorio usa quello del file.
+  Prima il brano non aveva seed, e ogni render era un'altra realizzazione: col
+  seed e' riproducibile, ma **diverso da tutti i render ascoltati finora**, e va
+  ascoltato prima di darlo per buono.
+  La cache per stream di `make brano` non vede il seed (il fingerprint e' dello
+  stream, il seed sta in testa al master): il primo render dopo un cambio di
+  seed va fatto con **`make brano FORCE=1`**, o gli stem gia' in cache restano
+  la realizzazione di prima, annunciati come nuovi.
+
+**Una chiave, una casa.** Il master tiene il piazzamento — `onset`, `mute`,
+`solo`, ed eventualmente `stream_id` — e la testa del brano (`seed`,
+`duration`, `bpm`); accanto a `file:` qualunque altra chiave e' un errore del
+motore. Il file tiene tutto lo stream, `duration` compresa, e una testa che
+vale solo quando lo si rende da solo (`seed`, `duration` = quella dello
+stream, `bpm`): nel brano il motore la ignora, come ignora un piazzamento
+scritto dentro il suo stream — che percio' nei file non c'e'. Quindi:
+spostare uno stream nel tempo, zittirlo o metterlo in solo si fa nel master;
+cambiarne il suono si fa nel file. PGE-ui lo fa da se' (un `onset` toccato va
+nel master, un `volume` toccato nel file dello stream, e solo li'); il
+laboratorio scrive solo il file. Un file in `configs/streams/` che il master
+non nomina e' un errore di `tests/test_brano.py`: non suona da nessuna parte.
+Lo e' anche uno stream scritto dentro il master, ed e' cio' che oggi lascia uno
+**split** in PGE-ui finche' la DMGiulioRomano/PGE-ui#187 e' aperta (la coda si
+scrive per intero nel master): va spostata in un file suo, col nome del suo id.
+
+Due editor sullo stesso file si accorgono l'uno dell'altro solo sul master: la
+guardia di PGE-ui (DMGiulioRomano/PGE-ui#185) non firma ancora i file
+importati, quindi uno stream salvato dal laboratorio mentre PGE-ui lo tiene
+aperto viene riscritto dal primo salvataggio di PGE-ui che tocca quello stream.
+Finche' non lo fa, uno stream si lavora in un editor alla volta, o si riapre il
+brano in PGE-ui dopo averlo salvato nel laboratorio.
+
+Il laboratorio rende accanto al file che salva: `configs/streams/<id>.aif` e
+`configs/streams/logs/` sono suoi, e git li ignora.
+
+Verificato in `tests/test_brano.py`: la struttura qui sopra, il master che per
+il motore e' lo stesso documento del master con gli stream scritti dentro
+(stessi stream, stessi fingerprint), e ogni file che nel laboratorio si apre
+gia' pulito e si ascolta come lo stream del brano a meno del piazzamento.
+`make brano-tests` (minuti: rende il brano intero piu' volte) confronta grani
+e audio: il master coi `file:` e quello scritto dentro danno gli stessi grani e
+gli stessi stem, campione per campione, e ogni file reso da solo da' i grani
+che ha nel brano, spostati del suo onset, e lo stesso audio del suo stem. Coi
+sample veri in `samples/` confronta il brano com'e'; senza, usa sample sintetici
+dai nomi giusti.
 
 ## Assi esterni (`for_each:`)
 
@@ -130,7 +213,7 @@ sullo stream aperto le sole chiavi in cui la `labView()` di adesso differisce
 da `VISTA0` (`toccati`). Il confronto scende nei blocchi (`grain`, `pointer`,
 `voices.pitch`...) ma non nei valori: un inviluppo cambia o resta tutto
 intero. Cosi' restano com'erano le chiavi che il laboratorio non ha
-(`grain.read_direction`, che in `mare-nostrum.yml` hanno 8 stream su 10),
+(`grain.read_direction`, che nel brano hanno 8 stream su 10),
 `onset`, e i parametri che il documento lascia al default dell'engine anche se
 il laboratorio ha un campo per loro. Lo `stream_id` no: dalla #5 e' il nome del
 file, e l'identita' non passa dal "toccato" (sotto). Il loop e' un gruppo
@@ -338,7 +421,7 @@ tangenti diverse — fra due punti la curva puo' muoversi di poco, mentre su
 ogni breakpoint l'engine vale quanto il laboratorio mostra.
 
 Il criterio del passo 1 del piano (`docs/plans/stream-come-file.md`) e' un
-test: ognuno dei 10 stream di `mare-nostrum.yml`, aperto e risalvato senza
+test: ognuno dei 10 stream del brano, aperto e risalvato senza
 toccare niente, da' all'engine lo stesso fingerprint
 (`test_criterio_del_piano_ogni_stream_del_brano_risalvato_e_lo_stesso`). I test
 del documento girano sulla pagina intera, non a frammenti: `tests/lab_dom.js`

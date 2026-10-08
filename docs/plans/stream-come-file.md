@@ -74,5 +74,9 @@ stesso id. Il laboratorio scrive `stream_id` = nome del file e un `seed`.
    5-6). Qui si decide quale `mare-nostrum.yml` diventa il master (oggi ce ne
    sono due, e si tengono entrambi). Round-trip inverso da verificare: un
    file del laboratorio (finestra che cambia nel tempo, progressione) torna
-   intatto da PGE-ui.
+   intatto da PGE-ui. Il brano: fatto (#8). Il master e' quello versionato,
+   spostato in `configs/mare-nostrum.yml`, dove lo apre PGE-ui, con
+   `seed: 1441`; ognuno dei dieci stream e' in `configs/streams/<id>.yml`,
+   col nome del file uguale allo `stream_id` di prima (vedi CLAUDE.md, «Il
+   brano»).
 5. **PGE-ls** deve conoscere la chiave `file:` (issue a lavoro fatto).
