@@ -20,7 +20,12 @@ render-final: _require-study $(MARKER)
 # direttamente la CLI dell'engine, senza passare da granstudies. Tutto cio' che
 # produce sta sotto generated/brano/, accanto (non dentro) alle cartelle degli
 # studi, che seguono generated/<study>/.
+#
+# Il master sta in configs/ (#8), dove lo apre PGE-ui lanciato dalla radice del
+# repo, e importa gli stream da configs/streams/: i `file:` sono relativi alla
+# cartella del master, quindi l'engine li trova da qualunque cwd.
 BRANO ?= mare-nostrum
+BRANO_YML ?= configs/$(BRANO).yml
 BRANO_DIR ?= generated/brano
 BRANO_EXT := $(if $(filter wav,$(FORMAT)),.wav,$(if $(filter flac,$(FORMAT)),.flac,.aif))
 BRANO_OUT ?= $(BRANO_DIR)/$(BRANO)$(BRANO_EXT)
@@ -31,14 +36,20 @@ BRANO_OUT ?= $(BRANO_DIR)/$(BRANO)$(BRANO_EXT)
 # (cli.py:582), quindi SV=1 rende in mix.
 BRANO_MODE = $(if $(SV),--export-sv,--per-stream --cache --cache-dir $(BRANO_DIR)/cache)
 
+# FORCE=1 butta la cache e rifa' ogni stem. Serve quando cambia qualcosa che il
+# fingerprint per stream non vede: il `seed:` del master non ci entra, quindi
+# gli stem resi prima del `seed: 1441` (#8) restano "clean" e suonano la
+# realizzazione di allora finche' non li si rifa'.
+
 # Tutti i core: l'`auto` dell'engine ne lascia uno libero (core-1, cli.py:112).
 # getconf e' POSIX, funziona su macOS e Linux; se manca si ricade su 'auto'.
 BRANO_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo auto)
 
 .PHONY: brano
 brano: $(MARKER)
+	$(if $(FORCE),rm -rf $(BRANO_DIR)/cache)
 	@mkdir -p $(BRANO_DIR)/logs
-	$(PY) engine/src/main.py $(BRANO).yml $(BRANO_OUT) \
+	$(PY) engine/src/main.py $(BRANO_YML) $(BRANO_OUT) \
 		--renderer $(if $(RENDERER),$(RENDERER),numpy) \
 		--samples-dir samples \
 		--log-dir $(BRANO_DIR)/logs \

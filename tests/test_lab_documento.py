@@ -20,6 +20,8 @@ import yaml
 
 from granstudies.graph import build_html, lab_completo
 
+import brano_master
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 HARNESS = os.path.join(ROOT, "tests", "lab_dom.js")
 ENGINE_SRC = os.path.join(ROOT, "engine", "src")
@@ -93,8 +95,11 @@ def _lab(tmp_path, scenario, prima=None, study="001-41", seed_studio=TIENE):
 
 
 def _brano():
-    with open(os.path.join(ROOT, "mare-nostrum.yml")) as fh:
-        return yaml.safe_load(fh)
+    """Il brano con gli stream scritti dentro: dalla #8 il master li importa da
+    `configs/streams/`, e qui servono come li vede il motore dopo la
+    risoluzione — con il loro piazzamento, come nel `mare-nostrum.yml` di
+    prima."""
+    return brano_master.brano()
 
 
 STREAMS = [s["stream_id"] for s in _brano()["streams"]]
@@ -574,7 +579,7 @@ labRender().then(() => console.log(JSON.stringify(POST[0])));
 # --- #4: gli inviluppi {type, points} -----------------------------------------
 # `{type: cubic, points: [...]}` e' l'interpolazione globale di un inviluppo:
 # la scrive PGE-ui appena quella di una curva di soli breakpoint non e'
-# lineare, e in `mare-nostrum.yml` la portano grain.duration (stream6,
+# lineare, e nel brano la portano grain.duration (stream6,
 # stream8), fill_factor (stream4) e voices.pitch.pitch_range (stream10, step).
 
 def _motore(tmp_path):
@@ -653,11 +658,13 @@ def test_ogni_breakpoint_si_apre_col_valore_e_il_tipo_del_motore(tmp_path, sid):
 def test_criterio_del_piano_ogni_stream_del_brano_risalvato_e_lo_stesso(tmp_path, sid):
     """Passo 1 di `docs/plans/stream-come-file.md`.
 
-    Ogni stream di `mare-nostrum.yml`, aperto nel laboratorio e risalvato
-    senza toccare niente, da' all'engine lo stesso stream: stesso fingerprint
+    Ogni stream del brano, aperto nel laboratorio e risalvato senza toccare
+    niente, da' all'engine lo stesso stream: stesso fingerprint
     (`StreamCacheManager.compute_fingerprint`, quello che decide se uno stem
     va rifatto). Il giro e' quello vero: YAML -> JSON del server -> pagina ->
-    JSON -> YAML scritto come lo scrive `render_doc`.
+    JSON -> YAML scritto come lo scrive `render_doc`. Dalla #8 il confronto e'
+    col master, che importa lo stream dal suo file: il motore lo risolve prima
+    di calcolare il fingerprint.
     """
     from granstudies import serve as S
     _motore(tmp_path)
@@ -674,7 +681,7 @@ def test_criterio_del_piano_ogni_stream_del_brano_risalvato_e_lo_stesso(tmp_path
     salvato = tmp_path / (sid + ".yml")
     with open(salvato, "w") as fh:
         yaml.dump(doc, fh, Dumper=S._Dumper, sort_keys=False, allow_unicode=True)
-    assert impronte(salvato)[sid] == impronte(os.path.join(ROOT, "mare-nostrum.yml"))[sid]
+    assert impronte(salvato)[sid] == impronte(brano_master.MASTER)[sid]
 
 
 @node

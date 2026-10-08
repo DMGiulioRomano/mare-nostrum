@@ -1,0 +1,39 @@
+seed: 1441
+duration: 116.835
+bpm: 120
+streams:
+- stream_id: stream10
+  duration: 116.835
+  sample: 001-41_5-5_5.wav
+  time_mode: normalized
+  distribution_mode: uniform
+  fill_factor: 2
+  distribution: 1
+  grain:
+    duration: [[0, 0.001], [0.3731, 0.001], [0.3965, 0.004], [0.4193, 0.0012], [0.5005,
+        0.0153]]
+    duration_range: 0.001
+    envelope: rectangle
+  pointer:
+    start: 0
+    speed_ratio: 0.07
+    loop_unit: normalized
+    offset_range: 0.02
+  pitch:
+    ratio: 1
+    range: 0
+  pan: 0
+  pan_range: 360
+  volume: [[0, -36], [0.1, -9]]
+  voices:
+    num_voices: 4
+    scatter: 1
+    pitch:
+      pitch_range:
+        type: step
+        points: [[0, 0.5], [0.3843, 0]]
+      strategy: range
+      unit: ratio
+    pan:
+      spread: 120
+      strategy: stochastic
