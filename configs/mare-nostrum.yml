@@ -1,0 +1,31 @@
+# Il brano (#8): il master. Ogni stream e' un file in streams/, un
+# documento del laboratorio; qui ci sono la testa del brano (seed, duration,
+# bpm) e, accanto a ogni `file:`, solo il piazzamento (onset, mute, solo,
+# stream_id). Vedi CLAUDE.md, "Il brano".
+
+duration: 322.074
+bpm: 120
+seed: 1441
+streams:
+  - file: streams/stream2.yml
+    onset: 0
+  - file: streams/stream2-norm.yml
+    onset: 0
+    mute: true
+  - file: streams/stream3.yml
+    onset: 0
+  - file: streams/stream9.yml
+    onset: 11.061
+  - file: streams/stream5.yml
+    onset: 43.761
+  - file: streams/stream6.yml
+    onset: 56.679
+  - file: streams/stream7.yml
+    onset: 112.003
+  - file: streams/stream8.yml
+    onset: 159.003
+  - file: streams/stream4.yml
+    onset: 241.217
+  - file: streams/stream10.yml
+    onset: 120.03
+    mute: true

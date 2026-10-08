@@ -28,6 +28,8 @@ from granstudies import engine_bridge
 from granstudies.graph import build_html, lab_completo
 from granstudies.serve import gia_su_disco
 
+import brano_master
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FIXTURE = os.path.join(ROOT, "tests", "fixtures", "stream_come_file")
 DOCUMENTO = os.path.join("streams", "risacca.yml")
@@ -37,38 +39,10 @@ engine = pytest.mark.skipif(not os.path.isdir(engine_bridge.ENGINE_SRC),
                             reason="serve il submodule engine")
 node = pytest.mark.skipif(shutil.which("node") is None, reason="serve node")
 
-# Le chiavi che il master tiene per se' accanto a `file:` (regola 4 della
-# #290); lo `stream_id` a parte, perche' ha un default.
-PIAZZAMENTO = ("onset", "mute", "solo")
-
-
-def _leggi(path):
-    with open(path, encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
-
-
-def _scritto_dentro(master, cartella):
-    """Lo stesso master, con ogni stream importato scritto dentro.
-
-    E' la promessa del piano messa per esteso. Dal file viene lo stream; dal
-    master il piazzamento e lo `stream_id`, che di default e' il nome del file
-    senza estensione. Il resto del file non arriva: ne' la sua testa (`seed`,
-    `duration`, `bpm`) ne' il piazzamento scritto dentro il suo stream.
-    """
-    streams = []
-    for voce in master["streams"]:
-        if "file" not in voce:
-            streams.append(voce)
-            continue
-        (st,) = _leggi(os.path.join(cartella, voce["file"]))["streams"]
-        sid = voce.get("stream_id",
-                       os.path.splitext(os.path.basename(voce["file"]))[0])
-        st = {"stream_id": sid,
-              **{k: v for k, v in st.items()
-                 if k not in PIAZZAMENTO and k != "stream_id"}}
-        st.update({k: voce[k] for k in PIAZZAMENTO if k in voce})
-        streams.append(st)
-    return dict(master, streams=streams)
+# Il master con gli stream importati scritti dentro: la promessa del piano
+# messa per esteso, la stessa con cui si verifica il brano (#8).
+_leggi = brano_master.leggi
+_scritto_dentro = brano_master.scritto_dentro
 
 
 @pytest.fixture

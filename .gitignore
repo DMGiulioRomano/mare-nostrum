@@ -31,3 +31,8 @@ htmlcov/
 # Artefatti di PGE-ui: audio/grains renderizzati e cache dei peaks
 /output/
 /cache/
+
+# Il laboratorio rende accanto allo YAML che salva (`render_doc`): un file di
+# configs/streams/ ascoltato nel laboratorio lascia li' il suo .aif e i log.
+/configs/**/*.aif
+/configs/**/logs/
