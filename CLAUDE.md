@@ -244,7 +244,10 @@ L'**anteprima** sotto i breakpoint legge il documento (`labDoc`), non i
 breakpoint: un inviluppo non toccato vi compare com'e' scritto.
 
 **Si salva col piazzamento, si ascolta senza.** `onset`, `mute` e `solo` di uno
-stream aperto dal brano restano nel file — sono dello stream. Ma il render del
+stream che li porta (un documento con lo stream scritto dentro, copiato da un
+brano) restano nel file: il laboratorio non li tocca. I file di
+`configs/streams/` non li hanno — il piazzamento e' del master (vedi «Il
+brano») — e li' la regola non scatta. Ma il render del
 laboratorio e' l'ascolto dello stream da solo: `labPost` manda anche un
 documento `ascolto` con `onset: 0` e senza `mute`/`solo` (`perAscolto`), e il
 server rende quello (scritto in `logs/<nome>.ascolto.yml`) accanto allo YAML

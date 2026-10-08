@@ -1,6 +1,7 @@
 # Il brano (#8): il master. Ogni stream e' un file in streams/, un
-# documento del laboratorio; qui c'e' solo il piazzamento (onset, mute,
-# solo, stream_id). Vedi CLAUDE.md, "Il brano".
+# documento del laboratorio; qui ci sono la testa del brano (seed, duration,
+# bpm) e, accanto a ogni `file:`, solo il piazzamento (onset, mute, solo,
+# stream_id). Vedi CLAUDE.md, "Il brano".
 
 duration: 322.074
 bpm: 120

@@ -78,7 +78,8 @@ def test_ogni_file_di_streams_e_importato_dal_master():
     """Un file in `configs/streams/` che il master non nomina non suona nel
     brano: e' uno stream perso, o un altro brano, e allora non sta qui."""
     su_disco = sorted(os.path.relpath(p, B.CONFIGS)
-                      for p in glob.glob(os.path.join(B.CONFIGS, "streams", "*.yml")))
+                      for ext in ("*.yml", "*.yaml")
+                      for p in glob.glob(os.path.join(B.CONFIGS, "streams", ext)))
     assert su_disco == sorted(FILES)
 
 
@@ -254,10 +255,14 @@ def _senza_piazzamento_muto(master):
 @pytest.fixture(scope="module")
 def due_master(tmp_path_factory):
     """Lo stesso brano due volte: coi `file:` (configs/ copiata) e scritto
-    dentro. Stesso nome, quindi stessi nomi di stem."""
+    dentro. Stesso nome, quindi stessi nomi di stem.
+
+    Della copia restano fuori gli ascolti del laboratorio, che rende accanto
+    al file (`<id>.aif` e `logs/`, ignorati da git): il brano non li legge, e
+    dieci stream ascoltati sono un giga da copiare a ogni giro."""
     radice = tmp_path_factory.mktemp("brano")
     con_file = radice / "con_file"
-    shutil.copytree(B.CONFIGS, con_file)
+    shutil.copytree(B.CONFIGS, con_file, ignore=shutil.ignore_patterns("*.aif", "logs"))
     m = _senza_piazzamento_muto(MASTER)
     with open(con_file / "mare-nostrum.yml", "w", encoding="utf-8") as fh:
         yaml.safe_dump(m, fh, sort_keys=False)
