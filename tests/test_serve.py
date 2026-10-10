@@ -120,6 +120,18 @@ def test_si_scrive_solo_dove_l_utente_ha_scelto_nel_pannello(tmp_path, monkeypat
     assert out["yaml"] == str(fuori)
 
 
+def test_un_estensione_maiuscola_non_si_raddoppia(tmp_path, monkeypatch):
+    """`risacca.YML` e' gia' un documento YAML. Scritto in `risacca.YML.yml`,
+    il file aperto restava com'era e il laboratorio ne lavorava un altro accanto
+    — che il master del brano non importa."""
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    f = tmp_path / "risacca.YML"
+    S._AUTORIZZATI.add(os.path.abspath(str(f)))
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False, path=str(f))
+    assert out["ok"] and out["path"] == str(f)
+    assert f.exists() and not (tmp_path / "risacca.YML.yml").exists()
+
+
 def test_il_pannello_annullato_non_e_un_errore(monkeypatch):
     """-128 vuol dire che l'utente ha chiuso il dialogo: si torna e basta."""
     monkeypatch.setattr(S.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(

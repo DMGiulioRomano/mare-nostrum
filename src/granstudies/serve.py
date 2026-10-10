@@ -323,7 +323,9 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
         if not autorizzato(path):
             return {"ok": False, "error": "percorso non scelto da un pannello: "
                                           "usa 'salva con nome'."}
-        doc_path = path if path.endswith((".yml", ".yaml")) else path + ".yml"
+        # L'estensione anche in maiuscolo: `risacca.YML` e' gia' un documento
+        # YAML, e scriverlo in `risacca.YML.yml` lascerebbe il file aperto com'era.
+        doc_path = path if path.lower().endswith((".yml", ".yaml")) else path + ".yml"
         # Prima della guardia: se il file contiene gia' il documento, i byte
         # possono essere cambiati (l'altro editor l'ha riscritto a modo suo),
         # ma una scrittura non toglierebbe niente a nessuno.

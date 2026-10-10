@@ -1834,7 +1834,9 @@ function labView() {
 // default = il nome del file). Un foglio mai salvato non ha un file: vale il
 // campo `nome`, che e' quello che poi il pannello di salvataggio propone.
 function idDa(path) {
-  const base = (path || "").split("/").pop().replace(/\.ya?ml$/, "");
+  // L'estensione anche in maiuscolo: il motore toglie qualunque estensione
+  // (`os.path.splitext`), e con `risacca.YML` il brano usa `risacca`.
+  const base = (path || "").split("/").pop().replace(/\.ya?ml$/i, "");
   return base || document.getElementById("labName").value || NOME0;
 }
 
@@ -2563,11 +2565,35 @@ function carica(doc, path, firma) {
     document.getElementById("labInfo").textContent = "non e' un documento con stream.";
     return false;
   }
+  // Un master (#8) importa i suoi stream con `file:`: la sua prima voce e' un
+  // rimando, non uno stream, e non c'e' niente da mettere sui breakpoint.
+  // Aperto lo stesso, il master diventava il file del laboratorio, e il primo
+  // render lo riscriveva con quella voce sola: gli altri stream persi, senza
+  // una domanda. Non si apre, e resta aperto il documento di prima.
+  if (rimando(doc.streams[0])) {
+    const f = String(doc.streams[0].file);
+    const n = doc.streams.filter(rimando).length;
+    document.getElementById("labInfo").textContent = (path || "il documento")
+      + " e' un master: importa " + n + " stream con `file:`. Il laboratorio "
+      + "lavora su uno stream per file: apri " + f
+      + " (relativo alla cartella del master).";
+    return false;
+  }
+  // Con piu' stream si apre il primo, come sempre, ma il file non resta quello
+  // del laboratorio: riscriverci sopra uno stream solo butterebbe via gli
+  // altri. E' un foglio da salvare con un nome suo.
+  const legato = doc.streams.length === 1;
   // La copia va presa prima di `leggiLoop`, che sul documento ci scrive.
   APERTO = clona(doc.streams[0]);
   // Gli stream non si copiano: in un brano sono dieci, e qui ne resta uno.
   TESTA = Object.fromEntries(Object.entries(doc).map(([k, v]) =>
     [k, k === "streams" ? null : clona(v)]));
+  // ...e la testa e' quella di un documento di uno stream: la durata in testa
+  // del brano intero, scritta accanto a uno stream solo, direbbe il falso.
+  if (!legato) {
+    if (APERTO.duration === undefined || APERTO.duration === null) delete TESTA.duration;
+    else TESTA.duration = APERTO.duration;
+  }
   VISTA0 = null;
   // APERTO resta com'e' scritto; si legge da una copia coi tempi in frazioni
   // (#9), che e' quello che il resto della pagina sa leggere.
@@ -2609,12 +2635,19 @@ function carica(doc, path, firma) {
   vociCarica(st);
   for (const [path, v] of Object.entries(fissiLoop)) setSel(path, v);
   SELEZIONE.clear();        // i breakpoint di prima non esistono piu'
-  FILE = path || "";
+  // Un documento con piu' stream non e' il file del laboratorio (sopra): il
+  // foglio non ha un file, e la firma non ha niente da guardare.
+  FILE = legato ? path || "" : "";
   // Senza firma (un `carica` che non viene da `/open`) la guardia resta
   // disarmata invece di confrontare il documento con un hash che non e' suo.
-  FIRMA = firma || "";
+  FIRMA = legato ? firma || "" : "";
   chiusaLaDomanda();        // riguardava il documento di prima
-  document.getElementById("labName").value = idDa(path || NOME0);
+  // Il nome di un foglio senza file e' il suo `stream_id` (#5): qui quello
+  // dello stream aperto, che e' anche il nome che il pannello di `salva`
+  // propone — salvato cosi', suona come nel documento da cui viene. Non il
+  // nome del documento, che proporrebbe di salvarci sopra.
+  document.getElementById("labName").value = legato ? idDa(path || NOME0)
+    : idDelloStream(APERTO);
   // La durata dello stream, prima di quella del documento: aperto un brano,
   // la `duration` in testa e' quella del brano intero.
   document.getElementById("labDur").value = st.duration || doc.duration || DUR;
@@ -2631,13 +2664,18 @@ function carica(doc, path, firma) {
   // deve dirlo, il `salva` poterlo scrivere, e la riga di stato spiegare
   // perche', prima che lo dica l'orecchio al primo render.
   const scritto = labDoc();
-  SALVATO = JSON.stringify(comeLetto(scritto));
+  // Senza un file, niente e' salvato: `• modificato`, `salva` che apre il
+  // pannello, e la conferma prima di `nuovo`/`apri`, come un foglio nuovo.
+  SALVATO = legato ? JSON.stringify(comeLetto(scritto)) : "";
   // Appena letto, il laboratorio non ha nessun lavoro proprio: quello che
   // scriverebbe e' questo, e una rilettura lo rifarebbe identico.
   SCRITTO0 = JSON.stringify(scritto);
   segna();
-  document.getElementById("labInfo").textContent =
-    (path || "documento") + " — " + bps.length + " breakpoint"
+  document.getElementById("labInfo").textContent = (legato
+    ? (path || "documento") + " — " + bps.length + " breakpoint"
+    : (path || "il documento") + " contiene " + doc.streams.length + " stream: aperto il primo ("
+      + idDelloStream(APERTO) + ", " + bps.length + " breakpoint). Il laboratorio non riscrive "
+      + "quel file con uno stream solo: salva per dargli un file suo.")
     + notaIdentita(scritto, APERTO.stream_id, TESTA.seed === undefined || TESTA.seed === null);
   // La bozza va riscritta a caricamento finito. Quella di `drawTl`, dentro
   // `bpLoad` qui sopra, l'ha scritta prima che `SALVATO` e `SCRITTO0`
@@ -2648,6 +2686,20 @@ function carica(doc, path, firma) {
   // chiedeva invece di rileggere.
   bozzaSalva();
   return true;
+}
+
+// Una voce di `streams:` che importa lo stream da un altro file (`- file:`,
+// PythonGranularEngine#290): la forma che il motore riconosce, un mapping con
+// la chiave `file`.
+function rimando(voce) {
+  return !!voce && typeof voce === "object" && !Array.isArray(voce) && "file" in voce;
+}
+
+// Lo `stream_id` di uno stream come nome di un foglio senza file. Uno stream
+// che non ne dichiara uno prende il nome del foglio bianco.
+function idDelloStream(st) {
+  const id = st && st.stream_id;
+  return id === undefined || id === null || String(id) === "" ? NOME0 : String(id);
 }
 
 // Il documento che `labDoc` scriverebbe, con l'identita' che il file aperto

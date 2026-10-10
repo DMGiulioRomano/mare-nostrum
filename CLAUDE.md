@@ -254,6 +254,30 @@ server rende quello (scritto in `logs/<nome>.ascolto.yml`) accanto allo YAML
 salvato. Senza, uno stream con onset 43 s partirebbe dopo 43 s di silenzio e
 uno con `mute` non suonerebbe affatto.
 
+**Un master non si apre, e un documento con piu' stream non si riscrive.** Il
+laboratorio scrive un documento con uno stream solo, quindi riscriverlo sul
+file aperto butterebbe via tutti gli altri stream di quel file. Prima succedeva
+al primo `rendi e ascolta`, senza una domanda, e col brano in `configs/`
+accanto ai suoi stream (vedi «Il brano») era il master a perdere nove voci su
+dieci. Ora `carica` distingue due casi:
+
+- un **master**, cioe' un documento la cui prima voce di `streams:` e' un
+  `file:` (`rimando`), non si apre. La riga di stato dice quale file aprire al
+  suo posto, e resta aperto il documento di prima;
+- un documento con **piu' stream** si apre sul primo, come sempre, ma senza
+  file. Nella barra c'e' `(non salvato)` con `• modificato`, `salva` apre il
+  pannello e `rendi e ascolta` scrive in `live/`. Il nome proposto e' lo
+  `stream_id` di quello stream (`idDelloStream`), che e' il nome che lo fa
+  suonare come nel documento da cui viene. La testa e' quella di un documento
+  di uno stream: la durata e' quella dello stream, non quella del brano
+  intero.
+
+Verificato in `tests/test_lab_documento.py`, sul master vero del brano.
+
+L'estensione si riconosce anche in maiuscolo (`idDa`, e `render_doc` in
+`serve.py`): con `risacca.YML` il motore usa l'id `risacca`, e il file si
+riscrive su se stesso invece che su un `risacca.YML.yml` accanto.
+
 **L'identita' dello stream: il nome del file e il seed** (#5). L'RNG
 dell'engine e' `(seed, rng_group o stream_id, componente)`
 (`shared/seeding.py`), quindi lo stesso stream suona uguale in due posti solo
