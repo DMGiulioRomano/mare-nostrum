@@ -91,7 +91,11 @@ Le decisioni, prese nella #8:
   La cache per stream di `make brano` non vede il seed (il fingerprint e' dello
   stream, il seed sta in testa al master): il primo render dopo un cambio di
   seed va fatto con **`make brano FORCE=1`**, o gli stem gia' in cache restano
-  la realizzazione di prima, annunciati come nuovi.
+  la realizzazione di prima, annunciati come nuovi. In PGE-ui vale lo stesso:
+  il suo render incrementale ha una cache sua (`cache/` del workspace), cieca
+  al seed come quella di `make brano`, quindi dopo un cambio di seed si rende
+  una volta con **«incremental cache»** spento (il popover del render), e i
+  pallini verdi non vanno creduti — neanche loro vedono il seed.
 
 **Una chiave, una casa.** Il master tiene il piazzamento — `onset`, `mute`,
 `solo`, ed eventualmente `stream_id` — e la testa del brano (`seed`,
@@ -105,16 +109,35 @@ cambiarne il suono si fa nel file. PGE-ui lo fa da se' (un `onset` toccato va
 nel master, un `volume` toccato nel file dello stream, e solo li'); il
 laboratorio scrive solo il file. Un file in `configs/streams/` che il master
 non nomina e' un errore di `tests/test_brano.py`: non suona da nessuna parte.
-Lo e' anche uno stream scritto dentro il master, ed e' cio' che oggi lascia uno
-**split** in PGE-ui finche' la DMGiulioRomano/PGE-ui#187 e' aperta (la coda si
-scrive per intero nel master): va spostata in un file suo, col nome del suo id.
+Lo e' anche uno stream scritto dentro il master.
 
-Due editor sullo stesso file si accorgono l'uno dell'altro solo sul master: la
-guardia di PGE-ui (DMGiulioRomano/PGE-ui#185) non firma ancora i file
-importati, quindi uno stream salvato dal laboratorio mentre PGE-ui lo tiene
-aperto viene riscritto dal primo salvataggio di PGE-ui che tocca quello stream.
-Finche' non lo fa, uno stream si lavora in un editor alla volta, o si riapre il
-brano in PGE-ui dopo averlo salvato nel laboratorio.
+Duplica e split di PGE-ui rispettano queste regole da se': la copia di uno
+stream importato e' un file nuovo accanto all'originale, `streams/<id>.yml`
+(DMGiulioRomano/PGE-ui#186), e la coda di uno split e' `streams/<nome>-2.yml`
+(DMGiulioRomano/PGE-ui#187) — col nome del file come id, e senza `stream_id`
+nella voce del master. Due gesti di PGE-ui no, e `tests/test_brano.py` lo dice:
+
+- **cancellare** uno stream importato toglie la sua voce dal master, non il
+  file (PGE-ui non cancella file): il file resta in `configs/streams/` senza
+  che nessuno lo nomini (`test_ogni_file_di_streams_e_importato_dal_master`),
+  e si toglie a mano (`git rm`);
+- **rinominare** uno stream importato scrive `stream_id: <nuovo>` nella voce
+  del master e lascia il file col suo nome: il brano suona la realizzazione del
+  nome nuovo, il file aperto da solo nel laboratorio quella del nome vecchio
+  (`test_accanto_a_file_c_e_solo_il_piazzamento`). Per rinominare si rinomina
+  il file (`git mv`, e lo `stream_id` dentro) e il suo `file:` nel master.
+
+**Due editor, un file — su ogni file** (regola 7 del piano). Il laboratorio
+guarda il file che ha aperto (#6); PGE-ui il master e ogni file importato
+(DMGiulioRomano/PGE-ui#185, estesa ai file degli stream). Uno stream salvato
+dal laboratorio mentre PGE-ui tiene aperto il brano, al primo salvataggio o
+render di PGE-ui, si rilegge da solo se in PGE-ui quello stream non ha
+modifiche — gli altri stream e il master tengono le loro, e si salvano — e con
+modifiche proprie PGE-ui chiede (ricarica / sovrascrivi) di quel file solo. Il
+render lo rilegge anche se non lo riscrive: il motore legge gli import dal
+disco, e partito sulla versione del laboratorio suonerebbe quella mentre PGE-ui
+ne mostra un'altra. La firma e' la stessa nei due editor (`sha256:` dei byte,
+sotto).
 
 Il laboratorio rende accanto al file che salva: `configs/streams/<id>.aif` e
 `configs/streams/logs/` sono suoi, e git li ignora.
@@ -253,6 +276,30 @@ documento `ascolto` con `onset: 0` e senza `mute`/`solo` (`perAscolto`), e il
 server rende quello (scritto in `logs/<nome>.ascolto.yml`) accanto allo YAML
 salvato. Senza, uno stream con onset 43 s partirebbe dopo 43 s di silenzio e
 uno con `mute` non suonerebbe affatto.
+
+**Un master non si apre, e un documento con piu' stream non si riscrive.** Il
+laboratorio scrive un documento con uno stream solo, quindi riscriverlo sul
+file aperto butterebbe via tutti gli altri stream di quel file. Prima succedeva
+al primo `rendi e ascolta`, senza una domanda, e col brano in `configs/`
+accanto ai suoi stream (vedi «Il brano») era il master a perdere nove voci su
+dieci. Ora `carica` distingue due casi:
+
+- un **master**, cioe' un documento la cui prima voce di `streams:` e' un
+  `file:` (`rimando`), non si apre. La riga di stato dice quale file aprire al
+  suo posto, e resta aperto il documento di prima;
+- un documento con **piu' stream** si apre sul primo, come sempre, ma senza
+  file. Nella barra c'e' `(non salvato)` con `• modificato`, `salva` apre il
+  pannello e `rendi e ascolta` scrive in `live/`. Il nome proposto e' lo
+  `stream_id` di quello stream (`idDelloStream`), che e' il nome che lo fa
+  suonare come nel documento da cui viene. La testa e' quella di un documento
+  di uno stream: la durata e' quella dello stream, non quella del brano
+  intero.
+
+Verificato in `tests/test_lab_documento.py`, sul master vero del brano.
+
+L'estensione si riconosce anche in maiuscolo (`idDa`, e `render_doc` in
+`serve.py`): con `risacca.YML` il motore usa l'id `risacca`, e il file si
+riscrive su se stesso invece che su un `risacca.YML.yml` accanto.
 
 **L'identita' dello stream: il nome del file e il seed** (#5). L'RNG
 dell'engine e' `(seed, rng_group o stream_id, componente)`
@@ -418,11 +465,13 @@ calcola sempre su tutti i punti, che il tipo sia globale o scritto su ogni
 punto. Non e' un'ipotesi: lo prova
 `test_type_points_e_tipo_su_ogni_punto_sono_lo_stesso_inviluppo` sui quattro
 inviluppi del brano. La terza forma — il dict col tipo globale e le eccezioni
-sul punto — l'engine la legge uguale, ma il laboratorio non la scrive: PGE-ui
-non la rilegge intatta (`wrapEnv`, appena un punto ha un tipo suo, scrive la
-lista piatta e il `type` globale si perde, quindi la cubica degli altri
-segmenti diventerebbe una retta alla prima modifica fatta li'). Le due forme
-che il laboratorio scrive PGE-ui le riapre e le riscrive uguali. Il prezzo di un inviluppo toccato e' quello di sempre del
+sul punto — l'engine la legge uguale, ma il laboratorio non la scrive. La
+ragione era PGE-ui, che non la rileggeva intatta (`wrapEnv`, appena un punto
+aveva un tipo suo, scriveva la lista piatta e il `type` globale si perdeva:
+la cubica degli altri segmenti diventava una retta alla prima modifica fatta
+li'); da DMGiulioRomano/PGE-ui#189 la riscrive com'e', quindi scriverla e'
+diventata una scelta di questo repo, non ancora fatta. Le due forme che il
+laboratorio scrive PGE-ui le riapre e le riscrive uguali. Il prezzo di un inviluppo toccato e' quello di sempre del
 laboratorio: prende un punto a ogni breakpoint dove il suo valore cambia,
 anche a quelli di altri parametri, e una cubica con un punto in piu' ha
 tangenti diverse — fra due punti la curva puo' muoversi di poco, mentre su
