@@ -119,6 +119,26 @@ brano in PGE-ui dopo averlo salvato nel laboratorio.
 Il laboratorio rende accanto al file che salva: `configs/streams/<id>.aif` e
 `configs/streams/logs/` sono suoi, e git li ignora.
 
+**PGE-ui sul brano** (#1). `cd mare-nostrum && pge-ui` apre il brano senza
+flag: il workspace e' la cwd, e il motore e' il submodule `engine/`, lo stesso
+di `make brano`, dichiarato nell'`.envrc` (`PGE_ENGINE_ROOT`). La risalita di
+PGE-ui su `engine/` lo troverebbe anche senza, ma viene dopo l'ambiente
+(DMGiulioRomano/PGE-ui#165): un `PGE_ENGINE_ROOT` ereditato dalla shell,
+quello di un altro checkout, vincerebbe sul submodule, e l'editor girerebbe su
+un altro codice senza dirlo. Il banner del bridge stampa il motore e chi l'ha
+detto, e qui deve dire `PGE_ENGINE_ROOT`. Un `.envrc` cambiato direnv non lo
+carica finche' non si rilancia `direnv allow` (o `./setup.sh`). Verificato in
+`tests/test_envrc.py`, che chiede il motore di `make brano` a `make -n`.
+
+I sample sono `samples/` per tutti e due: PGE-ui adotta la cartella che trova,
+`refs/` per prima e poi `samples/`, e manda al motore quella come
+`--samples-dir`, come fa `make brano`. Un `refs/` nella radice, anche vuoto
+(un bridge di prima della PGE-ui#165 lo creava da se'), scavalcherebbe
+`samples/`: va tolto. Gli alberi d'uscita invece sono ancora due: PGE-ui scrive
+in `output/` e `cache/` nella radice (git li ignora), `make brano` in
+`generated/brano/`, e nessuno dei due riusa la cache dell'altro. Sceglierne uno
+solo e' il passo dopo, non ancora deciso.
+
 Verificato in `tests/test_brano.py`: la struttura qui sopra, il master che per
 il motore e' lo stesso documento del master con gli stream scritti dentro
 (stessi stream, stessi fingerprint), e ogni file che nel laboratorio si apre
