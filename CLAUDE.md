@@ -295,6 +295,13 @@ dieci. Ora `carica` distingue due casi:
   di uno stream: la durata e' quella dello stream, non quella del brano
   intero.
 
+Lo stesso vale quando il documento con piu' stream arriva da una rilettura
+(«Due editor, un file», sotto): se l'altro editor ha scritto piu' stream nel
+file aperto, la rilettura lo apre cosi', e la scrittura che aspettava — un
+`salva`, un render, la risposta `ricarica` — non si riprova
+(`rileggiPerRiscrivere`). Riprovata, un `salva` porta il path con se' e senza
+firma riscriveva il file con uno stream solo.
+
 Verificato in `tests/test_lab_documento.py`, sul master vero del brano.
 
 L'estensione si riconosce anche in maiuscolo (`idDa`, e `render_doc` in

@@ -1568,6 +1568,48 @@ apriPath('/brano/risacca.yml')
     assert got["firma"] == "sha256:letta" and got["reso"] is None
 
 
+# Il gesto che scrive, e cosa succede prima: niente (la rilettura e' da sola)
+# o una modifica propria, e allora la rilettura passa da `ricarica`.
+RIPRESE = {
+    "salva": ("", "fSave()", ""),
+    "rendi": ("", "labRender()", ""),
+    "salva, poi ricarica": (_tocca(0, "pitch.ratio", 0.75), "fSave()",
+                            "document.getElementById('fReload').onclick()"),
+}
+
+
+@node
+@pytest.mark.parametrize("gesto", RIPRESE)
+def test_riletto_un_file_che_ora_ha_piu_stream_non_ci_si_riscrive(tmp_path, gesto):
+    """L'altro editor ha scritto nel file piu' stream (ci ha incollato un
+    brano). La rilettura li apre come `apri`: il primo, senza file, perche'
+    riscriverci sopra uno stream solo butterebbe via gli altri. La scrittura
+    che aspettava era per quel file, quindi non si riprova: un `salva` porta
+    il path con se', e riprovato senza firma riscriveva il file con uno stream
+    solo — proprio cio' che `carica` evita."""
+    mio, _ = _mio_e_altrui()
+    piu = {"seed": 1441, "streams": [_stream("stream2"), _stream("stream5")]}
+    tocca, scrivi, risposta = RIPRESE[gesto]
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return %s;
+}).then(() => %s).then(() => {
+  console.log(JSON.stringify({
+    rotte: POST.map(p => p.rotta), file: FILE, stream: DISCO.streams.length,
+    info: document.getElementById('labInfo').textContent, reso: ULTIMO || null,
+  }));
+});
+""" % (tocca, json.dumps(piu), scrivi, risposta or "null"))
+    assert got["rotte"] == ["open", "render", "open"]
+    assert got["stream"] == 2
+    assert got["file"] == "" and got["reso"] is None
+    # La riga di stato e' quella di `carica`: cosa c'e' nel file, e perche'
+    # il laboratorio non ci riscrive.
+    assert "2 stream" in got["info"] and "riletto" not in got["info"]
+
+
 # --- i valori a schermo e il render --------------------------------------------
 # Il render suona i breakpoint, non lo schermo: un valore scritto nel campo e
 # non confermato (`salva modifica`, `applica a tutti`, `+ breakpoint`) non sta
