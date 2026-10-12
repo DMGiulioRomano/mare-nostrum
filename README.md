@@ -181,7 +181,9 @@ segnalata come orfana.
 - `studies/<id>/` — input versionati: `study.yml`, `states.yml`, `composition.yml`.
 - `generated/<id>/` — output rigenerabile (git-ignorato).
 - `samples/` — corpus audio (file git-ignorati, solo manifest versionato).
-- `engine/` — submodule del motore (pin su commit).
+- `engine/` — submodule del motore (pin su commit). L'`.envrc` lo dichiara a
+  PGE-ui (`PGE_ENGINE_ROOT`): `pge-ui` lanciato dal repo gira sullo stesso
+  motore di `make brano`.
 - `tests/` — suite pytest (mirror di `src/`); `tests/e2e/` — end-to-end.
 
 ## Test
