@@ -523,6 +523,8 @@ let bps = [];        // [{t, vals:{path: numero}}] — sempre ordinati per t
 //   TESTA:  il documento fuori dallo stream — `seed`, `bpm`, la `duration` del
 //           tutto, le chiavi di PGE-ui (`ui_tracks`) — con `streams` al suo
 //           posto ma vuoto. Si riscrive com'e', salvo la durata se toccata.
+//           Da un documento con piu' stream, solo quella di uno stream
+//           (`testaDiUnoStream`).
 // Stanno nella storia dell'undo e nella bozza, accanto ai breakpoint.
 let APERTO = null, VISTA0 = null, TESTA = null;
 // Il loop del pointer sta nei campi `pointer.*` (vedi PUNT). Si parte SEMPRE
@@ -2586,14 +2588,12 @@ function carica(doc, path, firma) {
   // La copia va presa prima di `leggiLoop`, che sul documento ci scrive.
   APERTO = clona(doc.streams[0]);
   // Gli stream non si copiano: in un brano sono dieci, e qui ne resta uno.
-  TESTA = Object.fromEntries(Object.entries(doc).map(([k, v]) =>
-    [k, k === "streams" ? null : clona(v)]));
-  // ...e la testa e' quella di un documento di uno stream: la durata in testa
-  // del brano intero, scritta accanto a uno stream solo, direbbe il falso.
-  if (!legato) {
-    if (APERTO.duration === undefined || APERTO.duration === null) delete TESTA.duration;
-    else TESTA.duration = APERTO.duration;
-  }
+  // Con piu' stream la testa e' quella di un documento di uno stream
+  // (`testaDiUnoStream`): la testa del documento intero, accanto a uno
+  // stream solo, direbbe il falso.
+  TESTA = legato
+    ? Object.fromEntries(Object.entries(doc).map(([k, v]) => [k, k === "streams" ? null : clona(v)]))
+    : testaDiUnoStream(doc, APERTO);
   VISTA0 = null;
   // APERTO resta com'e' scritto; si legge da una copia coi tempi in frazioni
   // (#9), che e' quello che il resto della pagina sa leggere.
@@ -2693,6 +2693,22 @@ function carica(doc, path, firma) {
 // la chiave `file`.
 function rimando(voce) {
   return !!voce && typeof voce === "object" && !Array.isArray(voce) && "file" in voce;
+}
+
+// La testa del documento che nasce dal primo stream di uno che ne ha di piu'
+// (`carica`): quella di un documento del laboratorio, nell'ordine in cui la
+// scrive il foglio bianco (`labDoc`, `conSeed`) — il `seed`, che e'
+// l'identita' (#5), e il `bpm` del documento, e la durata dello stream. Il
+// resto e' del documento intero: la sua durata, il titolo, le corsie di
+// PGE-ui (`ui_tracks`), che nominano tutti i suoi stream e che, aperto il
+// file in PGE-ui, diventerebbero corsie vuote.
+function testaDiUnoStream(doc, st) {
+  const t = {};
+  if (doc.seed !== undefined) t.seed = clona(doc.seed);
+  if (st.duration !== undefined && st.duration !== null) t.duration = clona(st.duration);
+  if (doc.bpm !== undefined) t.bpm = clona(doc.bpm);
+  t.streams = null;
+  return t;
 }
 
 // Lo `stream_id` di uno stream come nome di un foglio senza file. Uno stream

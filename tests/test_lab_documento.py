@@ -623,6 +623,44 @@ def test_un_documento_con_piu_stream_si_apre_sul_primo_e_non_ci_si_riscrive(tmp_
     assert got["disco"] == doc
 
 
+@pytest.mark.parametrize("testa, stream, attese", [
+    # La testa di un brano scritto da PGE-ui: il titolo e le sue corsie, che
+    # nominano tutti gli stream del brano.
+    ({"title": "brano", "duration": 322.074, "bpm": 120, "seed": 1441,
+      "ui_tracks": [{"id": "t1", "name": "bassi", "streams": ["stream2", "stream5"]}]},
+     "stream2", ["seed", "duration", "bpm", "streams"]),
+    # Senza seed nel documento vale quello dello studio, in testa (#5); senza
+    # durata nello stream (lunga quanto il sample, PGE #205) non se ne scrive
+    # una: quella del documento e' del brano intero.
+    ({"duration": 322.074, "bpm": 120}, None, ["seed", "bpm", "streams"]),
+])
+@node
+def test_lo_stream_preso_da_un_documento_con_piu_stream_ha_la_testa_di_uno_stream(
+        tmp_path, testa, stream, attese):
+    """Il documento che nasce dal primo stream e' un documento del laboratorio
+    come gli altri: in testa il `seed`, la durata dello stream e il `bpm`, nell'ordine
+    in cui li scrive il foglio bianco. Il resto della testa e' del documento
+    da cui viene — la sua durata, il titolo, le corsie di PGE-ui (`ui_tracks`)
+    — e accanto a uno stream solo direbbe il falso: aperto in PGE-ui, le
+    corsie degli altri stream diventerebbero corsie vuote."""
+    a, b = _stream("stream2"), _stream("stream5")
+    if stream is None:
+        a = {k: v for k, v in a.items() if k != "duration"}
+    doc = dict(testa, streams=[a, b])
+    got = _lab(tmp_path, _dischi({"/brano/brano.yml": doc}) + """
+(async () => {
+  await apriPath('/brano/brano.yml');
+  const d = labDoc();
+  console.log(JSON.stringify({chiavi: Object.keys(d), doc: d, seed: L.seed}));
+})();
+""")
+    assert got["chiavi"] == attese
+    scritto = got["doc"]
+    assert scritto["seed"] == testa.get("seed", got["seed"])
+    assert scritto["bpm"] == 120
+    assert scritto.get("duration") == a.get("duration")
+
+
 @node
 def test_l_undo_torna_allo_stream_aperto(tmp_path):
     """Lo stream e la testa del documento: tutti e due stanno nella storia."""

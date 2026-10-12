@@ -292,8 +292,11 @@ dieci. Ora `carica` distingue due casi:
   pannello e `rendi e ascolta` scrive in `live/`. Il nome proposto e' lo
   `stream_id` di quello stream (`idDelloStream`), che e' il nome che lo fa
   suonare come nel documento da cui viene. La testa e' quella di un documento
-  di uno stream: la durata e' quella dello stream, non quella del brano
-  intero.
+  di uno stream, come la scrive il foglio bianco (`testaDiUnoStream`): il
+  `seed` e il `bpm` del documento e la durata dello stream. Il resto della
+  testa e' del documento intero — la durata del brano, il titolo, le corsie di
+  PGE-ui (`ui_tracks`), che in PGE-ui diventerebbero corsie vuote — e non
+  passa.
 
 Lo stesso vale quando il documento con piu' stream arriva da una rilettura
 («Due editor, un file», sotto): se l'altro editor ha scritto piu' stream nel
