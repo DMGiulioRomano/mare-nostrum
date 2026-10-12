@@ -25,7 +25,7 @@ del render — nel documento non c'e', la sa solo chi l'ha caricato.
                   (``ascolto``, facoltativo: il documento da rendere, se non
                   e' quello da salvare — vedi ``render_doc``;
                   ``firma``, facoltativa: com'era il file quando l'editor
-                  l'ha letto — vedi ``cambiato_su_disco``)
+                  l'ha letto — vedi ``cambiato_su_disco`` e ``sparito``)
 
 Il "file di progetto" e' lo YAML stesso: un documento engine puro, che si
 riapre qui, si incolla nel brano o si apre in PGE-ui. Un secondo formato per
@@ -176,6 +176,24 @@ def cambiato_su_disco(path: str, letta: str) -> bool:
     return bool(ora) and ora != letta
 
 
+def sparito(path: str, letta: str) -> bool:
+    """Se il file che l'editor ha letto non c'e' piu' su disco.
+
+    Non e' un file cambiato (``cambiato_su_disco``): non ci sta il lavoro di
+    nessuno, e "ricarica" non avrebbe niente da rileggere. Ma non e' nemmeno
+    una scrittura da fare in silenzio: chi l'ha tolto e' quasi sempre l'altro
+    editor, PGE-ui, che rinominando uno stream ne sposta il file e
+    cancellandolo lo toglie (DMGiulioRomano/PGE-ui#208). Ricrearlo rimetteva
+    su disco un file che il brano non nomina piu' — un orfano per
+    `tests/test_brano.py` — e lo faceva al primo `rendi e ascolta`. Quindi si
+    chiede: ricrearlo e' una decisione, come sovrascrivere.
+
+    Senza firma letta niente e' sparito: e' il `salva con nome` su un percorso
+    nuovo, e del percorso ha chiesto il pannello nativo.
+    """
+    return bool(letta) and not os.path.exists(path)
+
+
 # Questo avvio del server. La pagina se lo fa dire e ci confronta la bozza in
 # localStorage: un refresh riprende il lavoro non salvato, un `make serve`
 # nuovo parte da foglio bianco — che e' quello che si vuole aprendo il
@@ -305,7 +323,10 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
     ``firma_letta`` e' com'era il file quando l'editor l'ha letto: se su disco
     non e' piu' quella non si scrive niente e si risponde ``cambiato`` — a
     decidere (rileggere o sovrascrivere) e' chi ha le modifiche, cioe' la
-    pagina. ``sovrascrivi`` e' quella decisione presa. La guardia vale solo
+    pagina. Se su disco non c'e' piu' affatto (``sparito``: cancellato o
+    rinominato dall'altro editor) non si scrive e si risponde ``sparito``,
+    perche' ricrearlo e' una decisione anche quella.
+    ``sovrascrivi`` e' quella decisione presa, in tutti e due i casi. La guardia vale solo
     per ``path``, il file dell'utente: il ``live/<name>.yml`` di un foglio mai
     salvato e' la cartella di lavoro del server, che nessuno rilegge.
     La firma di cio' che si e' scritto torna sempre, anche quando poi e'
@@ -328,6 +349,12 @@ def render_doc(doc: dict, name: str, gen_root: str, repo_root: str,
         # possono essere cambiati (l'altro editor l'ha riscritto a modo suo),
         # ma una scrittura non toglierebbe niente a nessuno.
         gia = gia_su_disco(doc_path, doc)
+        # Prima della guardia sul file cambiato, che a un file assente
+        # risponde "non cambiato": qui la risposta e' una domanda.
+        if not sovrascrivi and sparito(doc_path, firma_letta):
+            return {"ok": False, "sparito": True,
+                    "error": "il file non c'e' piu' su disco da quando l'hai "
+                             "letto: cancellato o rinominato da un altro editor."}
         if not gia and not sovrascrivi and cambiato_su_disco(doc_path, firma_letta):
             return {"ok": False, "cambiato": True,
                     "error": "il file e' cambiato su disco da quando l'hai "

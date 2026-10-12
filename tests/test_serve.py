@@ -312,16 +312,59 @@ def test_sovrascrivi_scrive_sul_file_cambiato(tmp_path, monkeypatch):
     assert out["ok"] and S.yaml.safe_load(open(path).read()) == DOC
 
 
-def test_un_file_che_non_c_e_piu_non_e_un_file_cambiato(tmp_path, monkeypatch):
-    """Non ci sta il lavoro di nessuno, e rifiutare lascerebbe la domanda
-    senza via d'uscita: "ricarica" non puo' rileggere un file cancellato, e
-    scriverlo e' esattamente cio' che si stava chiedendo."""
+def test_un_file_che_non_c_e_piu_non_si_ricrea_senza_chiedere(tmp_path, monkeypatch):
+    """Il file che il laboratorio ha letto non c'e' piu': qualcuno l'ha
+    cancellato o spostato — PGE-ui, che rinominando uno stream sposta il suo
+    file e cancellandolo lo toglie (DMGiulioRomano/PGE-ui#208). Ricrearlo in
+    silenzio rimetteva su disco un file che il brano non nomina piu', un
+    orfano per `tests/test_brano.py`. Non e' un file cambiato — non c'e' il
+    lavoro di nessuno da perdere — ma una scrittura che va chiesta: il server
+    non scrive e risponde `sparito`, e la pagina chiede."""
     monkeypatch.setattr(S.subprocess, "run", _ok)
     path, letta = _mio(tmp_path)
     os.remove(path)
     out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
                        path=path, firma_letta=letta)
-    assert out["ok"] and os.path.isfile(path)
+    assert out["ok"] is False and out["sparito"] is True
+    assert "cambiato" not in out
+    assert "non c'e' piu'" in out["error"]
+    assert not os.path.exists(path)
+
+
+def test_un_render_su_un_file_sparito_non_scrive_e_non_rende(tmp_path, monkeypatch):
+    """Il render scrive il file prima di renderlo: la stessa domanda, prima
+    dell'engine."""
+    chiamato = []
+    monkeypatch.setattr(S.subprocess, "run", lambda *a, **k: chiamato.append(a) or _ok(*a, **k))
+    path, letta = _mio(tmp_path)
+    os.remove(path)
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=True,
+                       path=path, firma_letta=letta)
+    assert out["ok"] is False and out["sparito"] is True
+    assert not os.path.exists(path) and not chiamato
+
+
+def test_ricrea_scrive_il_file_che_non_c_e_piu(tmp_path, monkeypatch):
+    """La risposta "ricrea" della pagina e' una sovrascrittura: la decisione e'
+    presa, e il file torna."""
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    path, letta = _mio(tmp_path)
+    os.remove(path)
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
+                       path=path, firma_letta=letta, sovrascrivi=True)
+    assert out["ok"] and S.yaml.safe_load(open(path).read()) == DOC
+    assert out["firma"] == S.firma(path)
+
+
+def test_un_file_nuovo_senza_firma_letta_si_scrive(tmp_path, monkeypatch):
+    """Senza una lettura non c'e' niente che sia sparito: e' il `salva con
+    nome` su un percorso che non esiste ancora."""
+    monkeypatch.setattr(S.subprocess, "run", _ok)
+    path = str(tmp_path / "nuovo.yml")
+    S._AUTORIZZATI.add(os.path.abspath(path))
+    out = S.render_doc(DOC, "x", str(tmp_path), str(tmp_path), render=False,
+                       path=path)
+    assert out["ok"] and S.yaml.safe_load(open(path).read()) == DOC
 
 
 def test_senza_firma_letta_non_c_e_niente_da_confrontare(tmp_path, monkeypatch):

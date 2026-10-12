@@ -150,8 +150,8 @@
  #fSeed.manca { color:var(--on); }
  /* La domanda del file cambiato su disco: due bottoni accesi, perche' finche'
     sono li' la scrittura e' ferma (#6). */
- #fCambiato { margin-left:10px; }
- #lab .bar #fCambiato button { border-color:var(--on); color:var(--on); }
+ #fCambiato, #fSparito { margin-left:10px; }
+ #lab .bar #fCambiato button, #lab .bar #fSparito button { border-color:var(--on); color:var(--on); }
  /* La coppia spectroscope/stereoscope non ha margine sotto: lo mette qui
     chi le sta sotto. */
  #envView { margin-top:10px; }
@@ -203,6 +203,13 @@
       <span id="fCambiato" hidden>
         <button id="fReload">ricarica</button>
         <button id="fOverwrite">sovrascrivi</button>
+      </span>
+      <!-- La domanda del file sparito: cancellato o rinominato dall'altro
+           editor (PGE-ui#208). Ricrearlo e' una decisione; scriverlo altrove
+           un'altra; non fare niente non scrive. -->
+      <span id="fSparito" hidden>
+        <button id="fRicrea">ricrea</button>
+        <button id="fAltrove">salva con nome…</button>
       </span>
     </div>
     <div id="labFixed"></div>
@@ -829,6 +836,10 @@ function labInit() {
   document.getElementById("fSaveAs").onclick = () => fSave(true);
   document.getElementById("fReload").onclick = fRicarica;
   document.getElementById("fOverwrite").onclick = fSovrascrivi;
+  // Ricreare un file sparito e' una sovrascrittura: la stessa risposta, con
+  // la stessa attenzione ai valori a schermo prima di un render.
+  document.getElementById("fRicrea").onclick = fSovrascrivi;
+  document.getElementById("fAltrove").onclick = fAltrove;
   // Finche' il foglio non e' salvato il `nome` E' lo `stream_id` (#5):
   // cambiarlo cambia il documento, e il `• modificato` deve dirlo subito
   // invece di aspettare il prossimo disegno.
@@ -2930,8 +2941,36 @@ function chiediCambiato(render, path, msg) {
 
 function chiusaLaDomanda() {
   SOSPESO = null;
-  const el = document.getElementById("fCambiato");
-  if (el) el.hidden = true;
+  for (const id of ["fCambiato", "fSparito"]) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = true;
+  }
+}
+
+// Il file letto non c'e' piu' su disco. Chi l'ha tolto e' quasi sempre
+// PGE-ui, che rinominando uno stream ne sposta il file e cancellandolo lo
+// toglie al salvataggio (DMGiulioRomano/PGE-ui#208): riscriverlo qui rimetteva
+// su disco un file che il brano non nomina piu', un orfano per
+// `tests/test_brano.py`, al primo `rendi e ascolta` e senza che nessuno lo
+// dicesse. Non e' un file cambiato — non c'e' lavoro di nessuno da perdere,
+// e non c'e' niente da rileggere — quindi la domanda non dipende da
+// `daPerdere()`: si chiede sempre, perche' ricrearlo crea un file. Le
+// risposte: `ricrea` (la sovrascrittura, la stessa di `fSovrascrivi`), `salva
+// con nome…` (lo stream col nome nuovo che gli ha dato PGE-ui, o dove si
+// vuole), e non fare niente, che non scrive.
+function chiediSparito(render, path, msg) {
+  SOSPESO = {render, path};
+  document.getElementById("fSparito").hidden = false;
+  document.getElementById("labInfo").textContent = msg
+    + "  ·  se l'ha rinominato PGE-ui, lo stream ora sta in un file col nome "
+    + "nuovo: 'salva con nome…' per scrivere li' o altrove, 'ricrea' per "
+    + "riscrivere questo file com'era qui.";
+}
+
+async function fAltrove() {
+  if (!SOSPESO) return;
+  chiusaLaDomanda();
+  return fSave(true);
 }
 
 // Le due risposte. Riprendono la scrittura da dove si era interrotta: era
@@ -2986,6 +3025,7 @@ async function labPost(render, path, sovrascrivi, riletto) {
     if (render) body.ascolto = perAscolto(doc);
     const out = await post("render", body);
     if (out.cambiato) return cambiatoSuDisco(render, path, out.error, riletto);
+    if (out.sparito) return chiediSparito(render, path, out.error);
     // Scritto e' quando il server ha scritto lo YAML, e lo dice con la firma:
     // anche se poi e' l'engine a fallire, il file su disco e' gia' questo
     // documento, e quello che segue vale lo stesso. Fermarsi qui teneva la

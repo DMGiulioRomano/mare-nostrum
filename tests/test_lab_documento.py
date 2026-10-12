@@ -963,6 +963,8 @@ def _doppio(disco):
 const POST = [];
 let DISCO = %s, FDISCO = 'sha256:letta';
 function scriveAltri(doc) { DISCO = doc; FDISCO = 'sha256:altro'; }
+// L'altro editor cancella o sposta il file (PGE-ui#208): su disco non c'e' piu'.
+function cancellaAltri() { DISCO = null; FDISCO = ''; }
 const discoCanonico = v => JSON.stringify(v, (k, x) =>
   x && typeof x === 'object' && !Array.isArray(x)
     ? Object.keys(x).sort().reduce((o, c) => (o[c] = x[c], o), {}) : x);
@@ -978,6 +980,11 @@ fetch = async (rotta, opt) => {
     return {ok: true, json: async () =>
       ({ok: true, doc: d, path: body.path, firma: f})};
   }
+  if (body.firma && DISCO === null && !body.sovrascrivi)
+    return {ok: true, json: async () => ({ok: false, sparito: true,
+      error: "il file non c'e' piu' su disco da quando l'hai letto."})};
+  if (rotta === 'pick')
+    return {ok: true, json: async () => ({ok: true, path: ''})};
   if (discoCanonico(body.doc) === discoCanonico(DISCO))
     return {ok: true, json: async () =>
       ({ok: true, src: 'x.aif', yaml: 'r.yml', path: body.path, firma: FDISCO})};
@@ -1003,7 +1010,10 @@ console.log(JSON.stringify({
   firma: FIRMA, file: FILE, sporco: sporco(), daPerdere: daPerdere(),
   info: document.getElementById('labInfo').textContent,
   domanda: !document.getElementById('fCambiato').hidden,
-  disco: DISCO.streams[0].volume, reso: ULTIMO || null,
+  sparito: !document.getElementById('fSparito').hidden,
+  // Un disco senza il file (sparito) o senza stream non ha un volume da dire.
+  disco: DISCO && DISCO.streams && DISCO.streams[0] ? DISCO.streams[0].volume : null,
+  reso: ULTIMO || null,
   ratio: labDoc().streams[0].pitch.ratio,
 }));
 """
@@ -1159,6 +1169,78 @@ apriPath('/brano/risacca.yml').then(() => {
     # Nemmeno un undo riporta il 0.75: la storia e' quella del file riletto.
     assert got["ratio"] == _stream("stream2")["pitch"]["ratio"]
     assert got["domanda"] is False
+
+
+@node
+def test_un_file_sparito_non_si_ricrea_senza_chiedere(tmp_path):
+    """PGE-ui ha rinominato o cancellato lo stream che il laboratorio tiene
+    aperto (DMGiulioRomano/PGE-ui#208): il file non c'e' piu'. Ricrearlo al
+    `rendi e ascolta` rimetteva su disco un orfano che il brano non nomina.
+    Si chiede anche senza modifiche proprie: non e' una rilettura da fare in
+    silenzio, e' una scrittura che crea un file. Non si scrive, non si rende,
+    e la riga di stato dice cosa e' successo e le due strade."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => { cancellaAltri(); return labRender(); })
+  .then(() => { %s });
+""" % VISTO)
+    assert [p["rotta"] for p in got["post"]] == ["open", "render"]
+    assert (got["sparito"], got["domanda"]) == (True, False)
+    assert got["disco"] is None and got["reso"] is None
+    assert "non c'e' piu'" in got["info"] and "rinominato" in got["info"]
+    assert "ricrea" in got["info"] and "salva con nome" in got["info"]
+    # Il file resta quello aperto, con la sua firma: la domanda e' su di lui.
+    assert (got["file"], got["firma"]) == ("/brano/risacca.yml", "sha256:letta")
+
+
+@node
+def test_ricrea_riscrive_il_file_sparito_e_il_render_riparte(tmp_path):
+    """La prima risposta: la scrittura riprende con la sovrascrittura, che e'
+    la decisione presa. Il file torna, e il render parte."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => { cancellaAltri(); return labRender(); })
+  .then(() => document.getElementById('fRicrea').onclick())
+  .then(() => { %s });
+""" % VISTO)
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "render"]
+    assert got["post"][2]["sovrascrivi"] is True
+    assert got["disco"] == VOL_MIO and got["reso"].startswith("x.aif")
+    assert (got["sparito"], got["firma"]) == (False, "sha256:scritta")
+
+
+@node
+def test_salva_con_nome_su_un_file_sparito_apre_il_pannello(tmp_path):
+    """La seconda: il pannello di `salva con nome`, per scrivere lo stream col
+    nome nuovo che gli ha dato PGE-ui o dove si vuole. La domanda si chiude,
+    e annullato il pannello non si e' scritto niente."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml')
+  .then(() => { cancellaAltri(); return labRender(); })
+  .then(() => document.getElementById('fAltrove').onclick())
+  .then(() => { %s });
+""" % VISTO)
+    assert [p["rotta"] for p in got["post"]] == ["open", "render", "pick"]
+    assert got["sparito"] is False and got["disco"] is None
+
+
+@node
+def test_salva_su_un_file_sparito_chiede_anche_lui(tmp_path):
+    """Non solo il render: `salva` scrive lo stesso file."""
+    mio, _ = _mio_e_altrui()
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  cancellaAltri();
+  return fSave(false);
+}).then(() => { %s });
+""" % (_tocca(0, "pitch.ratio", 0.75), VISTO))
+    assert [p["rotta"] for p in got["post"]] == ["open", "render"]
+    assert got["sparito"] is True and got["disco"] is None
+    assert got["ratio"][0] == [0, 0.75]
 
 
 @node
@@ -1437,7 +1519,7 @@ def test_riletto_un_file_che_non_e_piu_un_documento_non_si_riprova(tmp_path):
 apriPath('/brano/risacca.yml')
   .then(() => { scriveAltri({streams: []}); return labRender(); })
   .then(() => { %s });
-""" % VISTO.replace("disco: DISCO.streams[0].volume", "disco: null"))
+""" % VISTO)
     assert [p["rotta"] for p in got["post"]] == ["open", "render", "open"]
     assert "non e' un documento con stream" in got["info"]
     assert "rileggo" not in got["info"]

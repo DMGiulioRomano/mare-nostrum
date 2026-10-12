@@ -351,12 +351,23 @@ disco non e' piu' quella, non scrive e risponde `cambiato`.
   su disco non c'e' piu' e la scrittura dopo la riscriverebbe.
 - **La firma e' di `FILE` e vale solo per lui.** Un `salva con nome` scrive un
   file che il laboratorio non ha letto — li' non si manda niente, e della
-  sovrascrittura ha chiesto il pannello nativo. Due casi non sono un file
-  cambiato: nessuna firma letta, e un file **che non c'e' piu'** (non ci sta
-  il lavoro di nessuno, e rifiutare lascerebbe la domanda senza via d'uscita —
-  "ricarica" non puo' rileggere un file cancellato). La guardia non vale per
-  il `live/<nome>.yml` di un foglio mai salvato: e' la cartella di lavoro del
-  server, che nessuno rilegge.
+  sovrascrittura ha chiesto il pannello nativo: senza firma letta non c'e'
+  niente da confrontare. La guardia non vale per il `live/<nome>.yml` di un
+  foglio mai salvato: e' la cartella di lavoro del server, che nessuno
+  rilegge.
+- **Un file che non c'e' piu' non e' un file cambiato, ma non si ricrea in
+  silenzio.** Con una firma letta e il file sparito il server non scrive e
+  risponde `sparito` (`serve.sparito`), e la pagina chiede **sempre**, anche
+  senza modifiche proprie, con due bottoni accanto al nome del file:
+  `ricrea` (la sovrascrittura, come `sovrascrivi`) e `salva con nome…`; non
+  fare niente non scrive. Chi toglie il file e' quasi sempre PGE-ui, che
+  rinominando uno stream sposta il suo file e cancellandolo lo toglie al
+  salvataggio (DMGiulioRomano/PGE-ui#208): ricrearlo al primo `rendi e
+  ascolta` rimetteva su disco un file che il brano non nomina piu', un orfano
+  per `tests/test_brano.py`. Prima la regola era "scrivilo", perche'
+  `ricarica` non ha niente da rileggere e un rifiuto restava senza via
+  d'uscita; la via d'uscita ora sono i due bottoni. Verificato in
+  `tests/test_serve.py` e `tests/test_lab_documento.py`.
 - **La firma di cio' che si e' appena scritto torna dalla risposta** e prende
   il posto di quella letta: senza, il salvataggio dopo manderebbe la firma di
   prima e si rifiuterebbe da se'. Torna anche quando e' l'engine a fallire:
