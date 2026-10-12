@@ -146,16 +146,21 @@ disco, e partito sulla versione del laboratorio suonerebbe quella mentre PGE-ui
 ne mostra un'altra. La firma e' la stessa nei due editor (`sha256:` dei byte,
 sotto).
 
-La guardia non copre i due gesti che spostano o tolgono un file. Se il
-laboratorio ha salvato lo stream dopo che PGE-ui l'ha letto, la rinomina crea
-il file nuovo dalla versione di PGE-ui, e il vecchio resta col lavoro del
-laboratorio: PGE-ui non lo cancella e lo dice nel terminale, ma il brano suona
-il file nuovo. E se il laboratorio ha aperto il file vecchio, il suo prossimo
-`salva` o `rendi e ascolta` lo riscrive, perche' per la sua guardia un file
-che non c'e' piu' non e' un file cambiato (#6), e il file torna orfano.
-Quindi prima si salva in PGE-ui, che rilegge gli stream cambiati dal
-laboratorio, poi si rinomina o si cancella; e nel laboratorio si apre il file
-col nome nuovo.
+La guardia non segue da sola i due gesti che spostano o tolgono un file, e
+le due meta' si chiudono in due posti:
+
+- **il laboratorio non ricrea un file che non c'e' piu'** (#21). Se PGE-ui ha
+  rinominato o cancellato lo stream che il laboratorio tiene aperto, il suo
+  `salva` o `rendi e ascolta` non riscrive piu' il file vecchio in silenzio
+  (tornava orfano): il server risponde `sparito`, e la pagina chiede con due
+  bottoni, `ricrea` e `salva con nome…` — per esempio col nome nuovo che gli
+  ha dato PGE-ui (vedi «Due editor, un file» sotto);
+- **la rinomina in PGE-ui di uno stream che il laboratorio ha appena
+  salvato** crea ancora il file nuovo dalla versione di PGE-ui, e il vecchio
+  resta col lavoro del laboratorio: PGE-ui non lo cancella e lo dice nel
+  terminale, ma il brano suona il file nuovo. Finche' questa meta' resta
+  aperta, prima si salva in PGE-ui, che rilegge gli stream cambiati dal
+  laboratorio, poi si rinomina.
 
 Il laboratorio rende accanto al file che salva: `configs/streams/<id>.aif` e
 `configs/streams/logs/` sono suoi, e git li ignora.

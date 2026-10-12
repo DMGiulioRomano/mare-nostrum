@@ -95,10 +95,12 @@ stesso id. Il laboratorio scrive `stream_id` = nome del file e un `seed`.
   motore: DMGiulioRomano/PythonGranularEngine#297, con la PR
   DMGiulioRomano/PythonGranularEngine#298; i pallini:
   DMGiulioRomano/PGE-ui#207, con la PR DMGiulioRomano/PGE-ui#209.
-- **Rinominare o cancellare in PGE-ui uno stream che il laboratorio ha
-  appena salvato, o tiene aperto**: la guardia dei due editor non segue un
-  file che si sposta o sparisce. Il rimedio e' l'ordine dei gesti (CLAUDE.md,
-  «Il brano»), e `tests/test_brano.py` dice il file orfano che ne resta.
+- **Rinominare in PGE-ui uno stream che il laboratorio ha appena salvato**:
+  il file nuovo nasce dalla versione di PGE-ui, e il vecchio resta col lavoro
+  del laboratorio. Il rimedio e' l'ordine dei gesti (CLAUDE.md, «Il brano»),
+  e `tests/test_brano.py` dice il file orfano che ne resta. L'altra meta' —
+  il laboratorio che riscriveva il file vecchio, rinominato o cancellato in
+  PGE-ui mentre lo teneva aperto — e' chiusa dalla #21: ora chiede.
 - **Le copie in granulation-studies**
   (DMGiulioRomano/granulation-studies#87-#92): il laboratorio di li' deve
   ricevere anche cio' che e' venuto dopo la review del piano, come il master
