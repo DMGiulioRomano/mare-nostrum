@@ -77,7 +77,9 @@ stesso id. Il laboratorio scrive `stream_id` = nome del file e un `seed`.
    senza riaprire il brano — e' venuta con la review del piano
    (DMGiulioRomano/PGE-ui#206). Dalla stessa review, nella stessa PR,
    DMGiulioRomano/PGE-ui#208: rinominare uno stream importato sposta il suo
-   file, e cancellarlo toglie il file al salvataggio. Round-trip
+   file, e cancellarlo toglie il file al salvataggio; e la rinomina segue il
+   file vecchio finche' il salvataggio non lo cancella, cosi' cio' che il
+   laboratorio ci salva nel mezzo finisce nel file nuovo. Round-trip
    inverso: un file del laboratorio (finestra che cambia nel tempo,
    progressione) torna intatto da PGE-ui (fatto: DMGiulioRomano/PGE-ui#188).
    Il brano: fatto (#8). Il master e' uno solo, quello versionato, spostato in
@@ -95,12 +97,13 @@ stesso id. Il laboratorio scrive `stream_id` = nome del file e un `seed`.
   motore: DMGiulioRomano/PythonGranularEngine#297, con la PR
   DMGiulioRomano/PythonGranularEngine#298; i pallini:
   DMGiulioRomano/PGE-ui#207, con la PR DMGiulioRomano/PGE-ui#209.
-- **Rinominare in PGE-ui uno stream che il laboratorio ha appena salvato**:
-  il file nuovo nasce dalla versione di PGE-ui, e il vecchio resta col lavoro
-  del laboratorio. Il rimedio e' l'ordine dei gesti (CLAUDE.md, «Il brano»),
-  e `tests/test_brano.py` dice il file orfano che ne resta. L'altra meta' —
-  il laboratorio che riscriveva il file vecchio, rinominato o cancellato in
-  PGE-ui mentre lo teneva aperto — e' chiusa dalla #21: ora chiede.
+- **Rinominare o cancellare uno stream su cui l'altro editor sta
+  lavorando** non perde piu' lavoro in silenzio, da nessuno dei due lati: il
+  laboratorio chiede invece di ricreare un file sparito (#21), e PGE-ui,
+  rinominato uno stream, rilegge dentro di lui cio' che il laboratorio salva
+  nel file vecchio (DMGiulioRomano/PGE-ui#206). Resta una domanda, quando
+  tutti e due hanno modifiche, e l'ordine dei gesti che la evita (CLAUDE.md,
+  «Il brano»).
 - **Le copie in granulation-studies**
   (DMGiulioRomano/granulation-studies#87-#92): il laboratorio di li' deve
   ricevere anche cio' che e' venuto dopo la review del piano, come il master

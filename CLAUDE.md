@@ -146,8 +146,8 @@ disco, e partito sulla versione del laboratorio suonerebbe quella mentre PGE-ui
 ne mostra un'altra. La firma e' la stessa nei due editor (`sha256:` dei byte,
 sotto).
 
-La guardia non segue da sola i due gesti che spostano o tolgono un file, e
-le due meta' si chiudono in due posti:
+I due gesti che spostano o tolgono un file la guardia li segue da tutti e
+due i lati:
 
 - **il laboratorio non ricrea un file che non c'e' piu'** (#21). Se PGE-ui ha
   rinominato o cancellato lo stream che il laboratorio tiene aperto, il suo
@@ -155,12 +155,19 @@ le due meta' si chiudono in due posti:
   (tornava orfano): il server risponde `sparito`, e la pagina chiede con due
   bottoni, `ricrea` e `salva con nome…` — per esempio col nome nuovo che gli
   ha dato PGE-ui (vedi «Due editor, un file» sotto);
-- **la rinomina in PGE-ui di uno stream che il laboratorio ha appena
-  salvato** crea ancora il file nuovo dalla versione di PGE-ui, e il vecchio
-  resta col lavoro del laboratorio: PGE-ui non lo cancella e lo dice nel
-  terminale, ma il brano suona il file nuovo. Finche' questa meta' resta
-  aperta, prima si salva in PGE-ui, che rilegge gli stream cambiati dal
-  laboratorio, poi si rinomina.
+- **PGE-ui, rinominato uno stream, segue il file vecchio** finche' il suo
+  salvataggio non lo cancella (DMGiulioRomano/PGE-ui#206). Se il laboratorio
+  lo salva nel mezzo — anche dopo un render di PGE-ui — il salvataggio di
+  PGE-ui lo rilegge dentro lo stream rinominato, crea il file nuovo dalla
+  versione del laboratorio e cancella il vecchio; se in PGE-ui lo stream ha
+  modifiche proprie, chiede di quel file, e con «sovrascrivi» il vecchio
+  resta col lavoro del laboratorio, che `tests/test_brano.py` segnala come
+  orfano. Uno stream *cancellato* in PGE-ui mentre il laboratorio salva il
+  suo file resta su disco per la stessa ragione.
+
+L'ordine che evita ogni domanda resta questo: prima si salva in PGE-ui, che
+rilegge gli stream cambiati dal laboratorio, poi si rinomina o si cancella, e
+nel laboratorio si apre il nome nuovo.
 
 Il laboratorio rende accanto al file che salva: `configs/streams/<id>.aif` e
 `configs/streams/logs/` sono suoi, e git li ignora.
