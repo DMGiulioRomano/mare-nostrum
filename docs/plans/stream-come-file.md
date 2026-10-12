@@ -74,7 +74,10 @@ stesso id. Il laboratorio scrive `stream_id` = nome del file e un `seed`.
    5-6) (fatto: DMGiulioRomano/PGE-ui#183-#187). La guardia copriva solo il
    master: la regola 7 sui file degli stream — firmati alla lettura, guardati
    in salvataggio e render anche quando non si riscrivono, riletti da soli
-   senza riaprire il brano — e' venuta con la review del piano. Round-trip
+   senza riaprire il brano — e' venuta con la review del piano
+   (DMGiulioRomano/PGE-ui#206). Dalla stessa review, nella stessa PR,
+   DMGiulioRomano/PGE-ui#208: rinominare uno stream importato sposta il suo
+   file, e cancellarlo toglie il file al salvataggio. Round-trip
    inverso: un file del laboratorio (finestra che cambia nel tempo,
    progressione) torna intatto da PGE-ui (fatto: DMGiulioRomano/PGE-ui#188).
    Il brano: fatto (#8). Il master e' uno solo, quello versionato, spostato in
@@ -88,7 +91,15 @@ stesso id. Il laboratorio scrive `stream_id` = nome del file e un `seed`.
 - **La cache per stream non vede il seed**, ne' quella del motore ne' i
   pallini di PGE-ui: dopo un cambio di seed del master gli stem in cache
   restano la realizzazione di prima, annunciati come buoni. Fino a che il
-  fingerprint non lo porta, il rimedio e' a mano (CLAUDE.md, «Il brano»).
-- **Cancellare o rinominare** uno stream importato in PGE-ui lascia il file
-  com'era: un file che nessuno nomina, o un id che non e' piu' il nome del
-  file. `tests/test_brano.py` lo dice, il rimedio e' a mano (CLAUDE.md).
+  fingerprint non lo porta, il rimedio e' a mano (CLAUDE.md, «Il brano»). Il
+  motore: DMGiulioRomano/PythonGranularEngine#297, con la PR
+  DMGiulioRomano/PythonGranularEngine#298; i pallini:
+  DMGiulioRomano/PGE-ui#207, con la PR DMGiulioRomano/PGE-ui#209.
+- **Rinominare o cancellare in PGE-ui uno stream che il laboratorio ha
+  appena salvato, o tiene aperto**: la guardia dei due editor non segue un
+  file che si sposta o sparisce. Il rimedio e' l'ordine dei gesti (CLAUDE.md,
+  «Il brano»), e `tests/test_brano.py` dice il file orfano che ne resta.
+- **Le copie in granulation-studies**
+  (DMGiulioRomano/granulation-studies#87-#92): il laboratorio di li' deve
+  ricevere anche cio' che e' venuto dopo la review del piano, come il master
+  che non si apre.

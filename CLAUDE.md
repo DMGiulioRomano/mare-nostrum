@@ -111,21 +111,28 @@ laboratorio scrive solo il file. Un file in `configs/streams/` che il master
 non nomina e' un errore di `tests/test_brano.py`: non suona da nessuna parte.
 Lo e' anche uno stream scritto dentro il master.
 
-Duplica e split di PGE-ui rispettano queste regole da se': la copia di uno
-stream importato e' un file nuovo accanto all'originale, `streams/<id>.yml`
-(DMGiulioRomano/PGE-ui#186), e la coda di uno split e' `streams/<nome>-2.yml`
-(DMGiulioRomano/PGE-ui#187) — col nome del file come id, e senza `stream_id`
-nella voce del master. Due gesti di PGE-ui no, e `tests/test_brano.py` lo dice:
+Duplica, split, rinomina e cancella di PGE-ui rispettano queste regole da
+se'. La copia di uno stream importato e' un file nuovo accanto all'originale,
+`streams/<id>.yml` (DMGiulioRomano/PGE-ui#186), e la coda di uno split e'
+`streams/<nome>-2.yml` (DMGiulioRomano/PGE-ui#187) — col nome del file come
+id, e senza `stream_id` nella voce del master. Dalla DMGiulioRomano/PGE-ui#208
+(nella PR DMGiulioRomano/PGE-ui#206):
 
-- **cancellare** uno stream importato toglie la sua voce dal master, non il
-  file (PGE-ui non cancella file): il file resta in `configs/streams/` senza
-  che nessuno lo nomini (`test_ogni_file_di_streams_e_importato_dal_master`),
-  e si toglie a mano (`git rm`);
-- **rinominare** uno stream importato scrive `stream_id: <nuovo>` nella voce
-  del master e lascia il file col suo nome: il brano suona la realizzazione del
-  nome nuovo, il file aperto da solo nel laboratorio quella del nome vecchio
-  (`test_accanto_a_file_c_e_solo_il_piazzamento`). Per rinominare si rinomina
-  il file (`git mv`, e lo `stream_id` dentro) e il suo `file:` nel master.
+- **rinominare** uno stream importato sposta il file: `streams/<nuovo>.yml`,
+  creato al salvataggio (o prima del render) col suo `stream_id`, e la voce del
+  master senza `stream_id`; il file vecchio si cancella al salvataggio. Se
+  un'altra voce del master importa lo stesso file non si sposta niente e il
+  nome nuovo va nella voce (`stream_id: <nuovo>`): li' il brano suona la
+  realizzazione del nome nuovo e il file aperto da solo quella del vecchio, e
+  `test_accanto_a_file_c_e_solo_il_piazzamento` lo dice;
+- **cancellare** uno stream importato toglie la sua voce dal master, e il
+  salvataggio — non il render, non Save As — cancella il file, se e' ancora
+  quello che PGE-ui ha letto o scritto e nessun altro documento sotto
+  `configs/` lo importa. Un file che resta lo dice il terminale di PGE-ui, e
+  `test_ogni_file_di_streams_e_importato_dal_master`; si toglie a mano
+  (`git rm`).
+
+Un undo in PGE-ui riporta lo stream, e il salvataggio dopo riscrive il file.
 
 **Due editor, un file — su ogni file** (regola 7 del piano). Il laboratorio
 guarda il file che ha aperto (#6); PGE-ui il master e ogni file importato
@@ -138,6 +145,17 @@ render lo rilegge anche se non lo riscrive: il motore legge gli import dal
 disco, e partito sulla versione del laboratorio suonerebbe quella mentre PGE-ui
 ne mostra un'altra. La firma e' la stessa nei due editor (`sha256:` dei byte,
 sotto).
+
+La guardia non copre i due gesti che spostano o tolgono un file. Se il
+laboratorio ha salvato lo stream dopo che PGE-ui l'ha letto, la rinomina crea
+il file nuovo dalla versione di PGE-ui, e il vecchio resta col lavoro del
+laboratorio: PGE-ui non lo cancella e lo dice nel terminale, ma il brano suona
+il file nuovo. E se il laboratorio ha aperto il file vecchio, il suo prossimo
+`salva` o `rendi e ascolta` lo riscrive, perche' per la sua guardia un file
+che non c'e' piu' non e' un file cambiato (#6), e il file torna orfano.
+Quindi prima si salva in PGE-ui, che rilegge gli stream cambiati dal
+laboratorio, poi si rinomina o si cancella; e nel laboratorio si apre il file
+col nome nuovo.
 
 Il laboratorio rende accanto al file che salva: `configs/streams/<id>.aif` e
 `configs/streams/logs/` sono suoi, e git li ignora.
