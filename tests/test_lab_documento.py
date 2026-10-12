@@ -345,6 +345,12 @@ def test_lo_stream_id_e_il_nome_del_file_non_quello_che_c_era_scritto(tmp_path):
     ("/brano/risacca.yaml", "risacca"),
     ("/brano/risacca", "risacca"),          # il server gli mette .yml lui
     ("/brano/ri.sacca.yml", "ri.sacca"),    # il punto nel nome non e' l'estensione
+    # L'estensione si riconosce come il motore riconosce lo `stream_id` di
+    # default di una voce `file:` (`os.path.splitext`), quindi anche in
+    # maiuscolo: con `risacca.YML` il brano usa `risacca`, e il laboratorio
+    # deve scrivere lo stesso id o il file suona un'altra realizzazione.
+    ("/brano/risacca.YML", "risacca"),
+    ("/brano/risacca.Yaml", "risacca"),
 ])
 def test_l_estensione_non_entra_nell_id(tmp_path, path, atteso):
     doc = _lab(tmp_path, _apri(_stream("stream2"), path) + STAMPA)
@@ -497,6 +503,162 @@ n.dispatchEvent(new Event('change'));
 console.log(localStorage.getItem('lab:001-41'));
 """)
     assert got["name"] == "risacca"
+
+
+# --- un documento che non e' uno stream solo ---------------------------------
+# Il laboratorio e' il banco di UNO stream, e scrive un documento con uno
+# stream solo. Aperto un documento che ne ha di piu', o un master che li
+# importa con `file:` (#8), la scrittura sul file aperto ne butterebbe via
+# tutti gli altri: prima di qui succedeva al primo `rendi e ascolta`, senza
+# una domanda.
+#
+# Il "disco" e' fatto di piu' file: `/open` legge quello chiesto, `/render`
+# scrive dove la pagina dice (in `live/`, se non dice niente). La guardia della
+# #6 qui non c'entra: si guarda DOVE va una scrittura.
+
+def _dischi(dischi):
+    return """
+const POST = [];
+const DISCHI = %s;
+fetch = async (rotta, opt) => {
+  if (rotta === '/stato')
+    return {ok: true, json: async () => ({ok: true, sessione: 'S', recenti: []})};
+  const body = JSON.parse(opt.body);
+  POST.push(Object.assign({rotta}, body));
+  if (rotta === 'open')
+    return {ok: true, json: async () => ({ok: true, path: body.path,
+      doc: JSON.parse(JSON.stringify(DISCHI[body.path])), firma: 'sha256:letta'})};
+  if (body.path) DISCHI[body.path] = body.doc;
+  return {ok: true, json: async () => ({ok: true, src: 'x.aif', yaml: 'r.yml',
+    path: body.path || 'live/x.yml', firma: 'sha256:scritta'})};
+};
+""" % json.dumps(dischi)
+
+
+DOVE = """
+const SCRITTURE = () => POST.filter(p => p.rotta === 'render').map(p => p.path || '');
+"""
+
+
+@node
+def test_il_master_del_brano_non_si_apre_come_uno_stream(tmp_path):
+    """La prima voce del master e' un rimando (`file: streams/stream2.yml`),
+    non uno stream. Aperto come uno stream, il master diventava il file del
+    laboratorio, e il primo render lo riscriveva con quella voce sola: nove
+    stream su dieci persi. Non si apre, e resta aperto il documento di prima:
+    la scrittura dopo va li', non sul master."""
+    master = brano_master.leggi(brano_master.MASTER)
+    st = _stream("stream2")
+    got = _lab(tmp_path, _dischi({"/brano/streams/stream2.yml": _documento(st),
+                                  "/brano/mare-nostrum.yml": master}) + DOVE + """
+(async () => {
+  await apriPath('/brano/streams/stream2.yml');
+  await apriPath('/brano/mare-nostrum.yml');
+  const dopo = {file: FILE, info: document.getElementById('labInfo').textContent,
+                id: labDoc().streams[0].stream_id};
+  await labRender();
+  console.log(JSON.stringify({dopo, scritture: SCRITTURE(),
+                              master: DISCHI['/brano/mare-nostrum.yml']}));
+})();
+""")
+    assert got["dopo"]["file"] == "/brano/streams/stream2.yml"
+    assert got["dopo"]["id"] == "stream2"
+    # La riga di stato dice cos'e' e cosa aprire al suo posto.
+    assert "master" in got["dopo"]["info"] and "streams/stream2.yml" in got["dopo"]["info"]
+    assert got["scritture"] == ["/brano/streams/stream2.yml"]
+    assert got["master"] == master
+
+
+@node
+def test_il_master_non_si_apre_neanche_sul_foglio_bianco(tmp_path):
+    """Senza un documento di prima resta il foglio bianco: niente breakpoint,
+    quindi niente da rendere, e il master resta com'e'."""
+    master = brano_master.leggi(brano_master.MASTER)
+    got = _lab(tmp_path, _dischi({"/brano/mare-nostrum.yml": master}) + DOVE + """
+(async () => {
+  await apriPath('/brano/mare-nostrum.yml');
+  const dopo = {file: FILE, bps: bps.length};
+  await labRender();
+  console.log(JSON.stringify({dopo, scritture: SCRITTURE(),
+                              master: DISCHI['/brano/mare-nostrum.yml']}));
+})();
+""")
+    assert got["dopo"] == {"file": "", "bps": 0}
+    assert got["scritture"] == []
+    assert got["master"] == master
+
+
+@node
+def test_un_documento_con_piu_stream_si_apre_sul_primo_e_non_ci_si_riscrive(tmp_path):
+    """Il brano scritto per intero (com'era prima della #8), o un documento di
+    uno studio con piu' stream, si apre sul primo stream, come sempre. Ma quel
+    file non e' piu' quello su cui il laboratorio scrive: e' un foglio da
+    salvare con un nome suo, e il nome proposto e' lo `stream_id` del primo
+    stream, quello che lo fa suonare come nel documento da cui viene. La testa
+    e' quella di un documento di uno stream: la sua durata, non quella del
+    brano intero."""
+    a, b = _stream("stream2"), _stream("stream5")
+    doc = {"duration": 322.074, "bpm": 120, "seed": 1441, "streams": [a, b]}
+    got = _lab(tmp_path, _dischi({"/brano/vecchio.yml": doc}) + DOVE + """
+(async () => {
+  await apriPath('/brano/vecchio.yml');
+  const dopo = {file: FILE, nome: document.getElementById('labName').value,
+                sporco: sporco(), bps: bps.length,
+                info: document.getElementById('labInfo').textContent, doc: labDoc()};
+  await labRender();
+  console.log(JSON.stringify({dopo, scritture: SCRITTURE(),
+                              disco: DISCHI['/brano/vecchio.yml']}));
+})();
+""")
+    dopo = got["dopo"]
+    assert (dopo["file"], dopo["nome"], dopo["sporco"]) == ("", "stream2", True)
+    assert dopo["bps"] > 0
+    assert "2 stream" in dopo["info"]
+    scritto = dopo["doc"]
+    assert scritto["streams"] == [a]
+    assert scritto["duration"] == a["duration"]
+    assert scritto["seed"] == 1441
+    # Il render va in `live/` (path vuoto), e il documento sul disco resta.
+    assert got["scritture"] == [""]
+    assert got["disco"] == doc
+
+
+@pytest.mark.parametrize("testa, stream, attese", [
+    # La testa di un brano scritto da PGE-ui: il titolo e le sue corsie, che
+    # nominano tutti gli stream del brano.
+    ({"title": "brano", "duration": 322.074, "bpm": 120, "seed": 1441,
+      "ui_tracks": [{"id": "t1", "name": "bassi", "streams": ["stream2", "stream5"]}]},
+     "stream2", ["seed", "duration", "bpm", "streams"]),
+    # Senza seed nel documento vale quello dello studio, in testa (#5); senza
+    # durata nello stream (lunga quanto il sample, PGE #205) non se ne scrive
+    # una: quella del documento e' del brano intero.
+    ({"duration": 322.074, "bpm": 120}, None, ["seed", "bpm", "streams"]),
+])
+@node
+def test_lo_stream_preso_da_un_documento_con_piu_stream_ha_la_testa_di_uno_stream(
+        tmp_path, testa, stream, attese):
+    """Il documento che nasce dal primo stream e' un documento del laboratorio
+    come gli altri: in testa il `seed`, la durata dello stream e il `bpm`, nell'ordine
+    in cui li scrive il foglio bianco. Il resto della testa e' del documento
+    da cui viene — la sua durata, il titolo, le corsie di PGE-ui (`ui_tracks`)
+    — e accanto a uno stream solo direbbe il falso: aperto in PGE-ui, le
+    corsie degli altri stream diventerebbero corsie vuote."""
+    a, b = _stream("stream2"), _stream("stream5")
+    if stream is None:
+        a = {k: v for k, v in a.items() if k != "duration"}
+    doc = dict(testa, streams=[a, b])
+    got = _lab(tmp_path, _dischi({"/brano/brano.yml": doc}) + """
+(async () => {
+  await apriPath('/brano/brano.yml');
+  const d = labDoc();
+  console.log(JSON.stringify({chiavi: Object.keys(d), doc: d, seed: L.seed}));
+})();
+""")
+    assert got["chiavi"] == attese
+    scritto = got["doc"]
+    assert scritto["seed"] == testa.get("seed", got["seed"])
+    assert scritto["bpm"] == 120
+    assert scritto.get("duration") == a.get("duration")
 
 
 @node
@@ -1442,6 +1604,48 @@ apriPath('/brano/risacca.yml')
     assert "non e' un documento con stream" in got["info"]
     assert "rileggo" not in got["info"]
     assert got["firma"] == "sha256:letta" and got["reso"] is None
+
+
+# Il gesto che scrive, e cosa succede prima: niente (la rilettura e' da sola)
+# o una modifica propria, e allora la rilettura passa da `ricarica`.
+RIPRESE = {
+    "salva": ("", "fSave()", ""),
+    "rendi": ("", "labRender()", ""),
+    "salva, poi ricarica": (_tocca(0, "pitch.ratio", 0.75), "fSave()",
+                            "document.getElementById('fReload').onclick()"),
+}
+
+
+@node
+@pytest.mark.parametrize("gesto", RIPRESE)
+def test_riletto_un_file_che_ora_ha_piu_stream_non_ci_si_riscrive(tmp_path, gesto):
+    """L'altro editor ha scritto nel file piu' stream (ci ha incollato un
+    brano). La rilettura li apre come `apri`: il primo, senza file, perche'
+    riscriverci sopra uno stream solo butterebbe via gli altri. La scrittura
+    che aspettava era per quel file, quindi non si riprova: un `salva` porta
+    il path con se', e riprovato senza firma riscriveva il file con uno stream
+    solo — proprio cio' che `carica` evita."""
+    mio, _ = _mio_e_altrui()
+    piu = {"seed": 1441, "streams": [_stream("stream2"), _stream("stream5")]}
+    tocca, scrivi, risposta = RIPRESE[gesto]
+    got = _lab(tmp_path, _doppio(mio) + """
+apriPath('/brano/risacca.yml').then(() => {
+  %s
+  scriveAltri(%s);
+  return %s;
+}).then(() => %s).then(() => {
+  console.log(JSON.stringify({
+    rotte: POST.map(p => p.rotta), file: FILE, stream: DISCO.streams.length,
+    info: document.getElementById('labInfo').textContent, reso: ULTIMO || null,
+  }));
+});
+""" % (tocca, json.dumps(piu), scrivi, risposta or "null"))
+    assert got["rotte"] == ["open", "render", "open"]
+    assert got["stream"] == 2
+    assert got["file"] == "" and got["reso"] is None
+    # La riga di stato e' quella di `carica`: cosa c'e' nel file, e perche'
+    # il laboratorio non ci riscrive.
+    assert "2 stream" in got["info"] and "riletto" not in got["info"]
 
 
 # --- i valori a schermo e il render --------------------------------------------

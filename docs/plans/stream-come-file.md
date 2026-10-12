@@ -71,12 +71,40 @@ stesso id. Il laboratorio scrive `stream_id` = nome del file e un `seed`.
    (fatto: #5), guardia sul file cambiato su disco (regola 7; fatto: #6).
 4. **PGE-ui:** import risolti in lettura, file-stream riscritti in
    salvataggio e prima del render, stessa guardia, duplica e split (regole
-   5-6). Qui si decide quale `mare-nostrum.yml` diventa il master (oggi ce ne
-   sono due, e si tengono entrambi). Round-trip inverso da verificare: un
-   file del laboratorio (finestra che cambia nel tempo, progressione) torna
-   intatto da PGE-ui. Il brano: fatto (#8). Il master e' quello versionato,
-   spostato in `configs/mare-nostrum.yml`, dove lo apre PGE-ui, con
-   `seed: 1441`; ognuno dei dieci stream e' in `configs/streams/<id>.yml`,
-   col nome del file uguale allo `stream_id` di prima (vedi CLAUDE.md, «Il
-   brano»).
-5. **PGE-ls** deve conoscere la chiave `file:` (issue a lavoro fatto).
+   5-6) (fatto: DMGiulioRomano/PGE-ui#183-#187). La guardia copriva solo il
+   master: la regola 7 sui file degli stream — firmati alla lettura, guardati
+   in salvataggio e render anche quando non si riscrivono, riletti da soli
+   senza riaprire il brano — e' venuta con la review del piano
+   (DMGiulioRomano/PGE-ui#206). Dalla stessa review, nella stessa PR,
+   DMGiulioRomano/PGE-ui#208: rinominare uno stream importato sposta il suo
+   file, e cancellarlo toglie il file al salvataggio; e la rinomina segue il
+   file vecchio finche' il salvataggio non lo cancella, cosi' cio' che il
+   laboratorio ci salva nel mezzo finisce nel file nuovo. Round-trip
+   inverso: un file del laboratorio (finestra che cambia nel tempo,
+   progressione) torna intatto da PGE-ui (fatto: DMGiulioRomano/PGE-ui#188).
+   Il brano: fatto (#8). Il master e' uno solo, quello versionato, spostato in
+   `configs/mare-nostrum.yml`, dove lo apre PGE-ui, con `seed: 1441`; ognuno
+   dei dieci stream e' in `configs/streams/<id>.yml`, col nome del file
+   uguale allo `stream_id` di prima (vedi CLAUDE.md, «Il brano»).
+5. **PGE-ls** deve conoscere la chiave `file:` (DMGiulioRomano/PGE-ls#65).
+
+## Cosa resta
+
+- **La cache per stream non vede il seed**, ne' quella del motore ne' i
+  pallini di PGE-ui: dopo un cambio di seed del master gli stem in cache
+  restano la realizzazione di prima, annunciati come buoni. Fino a che il
+  fingerprint non lo porta, il rimedio e' a mano (CLAUDE.md, «Il brano»). Il
+  motore: DMGiulioRomano/PythonGranularEngine#297, con la PR
+  DMGiulioRomano/PythonGranularEngine#298; i pallini:
+  DMGiulioRomano/PGE-ui#207, con la PR DMGiulioRomano/PGE-ui#209.
+- **Rinominare o cancellare uno stream su cui l'altro editor sta
+  lavorando** non perde piu' lavoro in silenzio, da nessuno dei due lati: il
+  laboratorio chiede invece di ricreare un file sparito (#21), e PGE-ui,
+  rinominato uno stream, rilegge dentro di lui cio' che il laboratorio salva
+  nel file vecchio (DMGiulioRomano/PGE-ui#206). Resta una domanda, quando
+  tutti e due hanno modifiche, e l'ordine dei gesti che la evita (CLAUDE.md,
+  «Il brano»).
+- **Le copie in granulation-studies**
+  (DMGiulioRomano/granulation-studies#87-#92): il laboratorio di li' deve
+  ricevere anche cio' che e' venuto dopo la review del piano, come il master
+  che non si apre.
