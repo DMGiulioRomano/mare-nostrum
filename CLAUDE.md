@@ -231,7 +231,7 @@ prima, non quello di qualcun altro. Se la porta e' di un processo estraneo non
 si tocca niente e si dice chi e' (`libera_porta` in `serve.py`, verificata in
 `tests/test_serve.py`).
 
-**Piu' laboratori in parallelo, ognuno su un file.** `make serve STUDY=<scala>
+**Piu' laboratori in parallelo, ognuno su un file.** `make serve
 FILES="stream2 stream7"` (nomi cercati in `DIR`, default `configs/streams`,
 `.yml` facoltativo; un nome con `/` e' un path) o `DIR=configs/streams` (tutti
 i suoi `.yml`) lancia un `granstudies serve --apri <file>` per file, sulle porte
@@ -242,6 +242,13 @@ sul foglio bianco — salvo una bozza della stessa sessione: un refresh riprende
 il lavoro. Bozze separate per porta (localStorage e' per origine); due istanze
 sullo stesso studio condividono `.recenti.json` e `live/`. Verificato in
 `tests/test_serve.py`, `tests/test_lab_documento.py`, `tests/test_serve_make.py`.
+
+**`STUDY` per `make serve` e' facoltativo** (`SERVE_STUDY`, default
+`001-41-duration-pitch`, in `make/studies.mk`). Aprendo un file lo studio
+decide solo le tacche dei menu `▾`: seed, id e parametri sono del file, e
+tutti gli studi prendono i sample da `samples/`. Il default e' una variabile
+di `serve` (e di `graph` che lo precede), non globale: `make sweep` o `make
+graph` senza `STUDY` falliscono come prima.
 
 `make serve STUDY=<scala>` non e' piu' `http.server`: e' `granstudies serve`,
 che serve la pagina e accetta `POST /render`. La pagina **è** il laboratorio:
