@@ -14,8 +14,9 @@ pytestmark = pytest.mark.skipif(shutil.which("make") is None, reason="serve make
 
 
 def _lanci(**var):
-    out = subprocess.run(["make", "-n", "serve", "STUDY=001-41-duration-pitch"]
-                         + [f"{k}={v}" for k, v in var.items()],
+    var.setdefault("STUDY", "001-41-duration-pitch")
+    out = subprocess.run(["make", "-n", "serve"]
+                         + [f"{k}={v}" for k, v in var.items() if v is not None],
                          cwd=ROOT, capture_output=True, text=True, check=True).stdout
     riga = next(l for l in out.splitlines() if "--apri" in l or "granstudies serve" in l)
     return riga
@@ -41,3 +42,22 @@ def test_dir_apre_tutti_i_suoi_yaml():
 def test_senza_file_e_il_laboratorio_di_sempre():
     riga = _lanci()
     assert "--apri" not in riga and "--port 8000" in riga
+
+
+def test_senza_study_vale_quello_di_default():
+    """Aprendo un file lo studio decide solo le tacche dei menu: `make serve
+    FILES=stream2` basta, senza STUDY."""
+    assert "granstudies serve 001-41-duration-pitch " in _lanci(STUDY=None, FILES="stream2")
+    assert "granstudies serve 001-41-duration-pitch " in _lanci(STUDY=None)
+
+
+def test_lo_study_detto_vince_sul_default():
+    riga = _lanci(STUDY="001-41-duration-fill-factor", FILES="stream2")
+    assert "granstudies serve 001-41-duration-fill-factor " in riga
+
+
+def test_il_default_non_esce_da_serve():
+    """Gli altri target senza STUDY falliscono come prima: il default non e'
+    uno studio scelto per uno sweep."""
+    out = subprocess.run(["make", "-n", "graph"], cwd=ROOT, capture_output=True, text=True).stdout
+    assert "granstudies graph 001-41-duration-pitch" not in out

@@ -46,6 +46,8 @@ help:
 	@echo "  make render-final STUDY=... renderizza il brano finale"
 	@echo "  make sv STUDY=...            CSV envelope per Sonic Visualiser"
 	@echo "  make all-study STUDY=...    pipeline completa (sweep→stack→render)"
+	@echo "  make serve [FILES=...|DIR=...] il laboratorio: un'istanza per file (FILES=\"stream2 stream7\", DIR=configs/streams)"
+	@echo "                              STUDY=... facoltativo (default 001-41-duration-pitch: solo le tacche dei menu)"
 	@echo "  make brano                  renderizza il brano (configs/mare-nostrum.yml -> generated/brano/)"
 	@echo "                              flag: FORMAT=wav|flac VISUALIZE=1 SV=1 JOBS=n RENDERER=numpy|csound FORCE=1"
 	@echo "  make samples               ricrea i symlink di samples/ (override: REFS=...)"

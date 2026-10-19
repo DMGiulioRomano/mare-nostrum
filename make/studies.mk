@@ -70,6 +70,13 @@ DIR ?=
 FILES ?=
 SERVE_DIR = $(or $(DIR),configs/streams)
 SERVE_FILES = $(if $(FILES),$(foreach f,$(FILES),$(if $(findstring /,$(f)),$(f),$(SERVE_DIR)/$(f:.yml=).yml)),$(if $(DIR),$(sort $(wildcard $(DIR)/*.yml))))
+# Lo studio del laboratorio, se non lo si dice: aprendo un file (FILES, DIR)
+# decide solo le tacche dei menu, non il suono (seed, id e parametri sono del
+# file), e tutti gli studi prendono i sample da samples/. Vale solo per
+# `serve` (e `graph`, che lo precede): gli altri target senza STUDY falliscono
+# come prima.
+SERVE_STUDY ?= 001-41-duration-pitch
+serve: STUDY := $(or $(STUDY),$(SERVE_STUDY))
 .PHONY: serve
 serve: graph
 ifeq ($(strip $(SERVE_FILES)),)
