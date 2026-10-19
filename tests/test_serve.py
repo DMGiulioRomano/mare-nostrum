@@ -115,8 +115,8 @@ def test_si_scrive_solo_dove_l_utente_ha_scelto_nel_pannello(tmp_path, monkeypat
     out = S.render_doc(DOC, "x", str(studio), str(studio), render=False, path=str(fuori))
     assert out["ok"] and out["path"] == str(fuori)
     assert "duration: [[0, 0.001], [1, 0.02]]" in fuori.read_text()
-    # Fuori dallo studio il path resta assoluto: la pagina non puo' servirlo
-    # via HTTP, e spacciarlo per relativo darebbe un 404 silenzioso.
+    # Fuori dallo studio il path resta assoluto: spacciarlo per relativo
+    # darebbe un 404. L'audio accanto lo serve `translate_path` (sotto).
     assert out["yaml"] == str(fuori)
 
 
@@ -180,6 +180,40 @@ def test_i_sample_si_servono_ma_solo_quelli(tmp_path):
         assert get("/samples/manca.wav")[0] == 404
     finally:
         srv.shutdown()
+
+
+def test_l_audio_accanto_a_un_file_scelto_si_serve(tmp_path):
+    """Un file aperto fuori dallo studio (`configs/streams/stream2.yml`) si
+    rende accanto, e la pagina chiede l'audio col path assoluto che torna da
+    `render_doc`: era un 404, e `decodeAudioData` ne faceva un EncodingError.
+    Si serve solo l'`.aif` accanto a un file che un pannello ha autorizzato."""
+    import http.client
+    import threading
+    from urllib.parse import quote
+
+    studio = tmp_path / "generated" / "s"
+    studio.mkdir(parents=True)
+    streams = tmp_path / "con spazio" / "streams"
+    streams.mkdir(parents=True)
+    (streams / "risacca.YML").write_text("x")
+    (streams / "risacca.aif").write_bytes(b"FORM")
+    (streams / "altro.aif").write_bytes(b"FORM")
+    S._AUTORIZZATI.add(os.path.abspath(str(streams / "risacca.YML")))
+    srv = S.crea(str(studio), str(tmp_path), 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        def get(p):
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
+            c.request("GET", quote(str(p)) + "?t=1")
+            r = c.getresponse()
+            return r.status, r.read()
+
+        assert get(streams / "risacca.aif") == (200, b"FORM")
+        assert get(streams / "altro.aif")[0] == 404        # nessun pannello
+        assert get(streams / "risacca.YML")[0] == 404      # solo l'audio
+    finally:
+        srv.shutdown()
+        S._AUTORIZZATI.clear()
 
 
 # --- la porta occupata: un nostro orfano si chiude, un estraneo no ---------

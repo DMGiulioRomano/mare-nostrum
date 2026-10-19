@@ -503,6 +503,14 @@ class Handler(SimpleHTTPRequestHandler):
         renderizzare qualcosa.
         """
         p = path.split("?")[0].split("#")[0]
+        # L'audio di un file aperto fuori dallo studio (`configs/streams/`):
+        # `render_doc` lo scrive accanto allo YAML e la pagina lo chiede col
+        # path assoluto. Si serve solo l'.aif di un file che un pannello ha
+        # autorizzato, cioe' quello che il laboratorio stesso ha reso li'.
+        full = os.path.abspath(unquote(p))
+        if full.endswith(".aif") and any(
+                os.path.splitext(a)[0] + ".aif" == full for a in _AUTORIZZATI):
+            return full
         if not p.startswith(SAMPLES):
             return super().translate_path(path)
         base = os.path.join(self.repo_root, "samples")

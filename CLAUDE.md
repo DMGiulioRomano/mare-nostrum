@@ -170,7 +170,10 @@ rilegge gli stream cambiati dal laboratorio, poi si rinomina o si cancella, e
 nel laboratorio si apre il nome nuovo.
 
 Il laboratorio rende accanto al file che salva: `configs/streams/<id>.aif` e
-`configs/streams/logs/` sono suoi, e git li ignora.
+`configs/streams/logs/` sono suoi, e git li ignora. Stanno fuori dalla cartella
+servita, e il server li da' alla pagina col loro path assoluto, ma solo l'`.aif`
+accanto a un file che un pannello ha autorizzato (`translate_path` in
+`serve.py`): prima era un 404, che la pagina leggeva come un audio guasto.
 
 **PGE-ui sul brano** (#1). `cd mare-nostrum && pge-ui` apre il brano senza
 flag: il workspace e' la cwd, e il motore e' il submodule `engine/`, lo stesso
