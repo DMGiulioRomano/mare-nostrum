@@ -3456,7 +3456,15 @@ async function analyse(url) {
   let data = cache.get(url);
   if (!data) {
     try {
-      const buf = await ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+      const r = await fetch(url);
+      // Un 404 non e' un problema di decodifica: detto come tale, il
+      // messaggio sotto mandava a cercare un file:// che non c'era.
+      if (!r.ok) {
+        status.textContent = "il server non da' l'audio (" + r.status + "): " +
+                             url.split("?")[0];
+        return;
+      }
+      const buf = await ctx.decodeAudioData(await r.arrayBuffer());
       const mono = mixdown(buf);
       data = {duration: buf.duration, rate: buf.sampleRate, mono, buf, url};
       cache.set(url, data);
