@@ -59,10 +59,27 @@ explore: _require-study
 # quindi la si serve. Non e' piu' `http.server` perche' il laboratorio del
 # singolo stream fa `POST /render`: vedi `granstudies.serve`.
 PORT ?= 8000
+# Un laboratorio per file, in parallelo, su porte in fila da PORT:
+#   make serve STUDY=... FILES="stream2 stream7"    nomi in DIR (o path)
+#   make serve STUDY=... DIR=configs/streams        tutti gli .yml di DIR
+# Un nome senza `/` si cerca in DIR (default configs/streams), e `.yml` si
+# puo' omettere. Ctrl-C li chiude tutti. Senza FILES ne' DIR: un laboratorio
+# solo, sul foglio bianco, come sempre.
+# ponytail: path con spazi non reggono (liste di make), e qui non ce ne sono.
+DIR ?=
+FILES ?=
+SERVE_DIR = $(or $(DIR),configs/streams)
+SERVE_FILES = $(if $(FILES),$(foreach f,$(FILES),$(if $(findstring /,$(f)),$(f),$(SERVE_DIR)/$(f:.yml=).yml)),$(if $(DIR),$(sort $(wildcard $(DIR)/*.yml))))
 .PHONY: serve
 serve: graph
+ifeq ($(strip $(SERVE_FILES)),)
 	@($(PY) -m granstudies serve $(STUDY) --port $(PORT) & \
 	  sleep 1; open -a Safari "http://localhost:$(PORT)/graph.html"; wait)
+else
+	@(port=$(PORT); for f in $(SERVE_FILES); do test -f "$$f" || { echo "[serve] $$f non esiste." >&2; exit 1; }; done; \
+	  for f in $(SERVE_FILES); do $(PY) -m granstudies serve $(STUDY) --port $$port --apri "$$f" & port=$$((port+1)); done; \
+	  sleep 1; port=$(PORT); for f in $(SERVE_FILES); do open -a Safari "http://localhost:$$port/graph.html"; port=$$((port+1)); done; wait)
+endif
 
 .PHONY: describe
 describe: _require-study $(MARKER)

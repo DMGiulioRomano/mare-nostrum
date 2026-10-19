@@ -696,7 +696,7 @@ def _finestre() -> dict:
     return out
 
 
-def cmd_serve(study: str, port: int = 8000) -> int:
+def cmd_serve(study: str, port: int = 8000, apri: str = "") -> int:
     """Serve la pagina dello studio, con il render on demand del laboratorio.
 
     ``python -m http.server`` non basta piu': la pagina non si limita a
@@ -710,8 +710,11 @@ def cmd_serve(study: str, port: int = 8000) -> int:
         print(f"[serve] {gen_root} non esiste: esegui prima 'sweep {study}'.",
               file=sys.stderr)
         return 1
+    if apri and not os.path.isfile(apri):
+        print(f"[serve] {apri} non esiste.", file=sys.stderr)
+        return 1
     try:
-        server = crea(gen_root, REPO_ROOT, port)
+        server = crea(gen_root, REPO_ROOT, port, apri)
     except OSError as e:
         if e.errno != errno.EADDRINUSE:
             raise
@@ -724,11 +727,12 @@ def cmd_serve(study: str, port: int = 8000) -> int:
             return 1
         print(f"[serve] chiuso il server orfano {vecchio} che teneva la porta {port}")
         try:
-            server = crea(gen_root, REPO_ROOT, port)
+            server = crea(gen_root, REPO_ROOT, port, apri)
         except OSError:
             print(f"[serve] {porta_occupata(port)}", file=sys.stderr)
             return 1
-    print(f"[serve] http://localhost:{port}/graph.html   (Ctrl-C per fermare)")
+    print(f"[serve] http://localhost:{port}/graph.html   (Ctrl-C per fermare)"
+          + (f"   {os.path.relpath(apri, REPO_ROOT)}" if apri else ""))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -872,6 +876,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("serve", help="serve la pagina dello studio (con render on demand)")
     sp.add_argument("study")
     sp.add_argument("--port", type=int, default=8000)
+    sp.add_argument("--apri", default="", help="il file su cui parte il laboratorio")
 
     pr = sub.add_parser("prune", help="elenca (o cancella) l'audio senza piu' uno YAML")
     pr.add_argument("study")
@@ -1011,7 +1016,7 @@ def _run(args) -> int:
     if args.command == "graph":
         return cmd_graph(args.study)
     if args.command == "serve":
-        return cmd_serve(args.study, args.port)
+        return cmd_serve(args.study, args.port, args.apri)
     if args.command == "prune":
         return cmd_prune(args.study, args.apply, args.stems)
     if args.command == "where":

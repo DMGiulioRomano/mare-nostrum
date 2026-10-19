@@ -206,6 +206,11 @@ SESSIONE = f"{os.getpid()}-{time.time()}"
 # recente si potrebbe elencare ma non aprire.
 RECENTI = 3
 _RECENTI: list = []
+
+# Il file su cui il laboratorio parte (`--apri`, da `make serve FILES=` o
+# `DIR=`). Il comando e' la scelta dell'utente come un pannello: si autorizza,
+# e `/stato` lo dice alla pagina, che lo apre invece del foglio bianco.
+_APRI = ""
 _RECENTI_PATH = ""
 
 
@@ -458,7 +463,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._json({"ok": False, "error": f"richiesta non valida: {e}"}, 400)
             return
         if rotta == "/stato":
-            self._json({"ok": True, "sessione": SESSIONE, "recenti": list(_RECENTI)})
+            self._json({"ok": True, "sessione": SESSIONE, "recenti": list(_RECENTI),
+                        "apri": _APRI})
             return
         if rotta == "/pick":
             # Si parte dalla cartella del file aperto, o da quella dello studio.
@@ -541,15 +547,20 @@ class Handler(SimpleHTTPRequestHandler):
         pass                                 # la console del terminale resta pulita
 
 
-def crea(gen_root: str, repo_root: str, port: int = 8000) -> ThreadingHTTPServer:
+def crea(gen_root: str, repo_root: str, port: int = 8000,
+         apri: str = "") -> ThreadingHTTPServer:
     """Prende la porta. Separata da ``serve`` perche' e' qui che si fallisce:
     l'URL va stampato dopo, non prima di sapere se la porta e' libera.
 
     Threading: un render dura secondi o minuti e con un server a thread
     singolo bloccherebbe anche il caricamento dell'audio gia' pronto.
     """
+    global _APRI
     Handler.repo_root = os.path.abspath(repo_root)
     recenti_carica(gen_root)
+    _APRI = os.path.abspath(apri) if apri else ""
+    if _APRI:
+        _AUTORIZZATI.add(_APRI)
     return ThreadingHTTPServer(("127.0.0.1", port), partial(Handler, directory=gen_root))
 
 

@@ -231,6 +231,18 @@ prima, non quello di qualcun altro. Se la porta e' di un processo estraneo non
 si tocca niente e si dice chi e' (`libera_porta` in `serve.py`, verificata in
 `tests/test_serve.py`).
 
+**Piu' laboratori in parallelo, ognuno su un file.** `make serve STUDY=<scala>
+FILES="stream2 stream7"` (nomi cercati in `DIR`, default `configs/streams`,
+`.yml` facoltativo; un nome con `/` e' un path) o `DIR=configs/streams` (tutti
+i suoi `.yml`) lancia un `granstudies serve --apri <file>` per file, sulle porte
+da `PORT` in su, e apre una scheda per ognuno; Ctrl-C li chiude tutti. Il file
+di `--apri` e' autorizzato come se uscisse da un pannello (il comando e' la
+scelta dell'utente), e `/stato` lo dice alla pagina, che parte li' invece che
+sul foglio bianco — salvo una bozza della stessa sessione: un refresh riprende
+il lavoro. Bozze separate per porta (localStorage e' per origine); due istanze
+sullo stesso studio condividono `.recenti.json` e `live/`. Verificato in
+`tests/test_serve.py`, `tests/test_lab_documento.py`, `tests/test_serve_make.py`.
+
 `make serve STUDY=<scala>` non e' piu' `http.server`: e' `granstudies serve`,
 che serve la pagina e accetta `POST /render`. La pagina **è** il laboratorio:
 si compone UN solo stream e lo si sente subito. Ogni `+ breakpoint` salva uno

@@ -579,3 +579,40 @@ def test_il_giro_vero_riletto_e_reso_non_riscrive_il_file_dell_altro_editor(tmp_
         assert open(path).read() == ALTRO_EDITOR
     finally:
         srv.shutdown()
+
+
+# --- `--apri`: il laboratorio parte su un file (make serve FILES= / DIR=) ----
+
+def test_il_file_di_partenza_e_autorizzato_e_detto_alla_pagina(tmp_path):
+    """`make serve FILES=stream2` apre il laboratorio su quel file: il
+    comando e' la scelta dell'utente come un pannello, quindi il file si
+    legge, si riscrive e il suo audio si serve; e `/stato` lo dice alla
+    pagina, che lo apre invece del foglio bianco."""
+    import http.client
+    import json
+    import threading
+
+    studio = tmp_path / "generated" / "s"
+    studio.mkdir(parents=True)
+    f = tmp_path / "streams" / "stream2.yml"
+    f.parent.mkdir()
+    f.write_text("streams: []\n")
+    srv = S.crea(str(studio), str(tmp_path), 0, apri=str(f))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
+        c.request("POST", "/stato", body=b"{}")
+        assert json.loads(c.getresponse().read())["apri"] == str(f)
+        assert S.autorizzato(str(f))
+    finally:
+        srv.shutdown()
+        S._AUTORIZZATI.clear()
+        S._APRI = ""
+
+
+def test_senza_file_di_partenza_la_pagina_parte_dal_foglio_bianco(tmp_path):
+    studio = tmp_path / "s"
+    studio.mkdir()
+    srv = S.crea(str(studio), str(tmp_path), 0)
+    srv.server_close()
+    assert S._APRI == ""

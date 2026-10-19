@@ -1983,3 +1983,41 @@ def test_sovrascrivi_di_un_salva_non_chiede_dei_valori_a_schermo(tmp_path):
     assert got["chiesto"] == []
     assert got["sovrascritti"] == 1 and got["reso"] is None
     assert got["campo"] == "0.75" and got["domanda"] is False
+
+
+# --- `make serve FILES=` / `DIR=`: il laboratorio parte su un file ------------
+
+def _server_che_apre(st, path):
+    """`/stato` dice il file di partenza, `/open` lo restituisce."""
+    return """
+fetch = async (rotta) => ({ok: true, json: async () => rotta === "/stato"
+  ? {ok: true, sessione: 'S', recenti: [], apri: %s}
+  : {ok: true, doc: %s, path: %s, firma: 'sha256:x'}});
+""" % (json.dumps(path), json.dumps(_documento(st)), json.dumps(path))
+
+
+ATTENDI = "setTimeout(() => console.log(JSON.stringify({file: FILE, doc: labDoc()})), 50);\n"
+
+
+@node
+def test_il_laboratorio_parte_sul_file_del_comando(tmp_path):
+    st = _stream("stream7")
+    got = _lab(tmp_path, ATTENDI, prima=_server_che_apre(st, "/brano/stream7.yml"))
+    assert got["file"] == "/brano/stream7.yml"
+    assert got["doc"]["streams"][0]["sample"] == st["sample"]
+
+
+@node
+def test_un_refresh_riprende_la_bozza_e_non_riapre_il_file(tmp_path):
+    """Il file di partenza vale all'avvio del server: un refresh a meta'
+    lavoro riprende la bozza, come senza `--apri`."""
+    st = _stream("stream2")
+    bozza = _lab(tmp_path, "carica(%s, '/brano/stream2.yml');\n" % json.dumps(_con_testa(st))
+                 + _tocca(0, "pitch.ratio", 0.75)
+                 + "console.log(localStorage.getItem('lab:001-41'));\n")
+    bozza["sess"] = "S"
+    prima = ("localStorage.setItem('lab:001-41', %s);\n" % json.dumps(json.dumps(bozza))
+             + _server_che_apre(_stream("stream7"), "/brano/stream7.yml"))
+    got = _lab(tmp_path, ATTENDI, prima=prima)
+    assert got["file"] == "/brano/stream2.yml"
+    assert got["doc"]["streams"][0]["pitch"]["ratio"][0] == [0, 0.75]

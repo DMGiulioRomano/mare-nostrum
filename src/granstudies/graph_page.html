@@ -2528,7 +2528,12 @@ async function avvio() {
   // La bozza vale solo per la sessione che l'ha scritta: un refresh riprende
   // il lavoro non salvato, un `make serve` nuovo apre un foglio bianco.
   if (BOZZA0 && BOZZA0.sess && BOZZA0.sess === SESSIONE) ripristina();
-  else try { localStorage.removeItem(BOZZA); } catch (e) { /* pazienza */ }
+  else {
+    try { localStorage.removeItem(BOZZA); } catch (e) { /* pazienza */ }
+    // `make serve FILES=` / `DIR=`: il server e' partito su un file, e il
+    // laboratorio si apre li' invece che sul foglio bianco.
+    if (s && s.apri) await rileggi(s.apri);
+  }
   segna();
 }
 
