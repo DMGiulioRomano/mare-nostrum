@@ -88,14 +88,14 @@ Le decisioni, prese nella #8:
   Prima il brano non aveva seed, e ogni render era un'altra realizzazione: col
   seed e' riproducibile, ma **diverso da tutti i render ascoltati finora**, e va
   ascoltato prima di darlo per buono.
-  La cache per stream di `make brano` non vede il seed (il fingerprint e' dello
-  stream, il seed sta in testa al master): il primo render dopo un cambio di
-  seed va fatto con **`make brano FORCE=1`**, o gli stem gia' in cache restano
-  la realizzazione di prima, annunciati come nuovi. In PGE-ui vale lo stesso:
-  il suo render incrementale ha una cache sua (`cache/` del workspace), cieca
-  al seed come quella di `make brano`, quindi dopo un cambio di seed si rende
-  una volta con **«incremental cache»** spento (il popover del render), e i
-  pallini verdi non vanno creduti — neanche loro vedono il seed.
+  La cache per stream vede il seed del master (DMGiulioRomano/PythonGranularEngine#297,
+  nel motore da `1188dbc`): il fingerprint lo contiene quando il documento ne
+  dichiara uno, quindi dopo un cambio di seed `make brano` rifa' da solo gli
+  stem, senza `FORCE=1`. Lo stesso per PGE-ui, che rende col `--cache` del
+  motore (la sua `cache/` del workspace), e i suoi pallini leggono dal motore
+  che il seed e' un asse del fingerprint (DMGiulioRomano/PGE-ui#207). Su un
+  motore di prima della #297 la cache era cieca al seed: li' serviva
+  `make brano FORCE=1`, e in PGE-ui «incremental cache» spento.
 
 **Una chiave, una casa.** Il master tiene il piazzamento — `onset`, `mute`,
 `solo`, ed eventualmente `stream_id` — e la testa del brano (`seed`,

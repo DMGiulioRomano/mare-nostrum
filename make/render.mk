@@ -37,9 +37,9 @@ BRANO_OUT ?= $(BRANO_DIR)/$(BRANO)$(BRANO_EXT)
 BRANO_MODE = $(if $(SV),--export-sv,--per-stream --cache --cache-dir $(BRANO_DIR)/cache)
 
 # FORCE=1 butta la cache e rifa' ogni stem. Serve quando cambia qualcosa che il
-# fingerprint per stream non vede: il `seed:` del master non ci entra, quindi
-# gli stem resi prima del `seed: 1441` (#8) restano "clean" e suonano la
-# realizzazione di allora finche' non li si rifa'.
+# fingerprint per stream non vede (il sample cambiato a parita' di nome, per
+# esempio). Il `seed:` del master ci entra dalla PythonGranularEngine#297: un
+# cambio di seed rifa' gli stem da se'.
 
 # Tutti i core: l'`auto` dell'engine ne lascia uno libero (core-1, cli.py:112).
 # getconf e' POSIX, funziona su macOS e Linux; se manca si ricade su 'auto'.
