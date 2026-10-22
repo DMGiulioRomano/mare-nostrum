@@ -1,13 +1,13 @@
 # stream: streams/stream26.yml
-# saved:   2026-10-22T00:02:04.177Z
+# saved:   2026-10-22T00:09:57.240Z
 # editor:  PGE-ui
 
 seed: 1441
-duration: 249.225
+duration: 140.992
 bpm: 120
 streams:
   - stream_id: stream26
-    duration: 249.225
+    duration: 140.992
     sample: 001-47_0-15_0.wav
     time_mode: normalized
     distribution_mode: uniform
@@ -17,7 +17,7 @@ streams:
       duration: [[0, 0.006]]
       duration_range: 0.001
       envelope: bartlett
-      read_direction: [[0, 1], [0.07707, -1], [0.09393, 1], [0.11645, -1], [0.14403, 1], [0.2061, 1], [0.25155, -1], [0.25921, 1], [0.25921, -1]]
+      read_direction: [[0, 1], [0.13623, -1], [0.16604, 1], [0.20584, -1], [0.2546, 1], [0.36431, 1], [0.44465, -1], [0.45819, 1], [0.45819, -1]]
     pointer:
       start: 0
       speed_ratio: 0.1

@@ -1,23 +1,23 @@
 # stream: streams/stream27.yml
-# saved:   2026-10-22T00:03:21.946Z
+# saved:   2026-10-22T00:09:57.240Z
 # editor:  PGE-ui
 
 seed: 1441
-duration: 249.225
+duration: 151.854
 bpm: 120
 streams:
   - stream_id: stream27
-    duration: 249.225
+    duration: 151.854
     sample: 001-47_0-15_0.wav
     time_mode: normalized
     distribution_mode: uniform
     fill_factor: 4
     distribution: 1
     grain:
-      duration: [[0, 0.0004], [0.3493, 0.0007], [0.6645, 0.011]]
+      duration: [[0, 0.0004], [0.57328, 0.0007], [1, 0.0092]]
       duration_range: 0.001
       envelope: rectangle
-      read_direction: [[0, 1], [0.07707, -1], [0.09393, 1], [0.11645, -1], [0.14403, 1], [0.2061, 1], [0.25155, -1], [0.25921, 1], [0.25921, -1]]
+      read_direction: [[0, 1], [0.12649, -1], [0.15416, 1], [0.19112, -1], [0.23638, 1], [0.33825, 1], [0.41285, -1], [0.42542, 1], [0.42542, -1]]
     pointer:
       start: 0
       speed_ratio: 0.1
@@ -28,7 +28,7 @@ streams:
       range: 0
     pan: 0
     pan_range: 360
-    volume: [[0, -36], [0.1, -9]]
+    volume: [[0, -36], [0.16412, -9]]
     voices:
       num_voices: 2
       pitch:
