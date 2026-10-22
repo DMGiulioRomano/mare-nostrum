@@ -1,31 +1,448 @@
-# Il brano (#8): il master. Ogni stream e' un file in streams/, un
-# documento del laboratorio; qui ci sono la testa del brano (seed, duration,
-# bpm) e, accanto a ogni `file:`, solo il piazzamento (onset, mute, solo,
-# stream_id). Vedi CLAUDE.md, "Il brano".
+# project: mare-nostrum
+# saved:   2026-10-22T00:08:18.694Z
+# editor:  PGE-ui
 
-duration: 322.074
+duration: 998.833
 bpm: 120
 seed: 1441
 streams:
   - file: streams/stream2.yml
     onset: 0
-  - file: streams/stream2-norm.yml
-    onset: 0
-    mute: true
   - file: streams/stream3.yml
     onset: 0
+  - file: streams/stream26.yml
+    onset: 425.729
   - file: streams/stream9.yml
     onset: 11.061
+  - file: streams/stream27.yml
+    onset: 415.01
   - file: streams/stream5.yml
     onset: 43.761
   - file: streams/stream6.yml
     onset: 56.679
+  - file: streams/stream25.yml
+    onset: 414.084
   - file: streams/stream7.yml
     onset: 112.003
   - file: streams/stream8.yml
-    onset: 159.003
-  - file: streams/stream4.yml
-    onset: 241.217
+    onset: 146.003
+  - stream_id: stream24
+    onset: 278.634
+    duration: 87.416
+    sample: 016.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: [[0, 0.8], [0.1844, 0.61], [0.2874, 0.72], [0.3602, 0.7], [0.5158, 0.9], [0.625, 0.78], [0.7965, 0.88], [1, 0.8]]
+    distribution: 0.5
+    grain:
+      duration: 0.0001
+      duration_range: 0.0001
+      envelope: all
+    pointer:
+      start: 0.11
+      speed_ratio: 0.1
+      loop_unit: normalized
+      offset_range: 0.005
+    pitch:
+      ratio: 8
+      range: 1.7818
+    pan: 0
+    volume: -12
+    voices:
+      num_voices: 4
+      scatter: 1
+      pointer:
+        pointer_range: 0.1
+        strategy: stochastic
+      pan:
+        spread: 90
+        strategy: stochastic
+    deviation_probability: 40
   - file: streams/stream10.yml
-    onset: 120.03
-    mute: true
+    onset: 107.03
+  - stream_id: stream12
+    onset: 878.43
+    duration: 110.403
+    sample: 002.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    range_always_active: true
+    fill_factor: 2
+    distribution: 1
+    grain:
+      duration: [[0, 0.001], [0.2791, 0.0031], [1, 0.05]]
+      envelope: hanning
+    pointer:
+      start: 0.2
+      speed_ratio: 0.4
+      loop_unit: normalized
+      offset_range: 0.001
+    pitch:
+      ratio: 0.7
+    pan: 0
+    volume: 0
+    voices:
+      num_voices: [[0.1629, 1], [1, 12.74]]
+      pitch:
+        chord: maj13s11
+        inversion: 3
+        strategy: chord
+      onset_offset:
+        max_offset: 10
+        strategy: stochastic
+      pointer:
+        pointer_range: 1
+        strategy: stochastic
+        normalized: true
+      pan:
+        spread: [[0, 60], [0.4798, 60], [1, 180]]
+        strategy: stochastic
+    deviation_probability: [[0.4967, 0], [0.99663, 100]]
+  - stream_id: stream21
+    onset: 341.462
+    duration: 94.057
+    sample: 004.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: 0.8
+    distribution: 1
+    grain:
+      duration:
+        type: cubic
+        points: [[0, 0.001], [0.14006, 0.0011], [0.33567, 0.009], [0.5023, 0.0033], [0.6252, 0.0133], [0.7979, 0.0024], [0.891, 0.0191]]
+      envelope:
+        from: hanning
+        to: rexpodec
+        curve: [[0.65, 0], [1, 1]]
+    pointer:
+      start: 0.1
+      speed_ratio: 0.1
+      loop_unit: normalized
+      offset_range: 0.01
+    pitch:
+      ratio: 1
+      range: 0.075
+    pan: 70
+    pan_range: 40
+    volume: -7
+    volume_range: 3
+    voices:
+      num_voices: 1
+      pitch:
+        chord: sus4
+        inversion: 0
+        strategy: chord
+  - stream_id: stream13
+    onset: 860.893
+    duration: 84.552
+    sample: 004.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: 2
+    distribution: 0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+      loop_unit: normalized
+    pan: -110
+    pan_range: 80
+    volume: 0
+  - stream_id: stream22
+    onset: 342.155
+    duration: 129.225
+    sample: 011.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    density:
+      type: cubic
+      points: [[0.00108, 12.54], [0.09198, 5.09], [0.22198, 24.65], [0.35979, 17.74], [0.48145, 32.9], [0.51905, 12.38], [0.53747, 3.86], [0.57235, 15.09], [0.62392, 25.64], [0.64115, 11.09], [0.69911, 31.28], [0.78177, 12.55], [0.8355, 26.19], [0.83973, 12.37], [0.88382, 3.09], [0.9095, 15.64], [0.98685, 27.09], [1, 24.7144]]
+    distribution: 1
+    grain:
+      duration:
+        type: cubic
+        points: [[0, 1], [0.15222, 1], [0.38991, 3], [1, 1.2405]]
+      duration_range:
+        type: cubic
+        points: [[0, 0.4], [0.30714, 0.4], [0.38233, 0.7], [1, 0.4357]]
+      envelope:
+        - rexporise
+        - expodec
+        - bartlett
+        - rectangle
+    pointer:
+      start: 7
+      speed_ratio: 1
+      offset_range: [[0, 0.01], [0.23314, 0.01], [0.2625, 0.03], [0.35394, 0.02], [0.42241, 0.1], [0.69456, 0.07], [0.75577, 1], [1, 0.262]]
+    pitch:
+      ratio:
+        type: cubic
+        points: [[0, 4.7568], [0.23065, 4.8], [0.23174, 0.8]]
+      range: [[0, 1.3348], [0.23304, 1.34], [0.25817, 0]]
+    pan: -110
+    pan_range:
+      type: cubic
+      points: [[0, 30], [0.17107, 30], [0.3612, 80], [0.46315, 45.43], [0.68751, 180], [1, 61.5937]]
+    volume:
+      type: cubic
+      points: [[0, -60], [0.06489, 0], [0.27215, -3], [0.4548, -19.84], [0.5795, -10.02], [0.6666, -24.93], [0.7978, -10.75], [0.92445, -30.75], [1, -8.481]]
+    volume_range:
+      type: cubic
+      points: [[0, 15], [0.32642, 15], [0.44689, 19.51], [1, 15.5908]]
+  - stream_id: stream14
+    onset: 867.771
+    duration: 100
+    sample: 006.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: 2
+    distribution: 0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+      loop_unit: normalized
+    pan: 0
+    volume: 0
+  - stream_id: stream15
+    onset: 889.152
+    duration: 50
+    sample: 007.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: 2
+    distribution: 0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+      loop_unit: normalized
+    pan: 0
+    volume: 0
+  - stream_id: stream23
+    onset: 501.265
+    duration: 78.699
+    sample: 007.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    density:
+      type: cubic
+      points: [[0.0011, 7.54], [0.0913, 20], [0.1839, 14.69], [0.2736, 38.78], [0.3199, 4.91], [0.386, 24.09], [0.4267, 18.76], [0.483, 29.89], [0.5085, 4.12], [0.5467, 2.53], [0.625, 8.99], [0.7032, 27.62], [0.7772, 11.56], [0.9058, 34.9], [1, 8]]
+    distribution: 0
+    grain:
+      duration: 3
+      duration_range: 1
+      envelope:
+        - hanning
+        - expodec
+        - rexporise
+        - exporise
+    pointer:
+      start: 0
+      speed_ratio: 1
+      loop_unit: normalized
+    pitch:
+      ratio: 0.3
+      range: 0.4
+    pan: 160
+    pan_range: 180
+    volume:
+      type: cubic
+      points: [[0.0064, -10.6], [0.1053, -18.07], [0.1748, -12.78], [0.2683, -18.35], [0.332, -15.91], [0.4695, -20.91], [0.565, -16.4], [0.6768, -19.12], [0.7564, -16.76], [0.8312, -20.56], [0.8693, -16.47], [0.9542, -17.43], [0.9966, -12.96]]
+    volume_range: 20
+    voices:
+      num_voices: 4
+      pitch:
+        pitch_range: 38
+        strategy: range
+        unit: quarter_tone
+    deviation_probability: 70
+  - stream_id: stream16
+    onset: 829.325
+    duration: 120
+    sample: 008.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: 2
+    distribution: 0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+      loop_unit: normalized
+    pan: 0
+    volume: 0
+  - stream_id: stream17
+    onset: 843.191
+    duration: 104
+    sample: 009.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: 2
+    distribution: 0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+      loop_unit: normalized
+    pan: 0
+    volume: 0
+  - stream_id: stream18
+    onset: 827.803
+    duration: 140
+    sample: 011.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: 2
+    distribution: 0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+      loop_unit: normalized
+    pan: 0
+    volume: 0
+  - stream_id: stream19
+    onset: 847.256
+    duration: 121.356
+    sample: 013.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: 2
+    distribution: 0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+      loop_unit: normalized
+    pan: 0
+    volume: 0
+  - stream_id: stream20
+    onset: 836.398
+    duration: 130.5059999999999
+    sample: 016.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: 2
+    distribution: 0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+      loop_unit: normalized
+    pan: 0
+    volume: 0
+ui_tracks:
+  - id: stream2
+    name: stream2
+    streams:
+      - stream2
+  - id: stream3
+    name: stream3
+    streams:
+      - stream3
+      - stream26
+  - id: stream9
+    name: stream9
+    streams:
+      - stream9
+      - stream27
+  - id: stream5
+    name: stream5
+    streams:
+      - stream5
+  - id: stream6
+    name: stream6
+    streams:
+      - stream6
+      - stream25
+  - id: stream7
+    name: stream7
+    streams:
+      - stream7
+  - id: stream8
+    name: stream8
+    streams:
+      - stream8
+      - stream24
+  - id: stream10
+    name: stream10
+    streams:
+      - stream10
+  - id: stream12
+    name: stream12
+    streams:
+      - stream12
+      - stream21
+  - id: stream13
+    name: stream13
+    streams:
+      - stream13
+      - stream22
+  - id: stream14
+    name: stream14
+    streams:
+      - stream14
+  - id: stream15
+    name: stream15
+    streams:
+      - stream15
+      - stream23
+  - id: stream16
+    name: stream16
+    streams:
+      - stream16
+  - id: stream17
+    name: stream17
+    streams:
+      - stream17
+  - id: stream18
+    name: stream18
+    streams:
+      - stream18
+  - id: stream19
+    name: stream19
+    streams:
+      - stream19
+  - id: stream20
+    name: stream20
+    streams:
+      - stream20
+  - id: stream21
+    name: stream21
+    streams: []
+  - id: stream22
+    name: stream22
+    streams: []
+  - id: stream23
+    name: stream23
+    streams: []
+  - id: stream24
+    name: stream24
+    streams: []
+  - id: stream25
+    name: stream25
+    streams: []
+  - id: stream26
+    name: stream26
+    streams: []
+  - id: stream27
+    name: stream27
+    streams:
+      - stream27
