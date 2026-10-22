@@ -1,13 +1,13 @@
 # stream: streams/stream6.yml
-# saved:   2026-10-21T20:25:16.945Z
+# saved:   2026-10-22T20:57:32.316Z
 # editor:  PGE-ui
 
 seed: 1441
-duration: 88.348
+duration: 55.3553
 bpm: 120
 streams:
   - stream_id: stream6
-    duration: 88.348
+    duration: 55.3553
     sample: 001-3_0-5_5.wav
     time_mode: normalized
     distribution_mode: uniform
@@ -16,10 +16,10 @@ streams:
     grain:
       duration:
         type: cubic
-        points: [[0, 0.001], [0.07212, 0.005], [0.22992, 0.001]]
+        points: [[0, 0.001], [0.1151, 0.005], [0.36696, 0.001]]
       duration_range: 0.001
       envelope: bartlett
-      read_direction: [[0, 1], [0.06837, -1], [0.08332, 1], [0.1033, -1], [0.12776, 1], [0.18281, 1], [0.22313, -1], [0.22993, 1], [0.22993, -1]]
+      read_direction: [[0, 1], [0.10912, -1], [0.13298, 1], [0.16487, -1], [0.20391, 1], [0.29177, 1], [0.35612, -1], [0.36697, 1], [0.36697, -1]]
     pointer:
       start: 0
       speed_ratio: 0.1
@@ -30,4 +30,4 @@ streams:
       range: 0.05
     pan: -90
     pan_range: 360
-    volume: -3
+    volume: -5

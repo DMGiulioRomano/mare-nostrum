@@ -1,5 +1,5 @@
 # stream: streams/stream8.yml
-# saved:   2026-10-21T22:31:31.051Z
+# saved:   2026-10-22T21:01:00.704Z
 # editor:  PGE-ui
 
 seed: 1441
@@ -36,7 +36,8 @@ streams:
     pan_range: 360
     volume:
       type: cubic
-      points: [[0, -6], [0.9307, -6], [1, -60]]
+      points: [[0, -18], [0.9307, -18], [1, -60]]
+    volume_range: 0
     voices:
       num_voices: 1
       pitch:

@@ -1,31 +1,27 @@
 # project: mare-nostrum
-# saved:   2026-10-22T00:13:00.270Z
+# saved:   2026-10-22T21:41:55.670Z
 # editor:  PGE-ui
 
-duration: 655.136
+duration: 590.978
 bpm: 120
 seed: 1441
 streams:
   - file: streams/stream2.yml
     onset: 0
   - file: streams/stream3.yml
-    onset: 0
-  - file: streams/stream26.yml
-    onset: 425.729
+    onset: 0.2
   - file: streams/stream9.yml
     onset: 11.061
-  - file: streams/stream27.yml
-    onset: 415.01
   - file: streams/stream5.yml
     onset: 43.761
   - file: streams/stream6.yml
     onset: 56.679
-  - file: streams/stream25.yml
-    onset: 414.084
   - file: streams/stream7.yml
     onset: 112.003
   - file: streams/stream8.yml
     onset: 146.003
+  - file: streams/stream10.yml
+    onset: 107.03
   - stream_id: stream24
     onset: 278.634
     duration: 87.416
@@ -58,8 +54,6 @@ streams:
         spread: 90
         strategy: stochastic
     deviation_probability: 40
-  - file: streams/stream10.yml
-    onset: 107.03
   - stream_id: stream21
     onset: 341.462
     duration: 94.057
@@ -131,19 +125,20 @@ streams:
       points: [[0, 30], [0.17107, 30], [0.3612, 80], [0.46315, 45.43], [0.68751, 180], [1, 61.5937]]
     volume:
       type: cubic
-      points: [[0, -60], [0.06489, 0], [0.27215, -3], [0.4548, -19.84], [0.5795, -10.02], [0.6666, -24.93], [0.7978, -10.75], [0.92445, -30.75], [1, -8.481]]
+      points: [[0, -60], [0.0691, -6], [0.2722, -6], [0.4548, -19.84], [0.5795, -10.02], [0.6666, -24.93], [0.7978, -10.75], [0.92445, -30.75], [1, -8.481]]
     volume_range:
       type: cubic
       points: [[0, 15], [0.32642, 15], [0.44689, 19.51], [1, 15.5908]]
   - stream_id: stream23
-    onset: 566.437
-    duration: 78.699
+    onset: 424.124
+    duration: 152.949
     sample: 007.wav
     time_mode: normalized
     distribution_mode: uniform
+    clip_strategy: passthrough
     density:
       type: cubic
-      points: [[0.0011, 7.54], [0.0913, 20], [0.1839, 14.69], [0.2736, 38.78], [0.3199, 4.91], [0.386, 24.09], [0.4267, 18.76], [0.483, 29.89], [0.5085, 4.12], [0.5467, 2.53], [0.625, 8.99], [0.7032, 27.62], [0.7772, 11.56], [0.9058, 34.9], [1, 8]]
+      points: [[0.0011, 7.54], [0.0913, 20], [0.1839, 14.69], [0.2736, 38.78], [0.3199, 4.91], [0.386, 24.09], [0.4267, 18.76], [0.483, 29.89], [0.5085, 4.12], [0.5467, 2.53], [0.625, 8.99], [0.7032, 27.62], [0.7772, 11.56], [0.9058, 34.9], [1, 53.11]]
     distribution: 0
     grain:
       duration: 3
@@ -164,7 +159,7 @@ streams:
     pan_range: 180
     volume:
       type: cubic
-      points: [[0.0064, -10.6], [0.1053, -18.07], [0.1748, -12.78], [0.2683, -18.35], [0.332, -15.91], [0.4695, -20.91], [0.565, -16.4], [0.6768, -19.12], [0.7564, -16.76], [0.8312, -20.56], [0.8693, -16.47], [0.9542, -17.43], [0.9966, -12.96]]
+      points: [[0.0059, -80], [0.2627, -23.75], [0.263, -23.79], [0.3006, -25.98], [0.3426, -30.85], [0.3683, -22.87], [0.442, -25.62], [0.5371, -19.28], [0.6057, -29.03], [0.6768, -19.12], [0.7564, -16.76], [0.8312, -20.56], [0.9866, -4.76], [1, -90]]
     volume_range: 20
     voices:
       num_voices: 4
@@ -173,6 +168,14 @@ streams:
         strategy: range
         unit: quarter_tone
     deviation_probability: 70
+  - file: streams/stream26.yml
+    onset: 439.986
+  - file: streams/stream25.yml
+    onset: 414.084
+  - file: streams/stream27.yml
+    onset: 415.01
+  - file: streams/stream6-2.yml
+    onset: 116.934
 ui_tracks:
   - id: stream2
     name: stream2
@@ -182,12 +185,10 @@ ui_tracks:
     name: stream3
     streams:
       - stream3
-      - stream26
   - id: stream9
     name: stream9
     streams:
       - stream9
-      - stream27
   - id: stream5
     name: stream5
     streams:
@@ -196,7 +197,6 @@ ui_tracks:
     name: stream6
     streams:
       - stream6
-      - stream25
   - id: stream7
     name: stream7
     streams:
@@ -205,11 +205,14 @@ ui_tracks:
     name: stream8
     streams:
       - stream8
-      - stream24
   - id: stream10
     name: stream10
     streams:
       - stream10
+  - id: stream16
+    name: stream16
+    streams:
+      - stream24
   - id: stream12
     name: stream12
     streams:
@@ -224,19 +227,20 @@ ui_tracks:
       - stream23
   - id: stream15
     name: stream15
-    streams: []
-  - id: stream16
-    name: stream16
-    streams: []
+    streams:
+      - stream26
   - id: stream17
     name: stream17
-    streams: []
+    streams:
+      - stream25
   - id: stream18
     name: stream18
-    streams: []
+    streams:
+      - stream27
   - id: stream19
     name: stream19
-    streams: []
+    streams:
+      - stream6-2
   - id: stream20
     name: stream20
     streams: []
@@ -260,4 +264,7 @@ ui_tracks:
     streams: []
   - id: stream27
     name: stream27
+    streams: []
+  - id: stream6-2
+    name: stream6-2
     streams: []

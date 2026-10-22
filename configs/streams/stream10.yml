@@ -1,5 +1,5 @@
 # stream: streams/stream10.yml
-# saved:   2026-10-21T22:27:10.686Z
+# saved:   2026-10-22T21:21:41.237Z
 # editor:  PGE-ui
 
 seed: 1441
@@ -16,14 +16,14 @@ streams:
     grain:
       duration:
         type: cubic
-        points: [[0, 0.001], [0.29816, 0.001], [0.31686, 0.004], [0.33508, 0.0012], [0.86093, 0.008], [0.86296, 0.0024]]
+        points: [[0, 0.001], [0.29816, 0.001], [0.31686, 0.004], [0.33508, 0.0012], [0.8609, 0.008], [0.86296, 0.0024]]
       duration_range: 0.001
       envelope: rectangle
     pointer:
       start: 0
       speed_ratio: 0.07
       loop_unit: normalized
-      offset_range: 0.02
+      offset_range: [[0, 0.02], [0.8524, 0.02], [0.8534, 0.1], [1, 0.02]]
     pitch:
       ratio: 1
       range: 0
