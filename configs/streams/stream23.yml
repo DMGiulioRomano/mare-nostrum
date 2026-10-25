@@ -1,0 +1,42 @@
+seed: 1441
+duration: 152.949
+bpm: 120
+streams:
+  - stream_id: stream23
+    duration: 152.949
+    sample: 007.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    clip_strategy: passthrough
+    density:
+      type: cubic
+      points: [[0.0011, 7.54], [0.0913, 20], [0.1839, 14.69], [0.2736, 38.78], [0.3199, 4.91], [0.386, 24.09], [0.4267, 18.76], [0.483, 29.89], [0.5085, 4.12], [0.5467, 2.53], [0.625, 8.99], [0.7032, 27.62], [0.7772, 11.56], [0.9058, 34.9], [1, 53.11]]
+    distribution: 0
+    grain:
+      duration: 3
+      duration_range: 1
+      envelope:
+        - hanning
+        - expodec
+        - rexporise
+        - exporise
+    pointer:
+      start: 0
+      speed_ratio: 1
+      loop_unit: normalized
+    pitch:
+      ratio: 0.3
+      range: 0.4
+    pan: 160
+    pan_range: 180
+    volume:
+      type: cubic
+      points: [[0.0059, -80], [0.2627, -23.75], [0.263, -23.79], [0.3006, -25.98], [0.3426, -30.85], [0.3683, -22.87], [0.442, -25.62], [0.5371, -19.28], [0.6057, -29.03], [0.6768, -19.12], [0.7564, -16.76], [0.8312, -20.56], [0.9866, -4.76], [1, -90]]
+    volume_range: 20
+    voices:
+      num_voices: 4
+      pitch:
+        pitch_range: 38
+        strategy: range
+        unit: quarter_tone
+    deviation_probability: 70

@@ -99,7 +99,13 @@ def _brano():
     `configs/streams/`, e qui servono come li vede il motore dopo la
     risoluzione — con il loro piazzamento, come nel `mare-nostrum.yml` di
     prima."""
-    return brano_master.brano()
+    return brano_master.scritto_dentro(brano_master.leggi(MASTER), CORPUS)
+
+
+# ponytail: corpus congelato (configs/ a ef85a29): il brano vero cambia a ogni
+# sessione di PGE-ui, e i test qui citano stream e inviluppi precisi.
+CORPUS = os.path.join(os.path.dirname(__file__), "fixtures", "brano")
+MASTER = os.path.join(CORPUS, "mare-nostrum.yml")
 
 
 STREAMS = [s["stream_id"] for s in _brano()["streams"]]
@@ -547,7 +553,7 @@ def test_il_master_del_brano_non_si_apre_come_uno_stream(tmp_path):
     laboratorio, e il primo render lo riscriveva con quella voce sola: nove
     stream su dieci persi. Non si apre, e resta aperto il documento di prima:
     la scrittura dopo va li', non sul master."""
-    master = brano_master.leggi(brano_master.MASTER)
+    master = brano_master.leggi(MASTER)
     st = _stream("stream2")
     got = _lab(tmp_path, _dischi({"/brano/streams/stream2.yml": _documento(st),
                                   "/brano/mare-nostrum.yml": master}) + DOVE + """
@@ -573,7 +579,7 @@ def test_il_master_del_brano_non_si_apre_come_uno_stream(tmp_path):
 def test_il_master_non_si_apre_neanche_sul_foglio_bianco(tmp_path):
     """Senza un documento di prima resta il foglio bianco: niente breakpoint,
     quindi niente da rendere, e il master resta com'e'."""
-    master = brano_master.leggi(brano_master.MASTER)
+    master = brano_master.leggi(MASTER)
     got = _lab(tmp_path, _dischi({"/brano/mare-nostrum.yml": master}) + DOVE + """
 (async () => {
   await apriPath('/brano/mare-nostrum.yml');
@@ -843,7 +849,7 @@ def test_criterio_del_piano_ogni_stream_del_brano_risalvato_e_lo_stesso(tmp_path
     salvato = tmp_path / (sid + ".yml")
     with open(salvato, "w") as fh:
         yaml.dump(doc, fh, Dumper=S._Dumper, sort_keys=False, allow_unicode=True)
-    assert impronte(salvato)[sid] == impronte(brano_master.MASTER)[sid]
+    assert impronte(salvato)[sid] == impronte(MASTER)[sid]
 
 
 @node
