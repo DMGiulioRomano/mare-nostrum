@@ -1,0 +1,28 @@
+seed: 1441
+duration: 26.354
+bpm: 120
+streams:
+- stream_id: stream7
+  duration: 26.354
+  sample: 001-65-2.wav
+  time_mode: normalized
+  distribution_mode: uniform
+  fill_factor: 4
+  distribution: 1
+  grain:
+    duration: [[0, 0.001], [0.35276, 0.0019], [0.7768, 0.0181]]
+    duration_range: 0.001
+    envelope: hanning
+    read_direction: [[0, 1], [0.22918, -1], [0.27932, 1], [0.34627, -1], [0.42829,
+        1], [0.61286, 1], [0.74802, -1], [0.77079, 1], [0.77079, -1]]
+  pointer:
+    start: 0
+    speed_ratio: 0.05
+    loop_unit: normalized
+    offset_range: 0.01
+  pitch:
+    ratio: 0.5
+    range: 0.05
+  pan: -90
+  pan_range: 360
+  volume: -3

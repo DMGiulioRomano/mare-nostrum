@@ -1,0 +1,35 @@
+seed: 1441
+duration: 87.416
+bpm: 120
+streams:
+  - stream_id: stream24
+    duration: 87.416
+    sample: 016.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    fill_factor: [[0, 0.8], [0.1844, 0.61], [0.2874, 0.72], [0.3602, 0.7], [0.5158, 0.9], [0.625, 0.78], [0.7965, 0.88], [1, 0.8]]
+    distribution: 0.5
+    grain:
+      duration: 0.0001
+      duration_range: 0.0001
+      envelope: all
+    pointer:
+      start: 0.11
+      speed_ratio: 0.1
+      loop_unit: normalized
+      offset_range: 0.005
+    pitch:
+      ratio: 8
+      range: 1.7818
+    pan: 0
+    volume: -12
+    voices:
+      num_voices: 4
+      scatter: 1
+      pointer:
+        pointer_range: 0.1
+        strategy: stochastic
+      pan:
+        spread: 90
+        strategy: stochastic
+    deviation_probability: 40
